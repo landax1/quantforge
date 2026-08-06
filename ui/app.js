@@ -893,6 +893,26 @@ PAGES.mining = async (main) => {
               <button data-range="oos">Validar 30%</button>
             </div>
             <p class="stage-note" id="m-dsnote"></p>
+
+            <details class="adv" id="m-adv-oos">
+              <summary><span class="adv-chev">›</span>Avanzado<em id="sum-oos"></em></summary>
+              <div class="adv-body">
+                <label class="fld"><span>Validación fuera de muestra</span>
+                  <select data-cfg="oosPct">
+                    ${opt(0, +c.oosPct, "Desactivada — todo in-sample")}
+                    ${opt(20, +c.oosPct, "Reservar el último 20%")}
+                    ${opt(30, +c.oosPct, "Reservar el último 30% (recomendado)")}
+                    ${opt(40, +c.oosPct, "Reservar el último 40%")}
+                  </select></label>
+                <p class="help-note">La búsqueda usa sólo el tramo inicial y cada estrategia
+                  aceptada se vuelve a correr sobre el final, con datos que <b>nunca vio</b>.
+                  El databank muestra las dos columnas: si la ventaja se cae afuera, la
+                  estrategia describía el pasado y nada más.</p>
+                <p class="help-note">Distinto de los atajos de arriba: aquellos <b>recortan</b>
+                  el período y dejan el resto para que lo pruebes vos a mano; esto lo parte
+                  automáticamente y valida cada candidata sola.</p>
+              </div>
+            </details>
           </div>
         </details>
 
@@ -1009,18 +1029,6 @@ PAGES.mining = async (main) => {
               <label class="fld"><span>Ordenar el databank por</span><select data-cfg="fitness">
                 ${opt("composite", c.fitness, "QF Score (robustez) — recomendado")}${opt("net_profit", c.fitness, "Ganancia neta")}
                 ${opt("profit_factor", c.fitness, "Profit factor")}${opt("sharpe", c.fitness, "Sharpe")}</select></label>
-              <label class="fld"><span>Validación fuera de muestra
-                  <span class="hint">% final del período que la búsqueda NO ve</span></span>
-                <select data-cfg="oosPct">
-                  ${opt(0, +c.oosPct, "Desactivada — todo in-sample")}
-                  ${opt(20, +c.oosPct, "20% reservado")}
-                  ${opt(30, +c.oosPct, "30% reservado (recomendado)")}
-                  ${opt(40, +c.oosPct, "40% reservado")}
-                </select></label>
-              <p class="help-note">Con la validación activa, la búsqueda usa sólo el tramo
-                inicial y cada estrategia aceptada se vuelve a correr sobre el final, con datos
-                que nunca vio. Es lo único que distingue una ventaja real de una casualidad
-                bien ajustada al pasado.</p>
               <label class="fld"><span>Tope de seguridad
                   <span class="hint">candidatas máximas antes de rendirse</span></span>
                 <input type="number" data-cfg="maxCandidates" value="${c.maxCandidates}" min="100" step="1000"></label>
@@ -1268,7 +1276,10 @@ PAGES.mining = async (main) => {
   function updateSummaries(ds) {
     const set = (id, txt) => { const el = $(`#${id}`, main); if (el) el.textContent = txt; };
     const dirLbl = { long: "solo largos", short: "solo cortos", both: "largos y cortos" };
-    set("sum-market", ds ? `${ds.name.replace(/ M1.*/, "")} · ${S.sel.timeframe} · ${dirLbl[S.cfg.direction]}` : "—");
+    set("sum-market", (ds ? `${ds.name.replace(/ M1.*/, "")} · ${S.sel.timeframe} · ${dirLbl[S.cfg.direction]}` : "—") +
+      (+S.cfg.oosPct ? ` · valida ${S.cfg.oosPct}%` : ""));
+    // el resumen del desplegable: se ve sin abrirlo
+    set("sum-oos", +S.cfg.oosPct ? `validando el último ${S.cfg.oosPct}%` : "");
 
     const drv = $$("#m-drivers .blockitem input", main).filter(x => x.checked).length;
     const flt = $$("#m-filters .blockitem input", main).filter(x => x.checked).length;
