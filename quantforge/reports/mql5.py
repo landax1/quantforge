@@ -268,12 +268,13 @@ void OnTick()
       double sl = {sl_line};
       double tp = {tp_line};
       if(!ValidStops(true, ask, sl, tp)) return;
-      double vol = LotsFor(ask - sl);
+      double vol = LotsFor(true, ask, sl);
       if(vol <= 0.0)
         {{
          if(InpVerbose) Print("[QF] Volumen calculado en 0 — revisa volumen minimo del simbolo");
          return;
         }}
+      ReportSize("BUY", true, vol, ask, sl);
       if(!trade.Buy(vol, _Symbol, 0.0, Norm(sl), Norm(tp), "{ea_name}"))
          ReportFailure("BUY", vol, ask, sl, tp);
      }}
@@ -282,12 +283,13 @@ void OnTick()
       double sl = {sl_short};
       double tp = {tp_short};
       if(!ValidStops(false, bid, sl, tp)) return;
-      double vol = LotsFor(sl - bid);
+      double vol = LotsFor(false, bid, sl);
       if(vol <= 0.0)
         {{
          if(InpVerbose) Print("[QF] Volumen calculado en 0 — revisa volumen minimo del simbolo");
          return;
         }}
+      ReportSize("SELL", false, vol, bid, sl);
       if(!trade.Sell(vol, _Symbol, 0.0, Norm(sl), Norm(tp), "{ea_name}"))
          ReportFailure("SELL", vol, bid, sl, tp);
      }}
@@ -342,23 +344,43 @@ double Norm(const double price)
 //| InpLots: hay brokers de CFDs que no aceptan bien un volumen       |
 //| recalculado en cada entrada.                                      |
 //+------------------------------------------------------------------+
-double LotsFor(const double stopDistance)
+double LotsFor(const bool isLong, const double entry, const double stopPrice)
   {
    double minLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
    double maxLot  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
    double lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
    double vol     = InpLots;
+   ENUM_ORDER_TYPE dir = isLong ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
 
-   if(InpRiskPct > 0.0 && stopDistance > 0.0)
+   if(InpRiskPct > 0.0 && entry > 0.0 && stopPrice > 0.0)
      {
-      double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-      double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-      if(tickValue > 0.0 && tickSize > 0.0)
+      // Cuanto pierde 1 lote desde la entrada hasta el stop, en la MONEDA DE
+      // LA CUENTA, preguntandoselo al terminal. Calcularlo como
+      // (distancia / tick_size) * tick_value asume que el tick vale lo mismo
+      // que el punto: en los CFD de indices el contrato es de 100 unidades y
+      // esa cuenta devuelve 100x MAS volumen del que corresponde. Medido en
+      // US500: 12.2 lotes donde tocaban 0.12, y una sola perdida vacio la
+      // cuenta entera arriesgando el 100% en vez del 1%.
+      double lossPerLot = 0.0;
+      if(OrderCalcProfit(dir, _Symbol, 1.0, entry, stopPrice, lossPerLot))
         {
-         double riskMoney   = AccountInfoDouble(ACCOUNT_BALANCE) * InpRiskPct / 100.0;
-         double lossPerLot  = (stopDistance / tickSize) * tickValue;
+         lossPerLot = MathAbs(lossPerLot);
+         double riskMoney = AccountInfoDouble(ACCOUNT_BALANCE) * InpRiskPct / 100.0;
          if(lossPerLot > 0.0) vol = riskMoney / lossPerLot;
         }
+      else if(InpVerbose)
+         PrintFormat("[QF] OrderCalcProfit fallo (error %d) — se usa el volumen fijo %.2f",
+                     GetLastError(), InpLots);
+     }
+
+   // el margen manda: pedir mas de lo que la cuenta banca hace fallar la orden
+   double price = isLong ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+                         : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double margin = 0.0;
+   if(OrderCalcMargin(dir, _Symbol, vol, price, margin) && margin > 0.0)
+     {
+      double usable = AccountInfoDouble(ACCOUNT_MARGIN_FREE) * 0.90;
+      if(margin > usable && usable > 0.0) vol = vol * usable / margin;
      }
 
    if(lotStep > 0.0) vol = MathFloor(vol / lotStep) * lotStep;
@@ -400,6 +422,24 @@ bool ValidStops(const bool isLong, const double price, double &sl, double &tp)
         }
      }
    return true;
+  }
+//+------------------------------------------------------------------+
+//| Cuanto se arriesga DE VERDAD en esta operacion, en plata y en %   |
+//| del balance. Si el numero no coincide con InpRiskPct, el problema |
+//| es el dimensionamiento y se ve en la primera operacion, no        |
+//| cuando la cuenta ya voló.                                         |
+//+------------------------------------------------------------------+
+void ReportSize(const string side, const bool isLong, const double vol,
+                const double entry, const double stopPrice)
+  {
+   if(!InpVerbose) return;
+   double loss = 0.0;
+   ENUM_ORDER_TYPE dir = isLong ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
+   if(!OrderCalcProfit(dir, _Symbol, vol, entry, stopPrice, loss)) return;
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   double pct = (balance > 0.0) ? MathAbs(loss) / balance * 100.0 : 0.0;
+   PrintFormat("[QF] %s vol=%.2f | si toca el stop pierde %.2f = %.2f%% del balance "
+               "(pedido: %.2f%%)", side, vol, MathAbs(loss), pct, InpRiskPct);
   }
 //+------------------------------------------------------------------+
 //| Por que fallo la orden, con el codigo que devuelve el servidor    |
