@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuantForge — Buscador de estrategias para MetaTrader y TradingView</title>
+<meta name="description" content="Miná estrategias de trading sobre años de datos reales, en tu propia máquina y sin conexión. Exportá a MetaTrader 5 y TradingView con las mismas reglas.">
+<meta property="og:title" content="QuantForge — Buscador de estrategias">
+<meta property="og:description" content="Minado determinista de estrategias, offline, con exportación a MT5 y TradingView.">
+<meta property="og:type" content="website">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚡</text></svg>">
+<style>
+:root{
+  --bg:#07080c; --bg-soft:#0c0e15; --card:#11141d; --card-2:#161a25;
+  --border:#222839; --border-soft:#1a1f2c; --border-strong:#2f3750;
+  --text:#e9ecf7; --text-2:#a6aec7; --text-dim:#6d768f;
+  --accent:#6b83e0; --accent-2:#8b9ae8;
+  --accent-soft:rgba(107,131,224,.10); --accent-line:rgba(107,131,224,.28);
+  --pos:#43c88a; --neg:#e0736f; --warn:#d9a441;
+  --r:10px; --r-lg:13px; --r-xl:18px;
+  --font:"Inter","Segoe UI Variable","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:ui-monospace,"Cascadia Code","JetBrains Mono",Consolas,monospace;
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+::selection{background:rgba(107,131,224,.28)}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+/* ---------------------------------------------------------------- nav */
+header{position:sticky;top:0;z-index:50;background:rgba(7,8,12,.82);backdrop-filter:blur(14px);border-bottom:1px solid var(--border-soft)}
+.nav{display:flex;align-items:center;gap:14px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.025em;font-size:17px}
+.brand-mark{width:30px;height:30px;display:grid;place-items:center;border-radius:8px;background:var(--card-2);border:1px solid var(--border);color:var(--accent-2)}
+.brand-mark svg{width:17px;height:17px}
+.nav-links{display:flex;gap:26px;margin-left:auto;font-size:14px;color:var(--text-2)}
+.nav-links a:hover{color:var(--text)}
+@media(max-width:760px){.nav-links{display:none}}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:38px;padding:0 18px;border-radius:var(--r);border:1px solid transparent;background:var(--accent);color:#fff;font:inherit;font-size:14px;font-weight:550;cursor:pointer;transition:background .14s,border-color .14s,color .14s}
+.btn:hover{background:#7a90e6}
+.btn.ghost{background:var(--card-2);color:var(--text-2);border-color:var(--border)}
+.btn.ghost:hover{background:#1b2030;color:var(--text);border-color:var(--border-strong)}
+.btn.lg{height:46px;padding:0 24px;font-size:15px}
+
+/* --------------------------------------------------------------- hero */
+.hero{padding:88px 0 64px;text-align:center}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-2);background:var(--card);border:1px solid var(--border);border-radius:999px;padding:6px 14px;margin-bottom:24px}
+.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--pos)}
+h1{font-size:clamp(32px,5.2vw,54px);line-height:1.08;letter-spacing:-.035em;font-weight:700;max-width:16ch;margin:0 auto}
+h1 em{font-style:normal;color:var(--accent-2)}
+.sub{color:var(--text-2);font-size:clamp(16px,2vw,19px);max-width:60ch;margin:22px auto 0}
+.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:34px}
+.cta-note{color:var(--text-dim);font-size:13px;margin-top:16px}
+
+/* ------------------------------------------------------------ mockup */
+.shot{margin:56px auto 0;border:1px solid var(--border);border-radius:var(--r-xl);overflow:hidden;background:var(--card);box-shadow:0 24px 70px rgba(0,0,0,.5)}
+.shot-bar{display:flex;align-items:center;gap:7px;padding:11px 15px;border-bottom:1px solid var(--border-soft);background:var(--bg-soft)}
+.shot-bar i{width:10px;height:10px;border-radius:50%;background:#2b3145;display:block}
+.shot-bar span{margin-left:10px;font-size:11.5px;color:var(--text-dim);font-family:var(--mono)}
+.shot svg{display:block;width:100%;height:auto}
+
+/* ------------------------------------------------------------ layout */
+section{padding:76px 0;border-top:1px solid var(--border-soft)}
+.sec-head{max-width:62ch;margin-bottom:44px}
+.sec-eyebrow{font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--accent-2);margin-bottom:12px}
+h2{font-size:clamp(24px,3.4vw,34px);line-height:1.18;letter-spacing:-.03em;font-weight:700}
+.sec-head p{color:var(--text-2);margin-top:14px;font-size:17px}
+h3{font-size:17px;font-weight:650;letter-spacing:-.015em;margin-bottom:8px}
+
+.grid{display:grid;gap:18px}
+.g2{grid-template-columns:repeat(2,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:900px){.g3,.g4{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.g2,.g3,.g4{grid-template-columns:1fr}}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);padding:24px;transition:border-color .16s var(--ease)}
+.card:hover{border-color:var(--border-strong)}
+.card p{color:var(--text-2);font-size:14.5px}
+.card .ic{width:36px;height:36px;display:grid;place-items:center;border-radius:9px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent-2);margin-bottom:16px}
+.card .ic svg{width:18px;height:18px}
+
+.step{position:relative;padding-left:52px}
+.step .n{position:absolute;left:0;top:0;width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:var(--card-2);border:1px solid var(--border);font-size:13px;font-weight:700;color:var(--accent-2)}
+.step p{color:var(--text-2);font-size:14.5px}
+
+/* ----------------------------------------------------------- numbers */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:760px){.stats{grid-template-columns:1fr}}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);padding:26px}
+.stat b{display:block;font-size:34px;font-weight:700;letter-spacing:-.035em;font-variant-numeric:tabular-nums;line-height:1}
+.stat span{display:block;color:var(--text-2);font-size:14px;margin-top:10px}
+
+/* ------------------------------------------------------------ honest */
+.honest{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:var(--r-lg);padding:28px 30px}
+.honest h3{color:var(--warn);font-size:14px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:16px}
+.honest ul{list-style:none;display:flex;flex-direction:column;gap:13px}
+.honest li{color:var(--text-2);font-size:15px;padding-left:24px;position:relative}
+.honest li::before{content:"—";position:absolute;left:0;color:var(--text-dim)}
+.honest li b{color:var(--text)}
+
+/* -------------------------------------------------------------- code */
+.code{background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--r-lg);padding:20px 22px;font-family:var(--mono);font-size:12.5px;line-height:1.7;color:var(--text-2);overflow-x:auto;white-space:pre}
+.code b{color:var(--accent-2);font-weight:400}
+.code i{color:var(--text-dim);font-style:normal}
+
+/* --------------------------------------------------------------- faq */
+details{border-bottom:1px solid var(--border-soft)}
+details summary{cursor:pointer;list-style:none;padding:20px 0;font-weight:600;font-size:16px;display:flex;align-items:center;gap:14px}
+details summary::-webkit-details-marker{display:none}
+details summary::after{content:"+";margin-left:auto;color:var(--text-dim);font-size:20px;font-weight:400;transition:transform .18s var(--ease)}
+details[open] summary::after{transform:rotate(45deg)}
+details p{color:var(--text-2);font-size:15px;padding:0 0 22px}
+
+/* -------------------------------------------------------------- misc */
+.final{text-align:center;padding:88px 0}
+footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-dim);font-size:13px}
+.foot-row{display:flex;gap:20px;flex-wrap:wrap;align-items:center}
+.foot-row .sp{margin-left:auto}
+.disclaimer{margin-top:22px;padding-top:22px;border-top:1px solid var(--border-soft);max-width:78ch;line-height:1.65}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top">
+      <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none"><path d="M13 2 4.5 13.2h6L9.5 22 19.5 10.5h-6.2L13 2Z" fill="currentColor"/></svg></span>
+      QuantForge
+    </a>
+    <nav class="nav-links">
+      <a href="#como">Cómo funciona</a>
+      <a href="#exportar">Exportar</a>
+      <a href="#limites">Qué no hace</a>
+      <a href="#faq">Preguntas</a>
+    </nav>
+    <a class="btn ghost" href="#descargar">Descargar</a>
+  </div>
+</header>
+
+<main id="top">
+
+<div class="wrap hero">
+  <div class="eyebrow"><span class="dot"></span> Corre en tu máquina · sin conexión</div>
+  <h1>Buscá estrategias que tu broker <em>pueda ejecutar</em></h1>
+  <p class="sub">
+    QuantForge prueba millones de combinaciones de reglas sobre años de velas reales
+    y te deja las que cumplen tus criterios. Después las exporta a MetaTrader 5 y
+    TradingView con las mismas reglas que se backtestearon.
+  </p>
+  <div class="cta">
+    <a class="btn lg" href="#descargar">Descargar para Windows</a>
+    <a class="btn lg ghost" href="#como">Ver cómo funciona</a>
+  </div>
+  <p class="cta-note">Gratis mientras está en desarrollo · Windows 10/11 · ~200 MB</p>
+
+  <div class="shot">
+    <div class="shot-bar"><i></i><i></i><i></i><span>QuantForge — Mining</span></div>
+    <svg viewBox="0 0 1000 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vista del minado: panel de configuración a la izquierda y databank de estrategias a la derecha">
+      <defs>
+        <linearGradient id="eq" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#6b83e0" stop-opacity=".35"/>
+          <stop offset="100%" stop-color="#6b83e0" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#6b83e0"/><stop offset="100%" stop-color="#8b9ae8"/>
+        </linearGradient>
+      </defs>
+      <rect width="1000" height="520" fill="#11141d"/>
+      <!-- sidebar -->
+      <rect x="0" y="0" width="150" height="520" fill="#0c0e15"/>
+      <rect x="18" y="22" width="20" height="20" rx="6" fill="#161a25" stroke="#222839"/>
+      <rect x="46" y="27" width="72" height="10" rx="3" fill="#2a3145"/>
+      <rect x="14" y="70" width="122" height="30" rx="8" fill="#161a25"/>
+      <rect x="26" y="80" width="52" height="9" rx="3" fill="#6d768f"/>
+      <rect x="14" y="106" width="122" height="30" rx="8" fill="#1b2030"/>
+      <rect x="26" y="116" width="60" height="9" rx="3" fill="#a6aec7"/>
+      <!-- setup panel -->
+      <rect x="166" y="22" width="250" height="476" rx="12" fill="#11141d" stroke="#222839"/>
+      <g fill="#6d768f">
+        <rect x="182" y="42" width="22" height="22" rx="7" fill="#161a25" stroke="#2f3750"/>
+        <rect x="214" y="45" width="66" height="9" rx="3" fill="#e9ecf7"/>
+        <rect x="214" y="59" width="140" height="7" rx="3"/>
+        <rect x="182" y="86" width="22" height="22" rx="7" fill="#161a25" stroke="#2f3750"/>
+        <rect x="214" y="89" width="54" height="9" rx="3" fill="#e9ecf7"/>
+        <rect x="214" y="103" width="120" height="7" rx="3"/>
+        <rect x="182" y="130" width="22" height="22" rx="7" fill="#6b83e0" fill-opacity=".18" stroke="#6b83e0" stroke-opacity=".4"/>
+        <rect x="214" y="133" width="96" height="9" rx="3" fill="#e9ecf7"/>
+        <rect x="214" y="147" width="132" height="7" rx="3"/>
+      </g>
+      <!-- risk knobs -->
+      <rect x="182" y="172" width="218" height="52" rx="9" fill="#0c0e15" stroke="#1a1f2c"/>
+      <rect x="196" y="186" width="86" height="9" rx="3" fill="#a6aec7"/>
+      <rect x="196" y="203" width="34" height="9" rx="3" fill="#43c88a"/>
+      <rect x="340" y="184" width="46" height="26" rx="7" fill="#161a25" stroke="#2f3750"/>
+      <text x="363" y="201" font-family="monospace" font-size="12" fill="#e9ecf7" text-anchor="middle">1%</text>
+      <rect x="182" y="234" width="218" height="52" rx="9" fill="#0c0e15" stroke="#1a1f2c"/>
+      <rect x="196" y="248" width="112" height="9" rx="3" fill="#a6aec7"/>
+      <rect x="196" y="265" width="52" height="9" rx="3" fill="#6d768f"/>
+      <rect x="340" y="246" width="46" height="26" rx="7" fill="#161a25" stroke="#2f3750"/>
+      <text x="363" y="263" font-family="monospace" font-size="12" fill="#e9ecf7" text-anchor="middle">1:2</text>
+      <!-- criteria -->
+      <g>
+        <rect x="182" y="300" width="218" height="26" rx="6" fill="#6b83e0" fill-opacity=".07"/>
+        <rect x="192" y="309" width="9" height="9" rx="2" fill="#6b83e0"/>
+        <rect x="209" y="309" width="96" height="8" rx="3" fill="#a6aec7"/>
+        <rect x="348" y="306" width="42" height="15" rx="4" fill="#161a25"/>
+        <rect x="182" y="330" width="218" height="26" rx="6" fill="#0c0e15"/>
+        <rect x="192" y="339" width="9" height="9" rx="2" fill="none" stroke="#2f3750"/>
+        <rect x="209" y="339" width="76" height="8" rx="3" fill="#6d768f"/>
+        <rect x="182" y="360" width="218" height="26" rx="6" fill="#0c0e15"/>
+        <rect x="192" y="369" width="9" height="9" rx="2" fill="none" stroke="#2f3750"/>
+        <rect x="209" y="369" width="88" height="8" rx="3" fill="#6d768f"/>
+      </g>
+      <!-- run bar -->
+      <rect x="166" y="410" width="250" height="88" rx="12" fill="#161a25"/>
+      <rect x="182" y="424" width="70" height="8" rx="3" fill="#6d768f"/>
+      <rect x="182" y="440" width="52" height="26" rx="7" fill="#0c0e15" stroke="#2f3750"/>
+      <text x="208" y="457" font-family="monospace" font-size="13" fill="#e9ecf7" text-anchor="middle">25</text>
+      <rect x="182" y="474" width="218" height="14" rx="7" fill="#6b83e0"/>
+      <!-- results: goal card -->
+      <rect x="432" y="22" width="552" height="128" rx="12" fill="#11141d" stroke="#222839"/>
+      <circle cx="494" cy="86" r="38" fill="none" stroke="#222839" stroke-width="8"/>
+      <circle cx="494" cy="86" r="38" fill="none" stroke="url(#ring)" stroke-width="8" stroke-linecap="round"
+              stroke-dasharray="239" stroke-dashoffset="72" transform="rotate(-90 494 86)"/>
+      <text x="494" y="90" font-family="Inter,sans-serif" font-size="17" font-weight="700" fill="#e9ecf7" text-anchor="middle">18/25</text>
+      <rect x="556" y="46" width="150" height="11" rx="3" fill="#e9ecf7"/>
+      <rect x="556" y="66" width="240" height="7" rx="3" fill="#6d768f"/>
+      <g>
+        <rect x="556" y="88" width="96" height="44" rx="8" fill="#0c0e15" stroke="#1a1f2c"/>
+        <rect x="568" y="98" width="40" height="6" rx="3" fill="#6d768f"/>
+        <text x="568" y="122" font-family="monospace" font-size="14" font-weight="700" fill="#e9ecf7">1.204</text>
+        <rect x="662" y="88" width="96" height="44" rx="8" fill="#0c0e15" stroke="#1a1f2c"/>
+        <rect x="674" y="98" width="46" height="6" rx="3" fill="#6d768f"/>
+        <text x="674" y="122" font-family="monospace" font-size="14" font-weight="700" fill="#43c88a">18</text>
+        <rect x="768" y="88" width="96" height="44" rx="8" fill="#0c0e15" stroke="#1a1f2c"/>
+        <rect x="780" y="98" width="52" height="6" rx="3" fill="#6d768f"/>
+        <text x="780" y="122" font-family="monospace" font-size="14" font-weight="700" fill="#e9ecf7">4m 12s</text>
+      </g>
+      <!-- champion -->
+      <rect x="432" y="162" width="552" height="120" rx="12" fill="#141827" stroke="#6b83e0" stroke-opacity=".28"/>
+      <rect x="450" y="180" width="104" height="16" rx="8" fill="#6b83e0" fill-opacity=".14" stroke="#6b83e0" stroke-opacity=".3"/>
+      <text x="502" y="192" font-family="Inter,sans-serif" font-size="9" font-weight="700" fill="#8b9ae8" text-anchor="middle">MEJOR ENCONTRADA</text>
+      <text x="450" y="222" font-family="Inter,sans-serif" font-size="19" font-weight="700" fill="#e9ecf7">S-018</text>
+      <rect x="450" y="234" width="188" height="7" rx="3" fill="#a6aec7"/>
+      <rect x="450" y="248" width="150" height="6" rx="3" fill="#6d768f"/>
+      <polyline points="450,272 480,266 510,270 540,258 570,262 600,246 630,250 660,238"
+                fill="none" stroke="#43c88a" stroke-width="2" stroke-linejoin="round"/>
+      <polygon points="450,272 480,266 510,270 540,258 570,262 600,246 630,250 660,238 660,276 450,276" fill="url(#eq)"/>
+      <g font-family="Inter,sans-serif" text-anchor="middle">
+        <text x="730" y="200" font-size="9" fill="#6d768f">ANUAL</text>
+        <text x="730" y="222" font-size="18" font-weight="700" fill="#43c88a">+8.1%</text>
+        <text x="830" y="200" font-size="9" fill="#6d768f">PROFIT FACTOR</text>
+        <text x="830" y="222" font-size="18" font-weight="700" fill="#e9ecf7">1.35</text>
+        <text x="930" y="200" font-size="9" fill="#6d768f">MAX DD</text>
+        <text x="930" y="222" font-size="18" font-weight="700" fill="#e0736f">-37%</text>
+      </g>
+      <!-- databank rows -->
+      <rect x="432" y="294" width="552" height="204" rx="12" fill="#11141d" stroke="#222839"/>
+      <rect x="448" y="310" width="86" height="9" rx="3" fill="#e9ecf7"/>
+      <line x1="448" y1="332" x2="968" y2="332" stroke="#1a1f2c"/>
+      <g font-family="monospace" font-size="11">
+        <g transform="translate(0,0)">
+          <text x="452" y="356" fill="#6d768f">1</text><text x="480" y="356" fill="#e9ecf7">S-018</text>
+          <polyline points="580,358 600,352 620,356 640,346" fill="none" stroke="#43c88a" stroke-width="1.5"/>
+          <text x="720" y="356" fill="#43c88a" text-anchor="end">+8.1%</text>
+          <text x="800" y="356" fill="#e9ecf7" text-anchor="end">1.35</text>
+          <text x="880" y="356" fill="#e0736f" text-anchor="end">-37%</text>
+          <text x="960" y="356" fill="#a6aec7" text-anchor="end">790</text>
+        </g>
+        <line x1="448" y1="370" x2="968" y2="370" stroke="#1a1f2c"/>
+        <g transform="translate(0,32)">
+          <text x="452" y="356" fill="#6d768f">2</text><text x="480" y="356" fill="#e9ecf7">S-004</text>
+          <polyline points="580,358 600,354 620,350 640,349" fill="none" stroke="#43c88a" stroke-width="1.5"/>
+          <text x="720" y="356" fill="#43c88a" text-anchor="end">+7.4%</text>
+          <text x="800" y="356" fill="#e9ecf7" text-anchor="end">1.28</text>
+          <text x="880" y="356" fill="#e0736f" text-anchor="end">-29%</text>
+          <text x="960" y="356" fill="#a6aec7" text-anchor="end">1102</text>
+        </g>
+        <line x1="448" y1="402" x2="968" y2="402" stroke="#1a1f2c"/>
+        <g transform="translate(0,64)">
+          <text x="452" y="356" fill="#6d768f">3</text><text x="480" y="356" fill="#e9ecf7">S-011</text>
+          <polyline points="580,356 600,358 620,350 640,352" fill="none" stroke="#43c88a" stroke-width="1.5"/>
+          <text x="720" y="356" fill="#43c88a" text-anchor="end">+6.2%</text>
+          <text x="800" y="356" fill="#e9ecf7" text-anchor="end">1.21</text>
+          <text x="880" y="356" fill="#e0736f" text-anchor="end">-24%</text>
+          <text x="960" y="356" fill="#a6aec7" text-anchor="end">964</text>
+        </g>
+      </g>
+    </svg>
+  </div>
+  <p class="cta-note">Mockup de la interfaz. Los números son ilustrativos.</p>
+</div>
+
+<!-- ------------------------------------------------------------ cómo -->
+<section id="como">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-eyebrow">Cómo funciona</div>
+      <h2>Definís las reglas del juego. El buscador hace las combinaciones.</h2>
+      <p>No hay que programar nada. Elegís con qué bloques puede construir, cuánto
+         riesgo tolerás y qué tan buena tiene que ser una estrategia para entrar
+         al databank.</p>
+    </div>
+    <div class="grid g4">
+      <div class="step"><span class="n">1</span>
+        <h3>El mercado</h3>
+        <p>Instrumento, timeframe y el período exacto sobre el que querés buscar.
+           Los datos son velas de un minuto reales, agrupadas al timeframe que elijas.</p></div>
+      <div class="step"><span class="n">2</span>
+        <h3>Los ingredientes</h3>
+        <p>Qué indicadores puede usar el buscador como disparadores de entrada y
+           como filtros de contexto. Cuantos más marques, más ancho el espacio.</p></div>
+      <div class="step"><span class="n">3</span>
+        <h3>El riesgo</h3>
+        <p>Cuánto arriesga cada operación y la relación riesgo/beneficio. La distancia
+           del stop no se configura: se mide en volatilidad y la busca el minero.</p></div>
+      <div class="step"><span class="n">4</span>
+        <h3>La vara</h3>
+        <p>Los costos reales de tu broker y qué filtros tiene que cumplir una candidata.
+           Elegís cuántas querés y la búsqueda no para hasta juntarlas.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ---------------------------------------------------------- números -->
+<section>
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-eyebrow">El espacio de búsqueda</div>
+      <h2>Dos personas con la misma configuración no encuentran lo mismo</h2>
+      <p>Con apenas seis bloques de entrada y dos filtros activos, el espacio de
+         estrategias distintas es tan grande que dos búsquedas al azar prácticamente
+         no se cruzan.</p>
+    </div>
+    <div class="stats">
+      <div class="stat"><b>51.668.032</b><span>combinaciones posibles con 6 disparadores y 2 filtros marcados, contando las distancias de stop</span></div>
+      <div class="stat"><b>0 de 101</b><span>estrategias repetidas entre tres búsquedas con la misma configuración y distinta semilla</span></div>
+      <div class="stat"><b>100%</b><span>offline y determinista: la misma semilla reproduce exactamente la misma corrida</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- --------------------------------------------------------- exportar -->
+<section id="exportar">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-eyebrow">Exportar</div>
+      <h2>Lo que backtesteaste es lo que se ejecuta</h2>
+      <p>Cada estrategia sale como Expert Advisor de MetaTrader 5 o como script de
+         TradingView, con las mismas reglas evaluadas sobre velas ya cerradas.
+         Sin repintado y sin mirar el futuro.</p>
+    </div>
+    <div class="grid g2">
+      <div class="card">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v13"/><path d="m7 12 5 5 5-5"/><path d="M4 20h16"/></svg></div>
+        <h3>MetaTrader 5 (.mq5)</h3>
+        <p>Se compila con F7 en MetaEditor. El volumen de cada operación lo calcula
+           el terminal según el riesgo que definiste, y el EA registra en el log
+           cuánto arriesga de verdad para que puedas verificarlo en la primera orden.</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l5-6 4 4 4-7 5 5"/><path d="M3 21h18"/></svg></div>
+        <h3>TradingView (Pine v5)</h3>
+        <p>Se pega en el Pine Editor y se agrega al gráfico. Marca en el chart cada
+           vela donde hubo señal, así distinguís de un vistazo si una estrategia no
+           operó porque no hubo entrada o porque la orden no entró.</p>
+      </div>
+    </div>
+    <div class="code" style="margin-top:18px"><i>// Generado por QuantForge — estrategia minada sobre SP500 30m</i>
+<i>// Las reglas se evalúan en el cierre de la vela anterior.</i>
+
+<b>input double</b> InpRiskPct     = 1;     <i>// % del balance a arriesgar</i>
+<b>input double</b> InpStopValue   = 3.5;   <i>// Stop loss (múltiplo de ATR)</i>
+<b>input double</b> InpTargetValue = 7;     <i>// Take profit (múltiplo de ATR)</i>
+
+<b>if</b>(goLong)
+  {
+   <b>double</b> sl  = ask - InpStopValue * atr;
+   <b>double</b> vol = LotsFor(<b>true</b>, ask, sl);   <i>// el terminal calcula el volumen</i>
+   trade.Buy(vol, _Symbol, 0.0, Norm(sl), Norm(tp));
+  }</div>
+  </div>
+</section>
+
+<!-- ----------------------------------------------------------- límites -->
+<section id="limites">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-eyebrow">Honestidad</div>
+      <h2>Lo que QuantForge no hace</h2>
+      <p>Casi todo el software de esta categoría te vende rentabilidad. Preferimos
+         decirte dónde están los límites, porque son los que hacen que una estrategia
+         funcione en el histórico y falle con plata real.</p>
+    </div>
+    <div class="honest">
+      <h3>Antes de operar cualquier cosa que encuentres</h3>
+      <ul>
+        <li><b>No promete ningún rendimiento.</b> No hay una cifra de ganancia en toda
+            la aplicación que no venga de un backtest tuyo, sobre tus datos y tus costos.</li>
+        <li><b>Un backtest no es el futuro.</b> Encontrar una estrategia que funcionó
+            sobre datos históricos es fácil; que siga funcionando es otra cosa.</li>
+        <li><b>Buscar mucho encuentra cosas por azar.</b> Sobre 51 millones de
+            combinaciones, siempre va a haber alguna que se vea bien sin tener ninguna
+            ventaja real. Por eso podés minar sobre un tramo y validar sobre otro que
+            la búsqueda nunca vio.</li>
+        <li><b>Los filtros se definen antes de buscar, no después.</b> Mover la vara
+            hasta que aparezca algo lindo es elegir el resultado, y esa estrategia se
+            muere afuera de la muestra.</li>
+        <li><b>Tus costos tienen que ser los reales.</b> Un spread optimista convierte
+            una estrategia perdedora en ganadora dentro del backtest y en ninguna parte más.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- -------------------------------------------------------- descargar -->
+<section id="descargar">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-eyebrow">Descargar</div>
+      <h2>Corre en tu máquina, con tu procesador</h2>
+      <p>El minado usa tu CPU, así que no hay cola ni límite de uso. Los datos de
+         mercado se descargan una vez y quedan en tu disco.</p>
+    </div>
+    <div class="grid g3">
+      <div class="card"><h3>Windows 10 / 11</h3><p>Instalador de ~200 MB. Incluye todo
+        lo necesario; no hace falta instalar Python ni nada más.</p>
+        <a class="btn" style="margin-top:16px" href="#" data-download>Descargar</a></div>
+      <div class="card"><h3>Requisitos</h3><p>4 GB de RAM y ~3 GB libres de disco para
+        los datos de mercado. Cuantos más núcleos tenga tu procesador, más rápido mina.</p></div>
+      <div class="card"><h3>Tu cuenta</h3><p>Iniciás sesión una vez para activar la
+        aplicación. Los datos y las estrategias no salen nunca de tu computadora.</p>
+        <a class="btn ghost" style="margin-top:16px" href="#" data-login>Entrar con Google</a></div>
+    </div>
+  </div>
+</section>
+
+<!-- -------------------------------------------------------------- faq -->
+<section id="faq">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="sec-eyebrow">Preguntas</div>
+      <h2>Lo que se suele preguntar</h2>
+    </div>
+    <details><summary>¿Usa inteligencia artificial?</summary>
+      <p>No, y es a propósito. La búsqueda es aleatoria y determinista: prueba
+         combinaciones, las backtestea y ordena por un score. Guardando la semilla
+         reproducís una corrida entera, algo que con un modelo generativo no podrías.</p></details>
+    <details><summary>¿Necesito saber programar?</summary>
+      <p>No. Elegís bloques de una lista con casillas y ajustás dos números de riesgo.
+         El código de MetaTrader o TradingView lo genera la aplicación.</p></details>
+    <details><summary>¿De dónde salen los datos?</summary>
+      <p>De Dukascopy, con velas de un minuto desde 2005 según el instrumento. Se
+         descargan desde la aplicación con un clic. También podés importar tu propio
+         CSV de MetaTrader, TradingView o Binance.</p></details>
+    <details><summary>¿Puedo usar mi propio broker y mis costos?</summary>
+      <p>Sí, y deberías. El spread, el slippage y la comisión se configuran a mano,
+         y la aplicación te muestra cuánto suma eso por operación en unidades de precio
+         y en porcentaje del precio actual.</p></details>
+    <details><summary>¿Mis estrategias son mías?</summary>
+      <p>Sí. Todo se guarda en tu disco. La aplicación funciona sin conexión salvo
+         cuando descargás datos de mercado o validás tu cuenta.</p></details>
+    <details><summary>¿Sirve para operar en automático?</summary>
+      <p>El Expert Advisor exportado puede operar solo en MetaTrader 5. Antes de
+         ponerlo con plata real, corrélo en el Strategy Tester de tu propio broker
+         y sobre un período que no hayas usado para buscarlo.</p></details>
+  </div>
+</section>
+
+<div class="wrap final">
+  <h2>Probalo sobre tus propios datos</h2>
+  <p class="sub">La única forma de saber si sirve es minar sobre el instrumento que
+     operás, con los costos de tu broker.</p>
+  <div class="cta"><a class="btn lg" href="#descargar">Descargar QuantForge</a></div>
+</div>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-row">
+      <a class="brand" href="#top">
+        <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none"><path d="M13 2 4.5 13.2h6L9.5 22 19.5 10.5h-6.2L13 2Z" fill="currentColor"/></svg></span>
+        QuantForge
+      </a>
+      <span class="sp"></span>
+      <a href="#como">Cómo funciona</a>
+      <a href="#limites">Qué no hace</a>
+      <a href="#faq">Preguntas</a>
+    </div>
+    <p class="disclaimer">
+      QuantForge es una herramienta de análisis e investigación. No es asesoramiento
+      financiero ni una recomendación de inversión. Los resultados de un backtest se
+      obtienen sobre datos históricos y no garantizan resultados futuros. Operar
+      instrumentos apalancados como CFDs implica un riesgo alto de perder tu capital;
+      operá únicamente con dinero que puedas permitirte perder.
+    </p>
+  </div>
+</footer>
+
+<script>
+  // Los destinos reales todavía no existen: mejor decirlo que simular un flujo.
+  document.querySelectorAll("[data-download], [data-login]").forEach(el => {
+    el.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      el.textContent = el.hasAttribute("data-login")
+        ? "Próximamente" : "Todavía no disponible";
+      el.style.pointerEvents = "none";
+      el.style.opacity = ".6";
+    });
+  });
+</script>
+</body>
+</html>
