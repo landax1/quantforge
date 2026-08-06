@@ -57,6 +57,8 @@ const DEFAULT_CFG = {
   goal: 25,
   // tope de seguridad: sin esto, criterios imposibles buscarían para siempre
   maxCandidates: 20000,
+  // % final del período que la búsqueda no ve, para validar lo que encuentra
+  oosPct: 30,
   fitness: "composite",
   // Cómo se dimensiona la posición. "risk" ajusta el tamaño para que tocar el
   // stop cueste un % fijo; "lots" manda siempre el mismo volumen — hay brokers
@@ -876,6 +878,18 @@ PAGES.mining = async (main) => {
               <label class="fld"><span>Ordenar el databank por</span><select data-cfg="fitness">
                 ${opt("composite", c.fitness, "QF Score (robustez) — recomendado")}${opt("net_profit", c.fitness, "Ganancia neta")}
                 ${opt("profit_factor", c.fitness, "Profit factor")}${opt("sharpe", c.fitness, "Sharpe")}</select></label>
+              <label class="fld"><span>Validación fuera de muestra
+                  <span class="hint">% final del período que la búsqueda NO ve</span></span>
+                <select data-cfg="oosPct">
+                  ${opt(0, +c.oosPct, "Desactivada — todo in-sample")}
+                  ${opt(20, +c.oosPct, "20% reservado")}
+                  ${opt(30, +c.oosPct, "30% reservado (recomendado)")}
+                  ${opt(40, +c.oosPct, "40% reservado")}
+                </select></label>
+              <p class="help-note">Con la validación activa, la búsqueda usa sólo el tramo
+                inicial y cada estrategia aceptada se vuelve a correr sobre el final, con datos
+                que nunca vio. Es lo único que distingue una ventaja real de una casualidad
+                bien ajustada al pasado.</p>
               <label class="fld"><span>Tope de seguridad
                   <span class="hint">candidatas máximas antes de rendirse</span></span>
                 <input type="number" data-cfg="maxCandidates" value="${c.maxCandidates}" min="100" step="1000"></label>
@@ -1197,6 +1211,7 @@ PAGES.mining = async (main) => {
         drivers, filters: checked("#m-filters"),
         // el objetivo manda; max_candidates es solo el tope de seguridad
         target_keep: cfg.goal, keep_top: Math.max(cfg.goal, 100),
+        oos_pct: +cfg.oosPct || 0,
         max_candidates: cfg.maxCandidates, max_filters: cfg.maxFilters,
         method: cfg.method, population: 40,
         direction: cfg.direction, min_trades: cfg.minTrades, fitness: cfg.fitness,
@@ -1268,6 +1283,23 @@ function renderIdle() {
     </div>
   </div>`;
   if (bankBox) bankBox.innerHTML = "";
+}
+
+/* Cuánto sobrevivió la ventaja fuera de muestra. Es la única columna del
+   databank que no está contaminada por haber elegido la estrategia mirando
+   esos mismos datos, así que se muestra con su propio semáforo. */
+function oosCell(r) {
+  const oos = r.oos;
+  if (!oos) return `<span class="muted">—</span>`;
+  if (!oos.trades) {
+    return `<span class="oos-tag none" title="No operó en el tramo reservado: no hay nada que validar">sin datos</span>`;
+  }
+  const q = r.oos_ratio;
+  const cls = q >= 0.8 ? "good" : q >= 0.5 ? "mid" : "bad";
+  const etiqueta = q >= 0.8 ? "se sostiene" : q >= 0.5 ? "se debilita" : "se cae";
+  return `<span class="oos-tag ${cls}"
+    title="Profit factor ${fmtNum(oos.profit_factor)} fuera de muestra contra ${fmtNum(r.metrics.profit_factor)} adentro · ${oos.trades} operaciones · ${fmtPct(oos.net_profit_pct)}">
+    <b>${fmtNum(q, 2)}×</b><em>${etiqueta}</em></span>`;
 }
 
 /* ------------------------------------------------------- render resultados */
@@ -1378,12 +1410,25 @@ function renderMining(snap, finished) {
   const champCard = $("#champ-card");
   if (champCard) champCard.onclick = () => openInspector(champ);
 
+  const splitNote = snap.split ? `
+    <div class="banner info mt" style="margin-bottom:14px">
+      <span class="b-ic">◫</span><div>
+        <b>Validado fuera de muestra.</b> La búsqueda usó
+        ${esc(snap.split.is_from)} → ${esc(snap.split.is_to)}
+        (${fmtInt(snap.split.is_bars)} velas) y cada estrategia se volvió a correr sobre
+        ${esc(snap.split.oos_from)} → ${esc(snap.split.oos_to)}
+        (${fmtInt(snap.split.oos_bars)} velas) que nunca vio.
+        La columna <b>Fuera de muestra</b> es la que dice si la ventaja era real.</div>
+    </div>` : "";
+
   bankBox.innerHTML = `
   <div class="card">
+    ${splitNote}
     <h2>Databank <span class="hint">${bank.length} estrategias ordenadas por QF Score
       (robustez, no rentabilidad) · clic en cualquiera para analizarla a fondo</span></h2>
     ${bank.length ? `<div class="databank-wrap"><table>
       <thead><tr><th>#</th><th class="num">Score</th><th>Estrategia</th><th>Curva</th>
+        ${snap.split ? `<th class="num" title="Profit factor fuera de muestra dividido por el de adentro. Cerca de 1 la ventaja se sostuvo; cerca de 0 la estrategia sólo describía el pasado.">Fuera<br>de muestra</th>` : ""}
         <th class="num">Stop</th><th class="num">Anual</th><th class="num">Total</th>
         <th class="num">PF</th><th class="num">Sharpe</th><th class="num">Max DD</th>
         <th class="num">Meses +</th><th class="num">Mejor op.</th>
@@ -1398,6 +1443,7 @@ function renderMining(snap, finished) {
               <div class="strat-blocks">${esc(r.blocks || "")}</div>
               <div class="strat-genes">${esc(r.genes_label)}</div></td>
           <td class="spark-cell">${Charts.sparkSvg(r.spark)}</td>
+          ${snap.split ? `<td class="num">${oosCell(r)}</td>` : ""}
           <td class="num muted">${r.stop_mult != null ? `${fmtNum(r.stop_mult, 2)}×` : "—"}</td>
           <td class="num ${m.cagr_pct >= 0 ? "pos" : "neg"}"><b>${fmtPct(m.cagr_pct)}</b></td>
           <td class="num ${m.net_profit_pct >= 0 ? "pos" : "neg"}">${fmtPct(m.net_profit_pct)}</td>

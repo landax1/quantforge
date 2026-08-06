@@ -133,6 +133,7 @@ def mine(
     seed: int | None = None,
     method: str = "random",
     population: int = 40,
+    oos_pct: float = 0.0,
     handle: JobHandle | None = None,
 ) -> dict[str, Any]:
     """Mining loop over the strategy space.
@@ -151,6 +152,20 @@ def mine(
     """
     if not drivers:
         raise ValueError("At least one driver template is required")
+
+    # ---------------------------------------------------------- in / out of sample
+    # Con oos_pct > 0 la búsqueda sólo ve el tramo inicial y el final queda
+    # reservado. Cada candidata aceptada se vuelve a correr ahí, sobre datos que
+    # no participaron de la selección. Es la única medida del databank que no
+    # está contaminada por haber elegido la estrategia mirando esos mismos datos:
+    # buscar sobre 51 millones de combinaciones siempre encuentra algo que se ve
+    # bien en el pasado, y esta columna es la que lo delata.
+    df_full = df
+    df_oos = None
+    if oos_pct and 0.0 < oos_pct < 90.0:
+        cut = int(len(df) * (1.0 - oos_pct / 100.0))
+        if cut > 200 and len(df) - cut > 200:
+            df, df_oos = df_full.iloc[:cut], df_full.iloc[cut:]
     if target_keep is not None:
         target_keep = max(int(target_keep), 1)
         # the bank must be able to hold the goal, otherwise trimming to
@@ -160,6 +175,8 @@ def mine(
         seed = secrets.randbelow(2**31)
     rng = np.random.default_rng(seed)
     cache = IndicatorCache(df)
+    # una sola caché para el tramo reservado: se reutiliza en cada validación
+    cache_oos = IndicatorCache(df_oos) if df_oos is not None else None
     settings = settings or BacktestSettings()
 
     accept = accept or {}
@@ -186,6 +203,37 @@ def mine(
     # drawdown of the highest-CAGR candidate, to project what raising the risk
     # per trade would cost — CAGR and drawdown both scale ~linearly with it
     top_cagr: dict[str, float] = {}
+
+    def _validate_oos(spec) -> dict[str, Any]:
+        """Corre la estrategia aceptada sobre el tramo reservado.
+
+        ``oos_ratio`` es lo que hay que mirar: profit factor de afuera dividido
+        el de adentro. Cerca de 1 significa que la ventaja se sostuvo; cerca de
+        0 que la estrategia describía el pasado y nada más. Se calcula sobre el
+        profit factor y no sobre la ganancia porque no depende de cuántos años
+        tenga cada tramo.
+        """
+        res_oos = run_backtest(df_oos, spec, settings, cache=cache_oos)
+        mo = res_oos.metrics
+        pf_is = None
+        return {
+            "oos": {
+                "profit_factor": mo["profit_factor"],
+                "net_profit_pct": mo["net_profit_pct"],
+                "cagr_pct": mo["cagr_pct"],
+                "max_drawdown_pct": mo["max_drawdown_pct"],
+                "win_rate_pct": mo["win_rate_pct"],
+                "trades": mo["trades"],
+            },
+        }
+
+    def _oos_ratio(row: dict[str, Any]) -> float | None:
+        """Cuánto sobrevive la ventaja fuera de muestra, de 0 a 1+."""
+        oos = row.get("oos")
+        if not oos or not oos["trades"]:
+            return None
+        pf_in = max(row["metrics"]["profit_factor"], 1e-9)
+        return round(min(oos["profit_factor"] / pf_in, 9.99), 3)
 
     def _note_best(m: dict[str, float]) -> None:
         for key, metric, kind, _label in _CRITERIA:
@@ -242,6 +290,11 @@ def mine(
             "eta_s": _eta_s(),
             "best_history": best_history,
             "databank": bank if final else bank[:50],
+            "split": None if df_oos is None else {
+                "is_from": str(df.index[0])[:10], "is_to": str(df.index[-1])[:10],
+                "oos_from": str(df_oos.index[0])[:10], "oos_to": str(df_oos.index[-1])[:10],
+                "is_bars": len(df), "oos_bars": len(df_oos),
+            },
             "diagnosis": _diagnose(),
         }
 
@@ -364,7 +417,11 @@ def mine(
             score = float(fitness(m, fitness_mode))
             if not missed:
                 passed += 1
-                bank.append(_row(genome, spec, m, score, passed, res.equity))
+                row = _row(genome, spec, m, score, passed, res.equity)
+                if cache_oos is not None:
+                    row.update(_validate_oos(spec))
+                    row["oos_ratio"] = _oos_ratio(row)
+                bank.append(row)
                 bank.sort(key=lambda r: r["fitness"], reverse=True)
                 del bank[keep_top:]
 

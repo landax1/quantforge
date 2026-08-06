@@ -58,6 +58,38 @@ def test_pine_donchian_starts_one_bar_back():
     assert "ta.highest(high, 20)" not in code
 
 
+def test_volume_average_does_NOT_shift_like_donchian():
+    """El Donchian excluye la vela evaluada; el promedio de volumen la incluye.
+
+    Son convenciones distintas a propósito: una ruptura se mide contra el canal
+    previo, pero "volumen mayor al promedio" incluye el volumen de esa misma
+    vela. Verificado en las tres implementaciones — si alguien "arregla" ésta
+    copiando el shift del Donchian, rompe la equivalencia con el backtest.
+    """
+    from quantforge.indicators.library import VolumeSMA
+
+    n = 30
+    df = pd.DataFrame({
+        "open": np.ones(n), "high": np.ones(n), "low": np.ones(n), "close": np.ones(n),
+        "volume": np.arange(1, n + 1, dtype=float),
+    }, index=pd.date_range("2024-01-01", periods=n, freq="h"))
+    avg = VolumeSMA.compute(df, period=5)["value"]
+    # media de las velas 6..10 (incluida la 10), no de las 5..9
+    assert avg[9] == df["volume"].iloc[5:10].mean()
+
+    spec = _breakout_spec()
+    spec.entry_long = [Condition(
+        left=Operand(type="price", field_name="volume"), op=">",
+        right=Operand(type="indicator", name="VolumeSMA", params={"period": 20}))]
+
+    mql = export_mql5(spec)
+    # arranca en `shift`, no en `shift + 1`
+    assert "for(int i = shift; i < shift + period; i++)" in mql
+    pine = export_pine(spec)
+    assert "ta.sma(volume, 20)" in pine
+    assert "ta.sma(volume[1]" not in pine
+
+
 def test_exported_breakout_is_not_impossible_by_construction():
     """Comparar el close contra un canal que lo contiene nunca se cumple."""
     for code in (export_mql5(_breakout_spec()), export_pine(_breakout_spec())):

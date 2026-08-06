@@ -791,6 +791,21 @@ table tbody tr.clickable { cursor: pointer; }
 .databank-wrap table th { background: var(--card-2); }
 
 /* el ranking se lee por el orden y el score, no por medallas de colores */
+/* veredicto fuera de muestra: el número y qué significa, juntos */
+.oos-tag {
+  display: inline-flex; flex-direction: column; align-items: flex-end; gap: 1px;
+  line-height: 1.15;
+}
+.oos-tag b { font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.oos-tag em {
+  font-style: normal; font-size: 9.5px; font-weight: 500;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--text-dim);
+}
+.oos-tag.good b { color: var(--pos); }
+.oos-tag.mid  b { color: var(--warn); }
+.oos-tag.bad  b { color: var(--neg); }
+.oos-tag.none { font-size: 10.5px; color: var(--text-dim); }
+
 .rank {
   display: inline-block; min-width: 20px; text-align: right;
   font-size: 12px; font-weight: 500; color: var(--text-dim);

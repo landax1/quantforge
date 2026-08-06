@@ -346,6 +346,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 max_candidates=int(min(max(int(payload.get("max_candidates", 2000)), 10), 500_000)),
                 target_keep=target_keep,
                 keep_top=int(min(max(int(payload.get("keep_top", 100)), 10), 1000)),
+                oos_pct=float(min(max(float(payload.get("oos_pct") or 0.0), 0.0), 80.0)),
                 method="evolution" if payload.get("method") == "evolution" else "random",
                 population=int(min(max(int(payload.get("population", 40)), 8), 200)),
                 seed=seed,
