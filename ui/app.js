@@ -19,6 +19,8 @@ const S = {
   inspect: null,
   // cuaderno de laboratorio: cada corrida terminada con su configuración
   runs: JSON.parse(localStorage.getItem("qf.runs") || "[]"),
+  // estrategias guardadas: viven en el servidor y sobreviven a cada corrida
+  saved: [],
 };
 
 /* UN solo modelo de riesgo, dos perillas:
@@ -673,12 +675,141 @@ PAGES.data = async (main) => {
   });
 };
 
+/* ==================================================== página MIS ESTRATEGIAS
+   Lo que sobrevive a la corrida. Cada minado empieza de cero con una semilla
+   nueva, así que sin este cajón una estrategia buena se pierde para siempre
+   apenas volvés a minar con otros filtros. */
+async function refreshSavedCount() {
+  try {
+    S.saved = await api.get("/api/strategies");
+    const el = $("#saved-count");
+    if (el) el.textContent = S.saved.length || "";
+  } catch (e) { /* si el backend no responde ya hay un aviso arriba */ }
+}
+
+PAGES.saved = async (main) => {
+  await refreshDatasets();
+  await refreshSavedCount();
+  const items = S.saved || [];
+
+  if (!items.length) {
+    main.innerHTML = pageHead("Mis estrategias",
+      "Las estrategias que guardes quedan acá, aunque vuelvas a minar con otros filtros.") +
+      `<div class="card"><div class="empty-state">
+        <div class="big">◫</div>
+        <b>Todavía no guardaste ninguna</b>
+        <p class="mt">Cuando el minado encuentre una que te sirva, abrila y tocá
+          <b>Guardar estrategia</b>. Se guarda con su instrumento, su timeframe y sus costos,
+          así la podés volver a exportar meses después sin tener que minar de nuevo.</p>
+        <button class="btn mt" id="go-mine">Ir a Mining</button>
+      </div></div>`;
+    $("#go-mine", main).onclick = () => navigate("mining");
+    return;
+  }
+
+  const fila = (s) => {
+    const t = s.meta || {}, m = t.metrics || {};
+    const q = t.oos_ratio;
+    return `<tr class="clickable" data-sid="${esc(s.id)}">
+      <td><span class="strat-name">${esc(s.name)}</span>
+          <div class="strat-blocks">${esc(t.blocks || "")}</div>
+          <div class="strat-genes">${esc(t.genes_label || "")}</div></td>
+      <td>${esc((t.dataset_name || "—").replace(/ M1.*/, ""))}
+          <div class="muted" style="font-size:11px">${esc(t.timeframe || "")}
+            ${t.direction === "short" ? "· cortos" : t.direction === "both" ? "· ambos" : "· largos"}</div></td>
+      <td class="num ${(m.cagr_pct ?? 0) >= 0 ? "pos" : "neg"}"><b>${m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
+      <td class="num">${m.profit_factor != null ? fmtNum(m.profit_factor) : "—"}</td>
+      <td class="num neg">${m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
+      <td class="num">${q != null
+        ? `<span class="oos-tag ${q >= 0.8 ? "good" : q >= 0.5 ? "mid" : "bad"}"><b>${fmtNum(q, 2)}×</b></span>`
+        : `<span class="muted">—</span>`}</td>
+      <td class="num">${m.trades ?? "—"}</td>
+      <td class="muted" style="white-space:nowrap">${esc(String(s.updated).slice(0, 10))}</td>
+      <td class="num" style="white-space:nowrap">
+        <button class="btn ghost small" data-export="${esc(s.id)}">⬇ MQL5</button>
+        <button class="btn ghost small" data-del-strat="${esc(s.id)}" title="Borrar">✕</button>
+      </td>
+    </tr>`;
+  };
+
+  main.innerHTML = pageHead("Mis estrategias",
+    `${items.length} guardada${items.length === 1 ? "" : "s"}. Sobreviven a cualquier corrida nueva.`) +
+    `<div class="card">
+      <h2>Guardadas <span class="hint">clic en una fila para volver a analizarla</span></h2>
+      <div class="scroll-x"><table>
+        <thead><tr><th>Estrategia</th><th>Mercado</th><th class="num">Anual</th>
+          <th class="num">PF</th><th class="num">Max DD</th>
+          <th class="num" title="Profit factor fuera de muestra sobre el de adentro">Fuera de muestra</th>
+          <th class="num">Trades</th><th>Guardada</th><th></th></tr></thead>
+        <tbody>${items.map(fila).join("")}</tbody>
+      </table></div>
+    </div>`;
+
+  $$("[data-sid]", main).forEach(tr => tr.onclick = (ev) => {
+    if (ev.target.closest("button")) return;      // los botones tienen lo suyo
+    const s = items.find(x => x.id === tr.dataset.sid);
+    openSaved(s);
+  });
+
+  $$("[data-export]", main).forEach(b => b.onclick = async () => {
+    const s = items.find(x => x.id === b.dataset.export);
+    b.disabled = true;
+    try {
+      const safe = `QF_${s.name.replace(/[^\w]/g, "_")}`;
+      const r = await fetch("/api/export/mql5", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ spec: s.spec, name: safe,
+          dataset_id: (s.meta || {}).dataset_id,
+          timeframe: (s.meta || {}).timeframe, metrics: (s.meta || {}).metrics }),
+      });
+      if (!r.ok) throw new Error((await r.json()).detail || r.status);
+      const url = URL.createObjectURL(new Blob([await r.text()], { type: "text/plain" }));
+      const a = document.createElement("a");
+      a.href = url; a.download = `${safe}.mq5`; a.click();
+      URL.revokeObjectURL(url);
+      toast("EA descargado", "ok");
+    } catch (e) { toast(e.message, "err"); }
+    b.disabled = false;
+  });
+
+  $$("[data-del-strat]", main).forEach(b => b.onclick = async () => {
+    const s = items.find(x => x.id === b.dataset.delStrat);
+    if (!confirm(`¿Borrar "${s.name}"? No se puede deshacer.`)) return;
+    try {
+      await api.del(`/api/strategies/${s.id}`);
+      toast("Estrategia borrada", "ok");
+      navigate("saved");
+    } catch (e) { toast(e.message, "err"); }
+  });
+};
+
+/* Re-analiza una guardada sobre su propio instrumento y sus propios costos,
+   no sobre lo que esté configurado ahora en la página de Mining. */
+async function openSaved(s) {
+  const t = s.meta || {};
+  if (!t.dataset_id || !S.datasets.some(d => d.id === t.dataset_id)) {
+    toast("El dataset con el que se minó ya no está en el workspace", "err");
+    return;
+  }
+  const row = {
+    name: s.name, blocks: t.blocks || "", genes_label: t.genes_label || "",
+    spec: s.spec, metrics: t.metrics || {}, score: t.score,
+    stop_mult: t.stop_mult, oos: t.oos, oos_ratio: t.oos_ratio,
+    fitness: 0, spark: [],
+  };
+  openInspector(row, {
+    dataset_id: t.dataset_id, timeframe: t.timeframe || "1h",
+    settings: { spread: t.spread, slippage: t.slippage,
+                commission_pct: t.commission, initial_capital: t.capital },
+  });
+}
+
 /* =========================================================== página MINING */
 PAGES.mining = async (main) => {
   await refreshDatasets();
   if (!S.datasets.length) {
     main.innerHTML = pageHead("Mining", "Buscá estrategias sobre datos reales.") +
-      `<div class="card"><div class="empty-state"><div class="big">â›</div>
+      `<div class="card"><div class="empty-state"><div class="big">⛏</div>
         <b>No hay con qué minar todavía</b>
         <p class="mt">Andá a <b>Datos</b> y descargá un instrumento — con un clic queda listo.</p>
         <button class="btn mt" id="go-data">Ir a Datos</button>
@@ -909,7 +1040,7 @@ PAGES.mining = async (main) => {
             ${GOAL_PRESETS.map(g => `<button data-goal="${g}" class="${+c.goal === g ? "on" : ""}">${g}</button>`).join("")}
           </div>
         </div>
-        <button class="btn big" id="m-run">â› Iniciar mining</button>
+        <button class="btn big" id="m-run">⛏ Iniciar mining</button>
         <button class="btn ghost big" id="m-stop" style="display:none">■ Detener</button>
         ${progressHtml("m-prog")}
       </div>
@@ -1256,7 +1387,7 @@ function renderIdle() {
   live.innerHTML = `
   <div class="idle-card">
     <div class="idle-ready">
-      <span class="idle-ic">â›</span>
+      <span class="idle-ic">⛏</span>
       <div>
         <h2>Listo para minar</h2>
         <p>Vas a buscar <b>${S.cfg.goal} estrategias</b> sobre
@@ -1325,7 +1456,7 @@ function renderMining(snap, finished) {
         : `Las ${bank.length} estrategias que ya habían entrado al databank siguen`}
       acá abajo, lista${bank.length === 1 ? "" : "s"} para inspeccionar o exportar.</div></div>`;
   } else if (finished && snap.exhausted) {
-    banner = `<div class="banner"><span class="b-ic">â—</span><div>
+    banner = `<div class="banner"><span class="b-ic">◍</span><div>
       <b>Se agotaron las combinaciones posibles</b> con los bloques que marcaste.
       Marcá más bloques en la sección 2 o subí el máximo de filtros para ampliar el espacio.</div></div>`;
   } else if (finished && snap.hit_cap) {
@@ -1507,13 +1638,18 @@ function renderMining(snap, finished) {
 }
 
 /* ------------------------------------------------------------- inspector */
-async function openInspector(row) {
+/* ``ctx`` permite abrir una estrategia GUARDADA sobre el instrumento y los
+   costos con los que se minó, en vez de los que estén configurados ahora en
+   Mining — que pueden ser de otro mercado por completo. */
+async function openInspector(row, ctx) {
   if (!row) return;
   const host = document.createElement("div");
   host.className = "overlay";
   host.innerHTML = `<div class="sheet">
     <div class="sheet-head">
-      <div><h2>${esc(row.name)} <span class="badge">fitness ${fmtNum(row.fitness, 3)}</span></h2>
+      <div><h2>${esc(row.name)} ${ctx
+        ? `<span class="badge">guardada</span>`
+        : `<span class="badge">fitness ${fmtNum(row.fitness, 3)}</span>`}</h2>
         <p>${esc(row.blocks || "")} · <span style="font-family:ui-monospace">${esc(row.genes_label)}</span></p></div>
       <button class="sheet-close">✕</button>
     </div>
@@ -1533,7 +1669,10 @@ async function openInspector(row) {
     // sin bloque risk: el spec ya trae el stop que el minero encontró para
     // ESTA estrategia — mandar el genérico daría métricas distintas a las
     // que muestra el databank
-    const { result } = await api.post("/api/backtest", {
+    const { result } = ctx ? await api.post("/api/backtest", {
+      dataset_id: ctx.dataset_id, timeframe: ctx.timeframe,
+      spec: row.spec, settings: ctx.settings,
+    }) : await api.post("/api/backtest", {
       dataset_id: S.sel.dataset_id, timeframe: S.sel.timeframe || "1h",
       // el mismo tramo que se minó: si no, la curva del inspector no
       // coincidiría con la fila del databank que el usuario acaba de clickear
@@ -1656,10 +1795,35 @@ function renderInspector(box, row, res) {
   if (monthly.length) Charts.monthlyGrid($("#insp-monthly", box), monthly);
 
   $("#insp-save", box).onclick = async () => {
+    const btn = $("#insp-save", box);
+    btn.disabled = true;
     try {
-      await api.post("/api/strategies", { spec: row.spec, notes: `mining ${row.name}` });
-      toast(`${row.name} guardada`, "ok");
+      // se guarda con todo su contexto: sin el instrumento, el timeframe y los
+      // costos, dentro de un mes la estrategia no se puede volver a exportar
+      const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
+      await api.post("/api/strategies", {
+        spec: row.spec, name: row.name,
+        dataset_id: S.sel.dataset_id,
+        notes: `Minada el ${new Date().toLocaleDateString("es-AR")}`,
+        meta: {
+          dataset_name: ds ? ds.name : "",
+          timeframe: S.sel.timeframe || "1h",
+          direction: S.cfg.direction,
+          spread: S.cfg.spread, slippage: S.cfg.slippage,
+          commission: S.cfg.commission, capital: S.cfg.capital,
+          sizing: S.cfg.sizing, riskPct: S.cfg.riskPct, lots: S.cfg.lots, rr: S.cfg.rr,
+          stop_mult: row.stop_mult ?? null,
+          blocks: row.blocks || "", genes_label: row.genes_label || "",
+          score: row.score ?? null,
+          oos: row.oos || null, oos_ratio: row.oos_ratio ?? null,
+          metrics: m,
+          saved_at: new Date().toISOString(),
+        },
+      });
+      toast(`${row.name} guardada en Mis estrategias`, "ok");
+      refreshSavedCount();
     } catch (e) { toast(e.message, "err"); }
+    btn.disabled = false;
   };
 
   /* MQL5 y Pine comparten todo salvo el endpoint, la extensión y el aviso */
@@ -1787,6 +1951,7 @@ function initTheme() {
     await refreshDatasets();
   } catch (e) { toast(`No se pudo conectar con el backend: ${e.message}`, "err"); }
   initTheme();
+  refreshSavedCount();
   $$("#nav button").forEach(b => b.onclick = () => navigate(b.dataset.page));
   navigate(S.datasets.length ? "mining" : "data");
 })();

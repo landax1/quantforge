@@ -231,6 +231,18 @@ body {
   background: var(--accent-soft); color: var(--accent-2);
 }
 #nav button.active .ic { opacity: 1; }
+/* cuántas estrategias guardadas hay, sin tener que entrar a mirar */
+.nav-count {
+  margin-left: auto; font-size: 10.5px; font-weight: 650;
+  font-variant-numeric: tabular-nums; color: var(--text-dim);
+  background: var(--card-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 1px 7px; min-width: 20px; text-align: center;
+}
+.nav-count:empty { display: none; }
+#nav button.active .nav-count {
+  color: var(--accent-2); background: var(--accent-soft); border-color: var(--accent-line);
+}
+
 #nav .ic { width: 18px; height: 18px; display: grid; place-items: center; opacity: .9; }
 #nav .ic svg { width: 17px; height: 17px; }
 

@@ -72,6 +72,14 @@ class Database:
         have = {r["name"] for r in self._conn.execute("PRAGMA table_info(datasets)")}
         if "last_close" not in have:
             self._conn.execute("ALTER TABLE datasets ADD COLUMN last_close REAL")
+        # Una estrategia guardada sin su contexto no sirve para nada: el spec
+        # dice qué reglas usa, pero no sobre qué instrumento se encontró, con
+        # qué timeframe, qué costos ni qué rindió. Sin eso no se puede volver a
+        # exportar ni comparar contra otra.
+        have = {r["name"] for r in self._conn.execute("PRAGMA table_info(strategies)")}
+        if "meta" not in have:
+            self._conn.execute(
+                "ALTER TABLE strategies ADD COLUMN meta TEXT NOT NULL DEFAULT '{}'")
 
     def _exec(self, sql: str, args: tuple = ()) -> sqlite3.Cursor:
         with self._lock:
@@ -110,17 +118,23 @@ class Database:
 
     # ----------------------------------------------------------- strategies
     def save_strategy(self, name: str, spec: dict[str, Any],
-                      strategy_id: str | None = None, notes: str = "") -> str:
+                      strategy_id: str | None = None, notes: str = "",
+                      meta: dict[str, Any] | None = None) -> str:
+        """``meta`` guarda el contexto: instrumento, timeframe, costos, riesgo
+        y las métricas que tenía al guardarla. Es lo que permite re-exportarla
+        o compararla meses después sin volver a minar."""
+        blob = json.dumps(meta or {})
         if strategy_id:
             self._exec(
-                "UPDATE strategies SET name=?, spec=?, notes=?, updated=? WHERE id=?",
-                (name, json.dumps(spec), notes, _now(), strategy_id),
+                "UPDATE strategies SET name=?, spec=?, notes=?, meta=?, updated=? WHERE id=?",
+                (name, json.dumps(spec), notes, blob, _now(), strategy_id),
             )
             return strategy_id
         sid = _new_id()
         self._exec(
-            "INSERT INTO strategies VALUES (?,?,?,?,?,?)",
-            (sid, name, json.dumps(spec), notes, _now(), _now()),
+            "INSERT INTO strategies (id, name, spec, notes, created, updated, meta) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (sid, name, json.dumps(spec), notes, _now(), _now(), blob),
         )
         return sid
 
@@ -130,13 +144,16 @@ class Database:
             raise KeyError(f"Strategy {sid} not found")
         row = rows[0]
         row["spec"] = json.loads(row["spec"])
+        row["meta"] = json.loads(row.get("meta") or "{}")
         return row
 
     def list_strategies(self) -> list[dict[str, Any]]:
         rows = self._rows(
-            "SELECT id, name, notes, created, updated, spec FROM strategies ORDER BY updated DESC")
+            "SELECT id, name, notes, created, updated, spec, meta "
+            "FROM strategies ORDER BY updated DESC")
         for r in rows:
             r["spec"] = json.loads(r["spec"])
+            r["meta"] = json.loads(r.get("meta") or "{}")
         return rows
 
     def delete_strategy(self, sid: str) -> None:

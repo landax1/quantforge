@@ -7,6 +7,7 @@ background jobs polled via ``/api/jobs/{id}``.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +45,11 @@ from quantforge.reports.report import excel_report, html_report, metrics_csv, tr
 ROOT = Path(__file__).resolve().parent.parent.parent
 UI_DIR = ROOT / "ui"
 WORK_DIR = ROOT / "workspace"
+
+#: En una máquina propia el usuario ya puede leer sus archivos, así que la
+#: importación por ruta es una comodidad. Servido a terceros, ese mismo
+#: endpoint lee cualquier archivo del servidor: se apaga con QF_MULTIUSER=1.
+MULTIUSER = os.environ.get("QF_MULTIUSER", "").strip() not in ("", "0", "false")
 
 
 def create_app(workdir: Path | None = None) -> FastAPI:
@@ -216,7 +222,17 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         """Import a CSV that already lives on this machine (no upload copy).
 
         The right path for big files: reading 400 MB from disk beats pushing
-        it through the browser."""
+        it through the browser.
+
+        Only available in single-user mode. Reading an arbitrary server path is
+        a comfort when the machine is yours and an arbitrary-file-read hole the
+        moment anyone else can reach the API, so a shared deployment must set
+        ``QF_MULTIUSER=1`` and let users upload instead.
+        """
+        if MULTIUSER:
+            raise HTTPException(
+                403, "La importación por ruta está deshabilitada en modo multiusuario. "
+                     "Subí el archivo con el selector de archivos.")
         raw = str(payload.get("path", "")).strip().strip('"')
         if not raw:
             raise HTTPException(400, "path is required")
@@ -495,9 +511,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     @app.post("/api/strategies")
     def save_strategy(payload: dict[str, Any]) -> dict[str, str]:
         spec = _spec(payload)
-        sid = db.save_strategy(spec.name, spec.to_dict(),
+        # el contexto viaja tal cual lo mandó la UI: sin instrumento, timeframe
+        # y costos, una estrategia guardada no se puede volver a exportar
+        meta = dict(payload.get("meta") or {})
+        if payload.get("dataset_id"):
+            meta.setdefault("dataset_id", payload["dataset_id"])
+            try:
+                meta.setdefault("dataset_name", db.get_dataset(payload["dataset_id"])["name"])
+            except KeyError:
+                pass
+        sid = db.save_strategy(str(payload.get("name") or spec.name), spec.to_dict(),
                                strategy_id=payload.get("id"),
-                               notes=str(payload.get("notes", "")))
+                               notes=str(payload.get("notes", "")),
+                               meta=meta)
         return {"id": sid}
 
     @app.delete("/api/strategies/{sid}")
