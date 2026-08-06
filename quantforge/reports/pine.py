@@ -142,15 +142,20 @@ def export_pine(spec: StrategySpec, *, name: str = "QF Strategy",
     helpers = "\n".join(_HELPER_SRC[h] for h in sorted(b.helpers))
     fixed_lots = risk.size_mode == "fixed_units"
 
-    # TradingView sizes either in contracts (strategy.fixed) or in % of equity.
-    # Risk-per-trade is emitted as a computed contract count so the script
-    # reproduces what the miner backtested.
+    # Ojo con el tamaño en TradingView: un qty fraccionario (0.1 lotes de MT5)
+    # se redondea hacia abajo a 0 en los instrumentos que no admiten fracciones,
+    # y la estrategia no abre NADA sin decir por qué. Por eso el default es
+    # porcentaje de capital — que TradingView siempre resuelve a una posición
+    # válida — y el volumen fijo queda como opción explícita, nunca por debajo
+    # de 1 contrato.
     qty_block = (
-        f"""qty = InpContracts"""
+        """qtyFixed = math.max(InpContracts, 1)
+qty      = InpUseFixedQty ? qtyFixed : na"""
         if fixed_lots else
-        f"""riskMoney = strategy.equity * InpRiskPct / 100.0
+        """riskMoney = strategy.equity * InpRiskPct / 100.0
 stopDist  = InpStopMult * atrRisk
-qty       = stopDist > 0 ? riskMoney / stopDist : 0"""
+qtyRisk   = stopDist > 0 ? riskMoney / stopDist : 0
+qty       = InpUseFixedQty ? math.max(qtyRisk, 1) : na"""
     )
 
     def join(conds: list[str]) -> str:
@@ -158,13 +163,14 @@ qty       = stopDist > 0 ? riskMoney / stopDist : 0"""
 
     return f"""{chr(10).join(header)}
 //@version=5
-strategy("{name}", overlay=true, initial_capital={int(getattr(risk, 'initial_capital', 10000) or 10000)},
-     default_qty_type=strategy.fixed, default_qty_value=1,
+strategy("{name}", overlay=true, initial_capital=10000,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=10,
      commission_type=strategy.commission.percent, commission_value=0,
      calc_on_every_tick=false, process_orders_on_close=true)
 
 // ---------------------------------------------------------------- entradas
-{'InpContracts = input.float(' + _fmt_num(risk.size_value) + ', "Contratos / lotes fijos", minval=0.01)' if fixed_lots else 'InpRiskPct   = input.float(' + _fmt_num(risk.size_value) + ', "% del capital por operación", minval=0.01, maxval=100)'}
+{'InpContracts = input.float(' + _fmt_num(risk.size_value) + ', "Contratos por operación", minval=0.01)' if fixed_lots else 'InpRiskPct   = input.float(' + _fmt_num(risk.size_value) + ', "% del capital por operación", minval=0.01, maxval=100)'}
+InpUseFixedQty = input.bool(false, "Usar ese tamaño exacto (si no, % del capital)")
 InpStopMult   = input.float({_fmt_num(risk.stop_value)}, "Stop: múltiplo de ATR", minval=0.1)
 InpTargetMult = input.float({_fmt_num(risk.target_value)}, "Target: múltiplo de ATR", minval=0.1)
 InpATRPeriod  = input.int({int(risk.atr_period)}, "Período del ATR de riesgo", minval=1)
@@ -183,13 +189,22 @@ goShort = InpAllowShort and ({join(short_conds) if want_short else 'false'})
 {qty_block}
 
 // ------------------------------------------------------------------ órdenes
-if goLong and strategy.position_size == 0 and qty > 0
+if goLong and strategy.position_size == 0 and not na(atrRisk)
     strategy.entry("L", strategy.long, qty=qty)
     strategy.exit("L exit", "L", stop=close - InpStopMult * atrRisk,
          limit=close + InpTargetMult * atrRisk)
 
-if goShort and strategy.position_size == 0 and qty > 0
+if goShort and strategy.position_size == 0 and not na(atrRisk)
     strategy.entry("S", strategy.short, qty=qty)
     strategy.exit("S exit", "S", stop=close + InpStopMult * atrRisk,
          limit=close - InpTargetMult * atrRisk)
+
+// ------------------------------------------------------- diagnóstico visual
+// Si no ves operaciones, esto muestra en qué velas hubo señal: si no aparece
+// ninguna flecha, el problema son las reglas de entrada (símbolo o timeframe
+// distintos a los que se minaron), no el tamaño de la posición.
+plotshape(goLong,  title="Señal larga", style=shape.triangleup,
+     location=location.belowbar, color=color.new(color.teal, 0), size=size.tiny)
+plotshape(goShort, title="Señal corta", style=shape.triangledown,
+     location=location.abovebar, color=color.new(color.red, 0), size=size.tiny)
 """

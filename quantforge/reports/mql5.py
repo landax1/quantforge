@@ -185,6 +185,7 @@ input double InpTargetValue = {_fmt_num(risk.target_value)};  // Take profit ({_
 input int    InpATRPeriod   = {int(risk.atr_period)};     // Periodo del ATR de riesgo
 input long   InpMagic       = 770001;  // Magic number
 input int    InpSlippage    = 30;      // Desviacion maxima (points)
+input bool   InpVerbose     = true;    // Explicar en el log por que no opera
 input bool   InpAllowLong   = {'true' if want_long else 'false'};    // Permitir largos
 input bool   InpAllowShort  = {'true' if want_short else 'false'};   // Permitir cortos
 
@@ -202,6 +203,20 @@ int OnInit()
    trade.SetTypeFillingBySymbol(_Symbol);
 {handle_init}
 {'   h_atr_risk = iATR(_Symbol, _Period, InpATRPeriod);' if needs_atr else ''}
+   if(InpVerbose)
+     {{
+      // lo que el broker declara para ESTE simbolo: si algo no cierra, esta aca
+      PrintFormat("[QF] %s %s | volumen min=%.2f max=%.2f step=%.2f | "
+                  "stops_level=%d points | tick_value=%.5f tick_size=%.5f | digits=%d",
+                  _Symbol, EnumToString((ENUM_TIMEFRAMES)_Period),
+                  SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN),
+                  SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX),
+                  SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP),
+                  (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL),
+                  SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE),
+                  SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE),
+                  (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS));
+     }}
    return INIT_SUCCEEDED;
   }}
 //+------------------------------------------------------------------+
@@ -238,6 +253,13 @@ void OnTick()
    if(!goLong && !goShort) return;
 
 {'   double atr = Buf(h_atr_risk, 0, 1);' if needs_atr else '   double atr = 0.0;'}
+{'''   if(atr <= 0.0)
+     {
+      // sin ATR no hay distancia de stop: pasa en las primeras velas del
+      // historial, cuando el indicador todavia no tiene datos suficientes
+      if(InpVerbose) Print("[QF] Sin senal de ATR todavia (historial insuficiente)");
+      return;
+     }''' if needs_atr else ''}
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
@@ -245,17 +267,29 @@ void OnTick()
      {{
       double sl = {sl_line};
       double tp = {tp_line};
+      if(!ValidStops(true, ask, sl, tp)) return;
       double vol = LotsFor(ask - sl);
-      if(vol <= 0.0) return;
-      trade.Buy(vol, _Symbol, 0.0, Norm(sl), Norm(tp), "{ea_name}");
+      if(vol <= 0.0)
+        {{
+         if(InpVerbose) Print("[QF] Volumen calculado en 0 — revisa volumen minimo del simbolo");
+         return;
+        }}
+      if(!trade.Buy(vol, _Symbol, 0.0, Norm(sl), Norm(tp), "{ea_name}"))
+         ReportFailure("BUY", vol, ask, sl, tp);
      }}
    else if(goShort)
      {{
       double sl = {sl_short};
       double tp = {tp_short};
+      if(!ValidStops(false, bid, sl, tp)) return;
       double vol = LotsFor(sl - bid);
-      if(vol <= 0.0) return;
-      trade.Sell(vol, _Symbol, 0.0, Norm(sl), Norm(tp), "{ea_name}");
+      if(vol <= 0.0)
+        {{
+         if(InpVerbose) Print("[QF] Volumen calculado en 0 — revisa volumen minimo del simbolo");
+         return;
+        }}
+      if(!trade.Sell(vol, _Symbol, 0.0, Norm(sl), Norm(tp), "{ea_name}"))
+         ReportFailure("SELL", vol, bid, sl, tp);
      }}
   }}
 //+------------------------------------------------------------------+
@@ -328,9 +362,55 @@ double LotsFor(const double stopDistance)
      }
 
    if(lotStep > 0.0) vol = MathFloor(vol / lotStep) * lotStep;
+   // nunca por debajo del minimo del simbolo: redondear hacia abajo puede
+   // dejar el volumen en cero y entonces el EA no abre nada, en silencio
    if(minLot > 0.0 && vol < minLot) vol = minLot;
    if(maxLot > 0.0 && vol > maxLot) vol = maxLot;
+   if(vol <= 0.0) vol = (minLot > 0.0) ? minLot : 0.01;
    return NormalizeDouble(vol, 2);
+  }
+//+------------------------------------------------------------------+
+//| Los stops tienen que respetar la distancia minima del broker.     |
+//| Es la causa numero uno de ordenes rechazadas en CFDs.             |
+//+------------------------------------------------------------------+
+bool ValidStops(const bool isLong, const double price, double &sl, double &tp)
+  {
+   double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   int    lvl   = (int)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   double minDist = (lvl > 0 && point > 0.0) ? lvl * point : 0.0;
+
+   if(sl <= 0.0 || tp <= 0.0 || price <= 0.0)
+     {
+      if(InpVerbose) PrintFormat("[QF] Niveles invalidos: precio=%.5f sl=%.5f tp=%.5f", price, sl, tp);
+      return false;
+     }
+   if(minDist > 0.0)
+     {
+      // se empuja el nivel hasta la distancia minima en vez de descartar la
+      // senal: mejor una operacion con stop algo mas ancho que ninguna
+      if(isLong)
+        {
+         if(price - sl < minDist) sl = price - minDist;
+         if(tp - price < minDist) tp = price + minDist;
+        }
+      else
+        {
+         if(sl - price < minDist) sl = price + minDist;
+         if(price - tp < minDist) tp = price - minDist;
+        }
+     }
+   return true;
+  }
+//+------------------------------------------------------------------+
+//| Por que fallo la orden, con el codigo que devuelve el servidor    |
+//+------------------------------------------------------------------+
+void ReportFailure(const string side, const double vol, const double price,
+                   const double sl, const double tp)
+  {
+   PrintFormat("[QF] %s RECHAZADA: retcode=%d (%s) | vol=%.2f precio=%.5f sl=%.5f tp=%.5f | "
+               "margen_libre=%.2f",
+               side, trade.ResultRetcode(), trade.ResultRetcodeDescription(),
+               vol, price, sl, tp, AccountInfoDouble(ACCOUNT_MARGIN_FREE));
   }
 """
 

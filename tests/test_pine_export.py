@@ -49,12 +49,29 @@ def test_pine_exit_uses_the_evolved_atr_multiples():
 def test_pine_fixed_lots_and_risk_pct_size_differently():
     fixed = export_pine(_spec(size_mode="fixed_units", size_value=0.1))
     assert "InpContracts" in fixed
-    assert "qty = InpContracts" in fixed
     assert "InpRiskPct" not in fixed
 
     pct = export_pine(_spec(size_mode="risk_pct", size_value=1.0))
     assert "InpRiskPct" in pct
     assert "strategy.equity * InpRiskPct / 100.0" in pct
+
+
+def test_pine_never_orders_a_fractional_size_that_rounds_to_zero():
+    """0.1 contratos se redondea a 0 en instrumentos sin fracciones y la
+    estrategia no abre nada. El default tiene que ser % de capital."""
+    code = export_pine(_spec(size_mode="fixed_units", size_value=0.1))
+    assert "default_qty_type=strategy.percent_of_equity" in code
+    assert "math.max(InpContracts, 1)" in code
+    # el tamaño exacto queda como opción explícita, no como default
+    assert 'InpUseFixedQty = input.bool(false' in code
+    assert "qty      = InpUseFixedQty ? qtyFixed : na" in code
+
+
+def test_pine_plots_the_signals_for_diagnosis():
+    """Si no hay operaciones hay que poder ver si al menos hubo señal."""
+    code = export_pine(_spec())
+    assert "plotshape(goLong" in code
+    assert "plotshape(goShort" in code
 
 
 def test_pine_flags_indicators_it_cannot_translate():
