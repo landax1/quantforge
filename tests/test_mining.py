@@ -7,7 +7,7 @@ import time
 import pytest
 
 from quantforge.generator.templates import drivers, filters
-from quantforge.mining.miner import mine
+from quantforge.mining.miner import _CRIT_BY_KEY, mine
 
 DRIVERS = [d.id for d in drivers()]
 FILTERS = [f.id for f in filters()]
@@ -105,6 +105,40 @@ def test_reward_ratio_changes_only_the_target(df):
     assert a and b
     assert a[0]["spec"]["risk"]["target_value"] == pytest.approx(a[0]["stop_mult"] * 1.0)
     assert b[0]["spec"]["risk"]["target_value"] == pytest.approx(b[0]["stop_mult"] * 3.0)
+
+
+def test_diagnosis_never_contradicts_itself(df):
+    """Bug real: el mensaje decia 'pediste 65 y lo mejor que aparecio fue 70.67'.
+
+    `best_seen` miraba TODAS las candidatas, asi que podia superar el limite
+    cuando la que lo superaba caia por otro filtro. El numero que se muestra
+    tiene que salir de las que fallaron ESE criterio, y por definicion queda
+    corto."""
+    r = mine(df, DRIVERS, FILTERS, max_candidates=80, min_trades=5, seed=91,
+             accept={"min_pf": 1.6, "min_win_rate_pct": 65.0})
+    if r["passed"]:
+        return                      # con este seed si entraron, no aplica
+    d = r["diagnosis"]
+    key, limit, reached = d["reason"], d["limit"], d["best_reached"]
+    kind = _CRIT_BY_KEY[key][1]
+    if kind == "min":
+        assert reached < limit, (
+            f"dice que {key} bloquea pero informa {reached} >= {limit} pedido")
+    else:
+        assert reached > limit
+
+
+def test_diagnosis_points_at_the_filter_worth_relaxing(df):
+    """Cuando algunas candidatas fallan un solo criterio, el diagnostico tiene
+    que decir cual y cuantas entrarian al aflojarlo."""
+    r = mine(df, DRIVERS, FILTERS, max_candidates=80, min_trades=5, seed=55,
+             accept={"min_pf": 1.05, "min_win_rate_pct": 99.0})
+    assert r["passed"] == 0
+    d = r["diagnosis"]
+    # el win rate imposible es el unico que falla: son todas near-miss
+    assert d["reason"] == "min_win_rate_pct"
+    assert d["near_miss"].get("min_win_rate_pct", 0) > 0
+    assert "cumplían todo salvo" in d["text"]
 
 
 def test_win_rate_is_an_acceptance_filter(df):

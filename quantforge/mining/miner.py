@@ -93,6 +93,8 @@ _CRITERIA: tuple[tuple[str, str, str, str], ...] = (
     ("min_exposure_pct", "exposure_pct", "min", "tiempo en mercado"),
 )
 
+_CRIT_BY_KEY = {k: (metric, kind, label) for k, metric, kind, label in _CRITERIA}
+
 
 def _failed_criteria(m: dict[str, float], accept: dict[str, float | None]) -> list[str]:
     """Which acceptance criteria this candidate misses (empty = accepted)."""
@@ -171,6 +173,14 @@ def mine(
     blocked_by: dict[str, int] = {}
     # best value reached per criterion, so an empty databank can explain itself
     best_seen: dict[str, float] = {}
+    # Candidatas que fallaron EXACTAMENTE un criterio, y cuál. Es el dato que
+    # de verdad sirve: dice qué filtro aflojar para que entren estrategias.
+    near_miss: dict[str, int] = {}
+    # Mejor valor alcanzado ENTRE LAS QUE FALLARON cada criterio. `best_seen`
+    # mira todas las candidatas, así que puede superar el límite pedido cuando
+    # la que lo superaba cayó por otro filtro — y entonces el mensaje decía
+    # "pediste 65 y lo mejor fue 70.67", que se lee como una contradicción.
+    fail_best: dict[str, float] = {}
     t0 = time.time()
 
     # drawdown of the highest-CAGR candidate, to project what raising the risk
@@ -190,6 +200,15 @@ def mine(
         if not top_cagr or m["cagr_pct"] > top_cagr["cagr_pct"]:
             top_cagr.update({"cagr_pct": m["cagr_pct"],
                              "max_drawdown_pct": m["max_drawdown_pct"]})
+
+    def _note_fail(key: str, m: dict[str, float]) -> None:
+        """Lo más cerca que estuvo de este criterio algo que efectivamente falló."""
+        metric, kind, _label = _CRIT_BY_KEY[key]
+        v, cur = m[metric], fail_best.get(key)
+        if cur is None:
+            fail_best[key] = v
+        else:
+            fail_best[key] = max(cur, v) if kind == "min" else min(cur, v)
 
     def _eta_s() -> float | None:
         """Seconds left to fill the databank at the acceptance rate so far."""
@@ -237,16 +256,32 @@ def mine(
         worst = max(blocked_by.items(), key=lambda kv: kv[1], default=None)
         if worst is None:
             return {}
-        key, count = worst
-        label = next(l for k, _m, _c, l in _CRITERIA if k == key)
-        limit = accept.get(key)
-        reached = best_seen.get(key)
-        txt = (f"El filtro que más descarta es <b>{label}</b> ({count} de {tested}). "
-               f"Pediste {limit:g} y lo mejor que apareció fue "
-               f"<b>{reached:.2f}</b>." if reached is not None else "")
+
+        # Lo más accionable primero: si hubo candidatas que sólo tropezaron con
+        # UN filtro, ese es el que hay que aflojar y se sabe exactamente cuántas
+        # entrarían. Recién si no hay ninguna se informa el que más descarta.
+        near = max(near_miss.items(), key=lambda kv: kv[1], default=None)
+        if near is not None:
+            key, count = near
+            label = _CRIT_BY_KEY[key][2]
+            limit, reached = accept.get(key), fail_best.get(key)
+            txt = (f"<b>{count}</b> de las {tested} cumplían todo salvo "
+                   f"<b>{label}</b>. Pediste {limit:g} y la mejor de ésas llegó a "
+                   f"<b>{reached:.2f}</b>: aflojá ese filtro y entran.")
+        else:
+            key, count = worst
+            label = _CRIT_BY_KEY[key][2]
+            limit, reached = accept.get(key), fail_best.get(key)
+            txt = (f"Ninguna candidata quedó cerca: todas fallan dos filtros o más "
+                   f"a la vez. El que más descarta es <b>{label}</b> ({count} de "
+                   f"{tested}); pediste {limit:g} y las que fallaron ahí no pasaron "
+                   f"de <b>{reached:.2f}</b>.") if reached is not None else ""
         out = {"reason": key, "criterion": label, "limit": limit,
-               "best_reached": reached, "rejected": count, "text": txt}
-        hint = _risk_suggestion(key, limit, reached)
+               "best_reached": reached, "rejected": count, "text": txt,
+               "near_miss": near_miss}
+        # la sugerencia de riesgo proyecta desde el MEJOR rendimiento alcanzado
+        # por cualquier candidata, no desde el mejor de las que fallaron
+        hint = _risk_suggestion(key, limit, best_seen.get(key))
         if hint:
             out["suggestion"] = hint
         return out
@@ -323,6 +358,9 @@ def mine(
             missed = _failed_criteria(m, accept)
             for k in missed:
                 blocked_by[k] = blocked_by.get(k, 0) + 1
+                _note_fail(k, m)
+            if len(missed) == 1:
+                near_miss[missed[0]] = near_miss.get(missed[0], 0) + 1
             score = float(fitness(m, fitness_mode))
             if not missed:
                 passed += 1
