@@ -122,6 +122,10 @@ class RiskConfig:
     # y deriva target_value de acá, así el usuario configura una sola relación
     # en vez de dos distancias que tienen que ser coherentes entre sí.
     reward_ratio: float = 2.0
+    # Trailing en múltiplos de ATR: una vez que el precio avanzó, el stop lo
+    # persigue a esta distancia y nunca retrocede. 0 lo desactiva. Es un gen
+    # que el minero busca por candidata, igual que la distancia del stop.
+    trail_atr: float = 0.0
 
     def coherence_error(self) -> str | None:
         """Why this combination cannot be simulated, or None if it is sound.
@@ -157,6 +161,7 @@ class RiskConfig:
             size_value=float(d.get("size_value", base.size_value)),
             max_bars_in_trade=int(d.get("max_bars_in_trade", 0)),
             reward_ratio=float(d.get("reward_ratio", base.reward_ratio)),
+            trail_atr=max(float(d.get("trail_atr", base.trail_atr)), 0.0),
         )
 
 

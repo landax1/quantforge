@@ -95,6 +95,8 @@ def run_backtest(
     stop_px = np.nan
     target_px = np.nan
     entry_i = 0
+    trail_dist = 0.0   # distancia del trailing, fijada al entrar
+    best_px = 0.0      # extremo a favor alcanzado dentro de la operación
     trades: list[Trade] = []
 
     def _distance(kind: str, value: float, i: int, px: float) -> float:
@@ -193,7 +195,29 @@ def run_backtest(
                         tp = m_tp
                     pos, units, entry_px, entry_i = direction, sz, fill, i
                     stop_px, target_px = sl, tp
+                    # el trailing se mide en la volatilidad del momento de
+                    # entrar y no cambia durante la operación: así la salida es
+                    # reproducible y el EA exportado puede calcular lo mismo
+                    a = atr[i] if atr is not None else np.nan
+                    trail_dist = (risk.trail_atr * a
+                                  if risk.trail_atr > 0 and not np.isnan(a) else 0.0)
+                    best_px = fill
                     cash -= comm * units * fill
+
+        # 4) el trailing se actualiza al CIERRE de la barra, después de haber
+        #    comprobado el stop con el nivel que regía al abrirla. Moverlo antes
+        #    sería usar el máximo de esta misma vela para decidir si el stop de
+        #    esta vela se tocó, es decir, mirar el futuro dentro de la barra.
+        if pos != 0 and trail_dist > 0.0:
+            if pos > 0:
+                best_px = max(best_px, h[i])
+                nuevo = best_px - trail_dist
+                stop_px = nuevo if np.isnan(stop_px) else max(stop_px, nuevo)
+            else:
+                best_px = min(best_px, l[i])
+                nuevo = best_px + trail_dist
+                stop_px = nuevo if np.isnan(stop_px) else min(stop_px, nuevo)
+
         equity[i] = cash + (pos * units * (c[i] - entry_px) if pos != 0 else 0.0)
 
     if pos != 0:

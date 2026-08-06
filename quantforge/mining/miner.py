@@ -44,6 +44,10 @@ def _gene_summary(genome: Genome) -> str:
             parts.append(",".join(f"{k}={v:g}" for k, v in sorted(vals.items())))
     if genome.stop_mult is not None:
         parts.append(f"SL={genome.stop_mult:g}×ATR")
+    if genome.trail_mult:
+        parts.append(f"trail={genome.trail_mult:g}×ATR")
+    if genome.max_bars:
+        parts.append(f"máx {genome.max_bars} velas")
     return " · ".join(parts)
 
 
@@ -72,6 +76,8 @@ def _row(genome: Genome, spec, m: dict[str, float], score: float,
         "filters": list(genome.filters),
         "genes": genome.genes,
         "stop_mult": genome.stop_mult,
+        "trail_mult": genome.trail_mult,
+        "max_bars": genome.max_bars,
         "metrics": {k: m[k] for k in _ROW_METRICS},
         "fitness": round(float(score), 4),
         # el score y su desglose viajan siempre, aunque se esté ordenando por

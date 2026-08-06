@@ -42,8 +42,10 @@ def test_pine_exit_uses_the_evolved_atr_multiples():
     code = export_pine(_spec())
     assert 'InpStopMult   = input.float(2.5' in code
     assert 'InpTargetMult = input.float(5' in code
-    assert "close - InpStopMult * atrRisk" in code
-    assert "close + InpTargetMult * atrRisk" in code
+    # los niveles cuelgan del precio real de entrada, no del cierre de la vela
+    # de señal: es lo que hace el motor y lo que ve el usuario en el inspector
+    assert "strategy.position_avg_price - InpStopMult * atrRisk" in code
+    assert "strategy.position_avg_price + InpTargetMult * atrRisk" in code
 
 
 def test_pine_fixed_lots_and_risk_pct_size_differently():

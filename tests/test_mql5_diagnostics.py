@@ -32,7 +32,8 @@ def test_ea_reports_why_an_order_was_rejected():
     assert "trade.ResultRetcode()" in code
     assert "ACCOUNT_MARGIN_FREE" in code
     # la orden se comprueba: no se dispara y se olvida
-    assert "if(!trade.Buy(" in code
+    assert "if(trade.Buy(" in code
+    assert 'else ReportFailure("BUY"' in code
 
 
 def test_ea_respects_the_brokers_minimum_stop_distance():

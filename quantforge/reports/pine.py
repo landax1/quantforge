@@ -177,6 +177,8 @@ strategy("{name}", overlay=true, initial_capital=10000,
 InpUseFixedQty = input.bool(false, "Usar ese tamaño exacto (si no, % del capital)")
 InpStopMult   = input.float({_fmt_num(risk.stop_value)}, "Stop: múltiplo de ATR", minval=0.1)
 InpTargetMult = input.float({_fmt_num(risk.target_value)}, "Target: múltiplo de ATR", minval=0.1)
+InpTrailATR   = input.float({_fmt_num(risk.trail_atr)}, "Trailing: múltiplo de ATR (0 = sin trailing)", minval=0)
+InpMaxBars    = input.int({int(risk.max_bars_in_trade)}, "Cerrar tras N velas (0 = sin límite)", minval=0)
 InpATRPeriod  = input.int({int(risk.atr_period)}, "Período del ATR de riesgo", minval=1)
 InpAllowLong  = input.bool({str(bool(want_long)).lower()}, "Permitir largos")
 InpAllowShort = input.bool({str(bool(want_short)).lower()}, "Permitir cortos")
@@ -193,15 +195,43 @@ goShort = InpAllowShort and ({join(short_conds) if want_short else 'false'})
 {qty_block}
 
 // ------------------------------------------------------------------ órdenes
+// La distancia del trailing se fija con el ATR de la vela de entrada y no se
+// recalcula: es lo que hace el backtest de QuantForge.
+var float trailDist = na
+var float bestPx    = na
+
 if goLong and strategy.position_size == 0 and not na(atrRisk)
     strategy.entry("L", strategy.long, qty=qty)
-    strategy.exit("L exit", "L", stop=close - InpStopMult * atrRisk,
-         limit=close + InpTargetMult * atrRisk)
+    trailDist := InpTrailATR > 0 ? InpTrailATR * atrRisk : na
+    bestPx    := close
 
 if goShort and strategy.position_size == 0 and not na(atrRisk)
     strategy.entry("S", strategy.short, qty=qty)
-    strategy.exit("S exit", "S", stop=close + InpStopMult * atrRisk,
-         limit=close - InpTargetMult * atrRisk)
+    trailDist := InpTrailATR > 0 ? InpTrailATR * atrRisk : na
+    bestPx    := close
+
+// el extremo a favor se actualiza con la vela ya cerrada
+if strategy.position_size > 0 and not na(trailDist)
+    bestPx := na(bestPx) ? high : math.max(bestPx, high)
+if strategy.position_size < 0 and not na(trailDist)
+    bestPx := na(bestPx) ? low : math.min(bestPx, low)
+
+longStop  = na(trailDist) ? strategy.position_avg_price - InpStopMult * atrRisk
+     : math.max(strategy.position_avg_price - InpStopMult * atrRisk, bestPx - trailDist)
+shortStop = na(trailDist) ? strategy.position_avg_price + InpStopMult * atrRisk
+     : math.min(strategy.position_avg_price + InpStopMult * atrRisk, bestPx + trailDist)
+
+if strategy.position_size > 0
+    strategy.exit("L exit", "L", stop=longStop,
+         limit=strategy.position_avg_price + InpTargetMult * atrRisk)
+if strategy.position_size < 0
+    strategy.exit("S exit", "S", stop=shortStop,
+         limit=strategy.position_avg_price - InpTargetMult * atrRisk)
+
+// salida por tiempo: se cuenta desde la vela en que se abrió la posición
+if InpMaxBars > 0 and strategy.position_size != 0
+     and (bar_index - strategy.opentrades.entry_bar_index(strategy.opentrades - 1)) >= InpMaxBars
+    strategy.close_all("tiempo")
 
 // ------------------------------------------------------- diagnóstico visual
 // Si no ves operaciones, esto muestra en qué velas hubo señal: si no aparece

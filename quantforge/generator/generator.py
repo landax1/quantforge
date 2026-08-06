@@ -25,10 +25,29 @@ from quantforge.indicators.base import IndicatorCache
 # un gen más, así el usuario sólo elige riesgo por operación y relación R:B.
 STOP_ATR_MIN, STOP_ATR_MAX, STOP_ATR_STEP = 1.0, 5.0, 0.25
 
+# Salidas evolucionables. Hasta acá todas las candidatas salían igual —stop y
+# target fijos— y eso dejaba afuera familias enteras: las que necesitan dejar
+# correr la ganancia (trailing) y las que se mueren si aguantan demasiado
+# (salida por tiempo). Ambas son genes, no configuración: cuál conviene depende
+# de las entradas de cada estrategia, y eso el usuario no lo puede saber.
+#
+# El 0 es un valor válido en los dos y significa "sin trailing" / "sin límite",
+# así que la búsqueda puede seguir encontrando la forma simple de siempre.
+TRAIL_CHOICES: tuple[float, ...] = (0.0, 0.0, 0.0, 1.0, 1.5, 2.0, 3.0, 4.0)
+MAX_BARS_CHOICES: tuple[int, ...] = (0, 0, 0, 0, 12, 24, 48, 96, 192)
+
 
 def random_stop_mult(rng) -> float:
     steps = int(round((STOP_ATR_MAX - STOP_ATR_MIN) / STOP_ATR_STEP))
     return round(STOP_ATR_MIN + STOP_ATR_STEP * int(rng.integers(0, steps + 1)), 4)
+
+
+def random_trail_mult(rng) -> float:
+    return float(TRAIL_CHOICES[int(rng.integers(0, len(TRAIL_CHOICES)))])
+
+
+def random_max_bars(rng) -> int:
+    return int(MAX_BARS_CHOICES[int(rng.integers(0, len(MAX_BARS_CHOICES)))])
 
 
 @dataclass(slots=True)
@@ -44,6 +63,8 @@ class Genome:
     filters: tuple[str, ...] = ()
     genes: dict[str, dict[str, float]] = field(default_factory=dict)
     stop_mult: float | None = None
+    trail_mult: float = 0.0
+    max_bars: int = 0
 
     def key(self) -> str:
         parts = [self.driver, *sorted(self.filters)]
@@ -52,15 +73,24 @@ class Genome:
             for t, vals in sorted(self.genes.items())
         )
         exit_sig = f"@sl={self.stop_mult:g}" if self.stop_mult is not None else ""
+        if self.trail_mult:
+            exit_sig += f"/tr={self.trail_mult:g}"
+        if self.max_bars:
+            exit_sig += f"/mb={self.max_bars:d}"
         return "|".join(parts) + "#" + gene_sig + exit_sig
 
 
-def exit_risk(risk: RiskConfig | None, stop_mult: float | None) -> RiskConfig | None:
-    """El RiskConfig de una candidata: su stop evolucionado + el R:B pedido."""
-    if risk is None or stop_mult is None:
+def exit_risk(risk: RiskConfig | None, genome: "Genome") -> RiskConfig | None:
+    """El RiskConfig de una candidata: sus salidas evolucionadas + el R:B pedido."""
+    if risk is None or genome.stop_mult is None:
         return risk
-    return replace(risk, stop_type="atr", stop_value=stop_mult,
-                   target_type="atr", target_value=round(stop_mult * risk.reward_ratio, 4))
+    return replace(
+        risk,
+        stop_type="atr", stop_value=genome.stop_mult,
+        target_type="atr", target_value=round(genome.stop_mult * risk.reward_ratio, 4),
+        trail_atr=genome.trail_mult,
+        max_bars_in_trade=genome.max_bars,
+    )
 
 
 def build_spec(
@@ -71,7 +101,7 @@ def build_spec(
     name: str | None = None,
 ) -> StrategySpec:
     """Materialise a genome into a runnable :class:`StrategySpec`."""
-    risk = exit_risk(risk, genome.stop_mult)
+    risk = exit_risk(risk, genome)
     templates = [TEMPLATES[genome.driver]] + [TEMPLATES[f] for f in genome.filters]
     entry_long, entry_short = [], []
     labels = []
@@ -114,7 +144,9 @@ def random_genome(drivers: list[str], filters: list[str],
                                  replace=False).tolist())) if k else ()
     genes = {t: random_genes(t, rng) for t in (drv, *fs)}
     return Genome(driver=drv, filters=fs, genes=genes,
-                  stop_mult=random_stop_mult(rng) if evolve_exits else None)
+                  stop_mult=random_stop_mult(rng) if evolve_exits else None,
+                  trail_mult=random_trail_mult(rng) if evolve_exits else 0.0,
+                  max_bars=random_max_bars(rng) if evolve_exits else 0)
 
 
 def generate_strategies(

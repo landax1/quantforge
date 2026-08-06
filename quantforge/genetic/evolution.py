@@ -18,6 +18,7 @@ from quantforge.core.models import BacktestSettings, RiskConfig
 from quantforge.generator.generator import (
     STOP_ATR_MAX, STOP_ATR_MIN, STOP_ATR_STEP,
     Genome, build_spec, random_genes, random_genome,
+    random_max_bars, random_trail_mult,
 )
 from quantforge.generator.templates import TEMPLATES
 from quantforge.indicators.base import IndicatorCache
@@ -27,12 +28,19 @@ def _mutate(g: Genome, drivers: list[str], filters: list[str],
             max_filters: int, rng: np.random.Generator, rate: float) -> Genome:
     genome = Genome(driver=g.driver, filters=tuple(g.filters),
                     genes={t: dict(v) for t, v in g.genes.items()},
-                    stop_mult=g.stop_mult)
+                    stop_mult=g.stop_mult, trail_mult=g.trail_mult,
+                    max_bars=g.max_bars)
     # el stop evoluciona como cualquier otro parámetro: se corre un paso o dos
     if genome.stop_mult is not None and rng.random() < rate:
         delta = STOP_ATR_STEP * int(rng.integers(-2, 3))
         genome.stop_mult = round(float(np.clip(genome.stop_mult + delta,
                                                STOP_ATR_MIN, STOP_ATR_MAX)), 4)
+    # trailing y tiempo máximo saltan entre opciones discretas en vez de
+    # moverse de a poco: entre "sin trailing" y "trailing" no hay gradiente
+    if rng.random() < rate:
+        genome.trail_mult = random_trail_mult(rng)
+    if rng.random() < rate:
+        genome.max_bars = random_max_bars(rng)
     # structural mutation: swap driver / add / remove / replace a filter
     roll = rng.random()
     if roll < 0.10:
@@ -70,8 +78,14 @@ def _crossover(a: Genome, b: Genome, rng: np.random.Generator) -> Genome:
         pa, pb = a.genes.get(t_id), b.genes.get(t_id)
         src = pa if (pb is None or (pa is not None and rng.random() < 0.5)) else pb
         genes[t_id] = dict(src) if src else random_genes(t_id, rng)
-    stop = a.stop_mult if rng.random() < 0.5 else b.stop_mult
-    return Genome(driver=driver, filters=fs, genes=genes, stop_mult=stop)
+    # cada salida se hereda de un padre o del otro, por separado: así una cría
+    # puede combinar el stop de uno con el trailing del otro
+    return Genome(
+        driver=driver, filters=fs, genes=genes,
+        stop_mult=a.stop_mult if rng.random() < 0.5 else b.stop_mult,
+        trail_mult=a.trail_mult if rng.random() < 0.5 else b.trail_mult,
+        max_bars=a.max_bars if rng.random() < 0.5 else b.max_bars,
+    )
 
 
 def evolve(

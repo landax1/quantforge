@@ -182,6 +182,8 @@ input double InpLots        = {_fmt_num(risk.size_value) if risk.size_mode == 'f
 input double InpRiskPct     = {_fmt_num(risk.size_value) if risk.size_mode == 'risk_pct' else '0'};     // % del balance a arriesgar (0 = usar lotes fijos)
 input double InpStopValue   = {_fmt_num(risk.stop_value)};  // Stop loss ({_UNIT_LABEL.get(risk.stop_type, 'desactivado')})
 input double InpTargetValue = {_fmt_num(risk.target_value)};  // Take profit ({_UNIT_LABEL.get(risk.target_type, 'desactivado')})
+input double InpTrailATR    = {_fmt_num(risk.trail_atr)};  // Trailing (multiplo de ATR, 0 = sin trailing)
+input int    InpMaxBars     = {int(risk.max_bars_in_trade)};     // Cerrar tras N velas (0 = sin limite)
 input int    InpATRPeriod   = {int(risk.atr_period)};     // Periodo del ATR de riesgo
 input long   InpMagic       = 770001;  // Magic number
 input int    InpSlippage    = 30;      // Desviacion maxima (points)
@@ -191,6 +193,8 @@ input bool   InpAllowShort  = {'true' if want_short else 'false'};   // Permitir
 
 CTrade   trade;
 datetime g_lastBar = 0;
+double   g_trailDist = 0.0;   // distancia del trailing, fijada al entrar
+double   g_bestPx    = 0.0;   // extremo a favor alcanzado en la operacion
 {handle_decls}
 {'int h_atr_risk = INVALID_HANDLE;' if needs_atr else ''}
 
@@ -246,7 +250,7 @@ void OnTick()
    if(bar == g_lastBar) return;
    g_lastBar = bar;
 
-   if(HasPosition()) return;
+   if(ManageOpenPosition()) return;   // trailing y salida por tiempo
 
    bool goLong  = InpAllowLong && ({join(long_conds) if want_long else 'false'});
    bool goShort = InpAllowShort && ({join(short_conds) if want_short else 'false'});
@@ -275,8 +279,13 @@ void OnTick()
          return;
         }}
       ReportSize("BUY", true, vol, ask, sl);
-      if(!trade.Buy(vol, _Symbol, 0.0, Norm(sl), Norm(tp), "{ea_name}"))
-         ReportFailure("BUY", vol, ask, sl, tp);
+      if(trade.Buy(vol, _Symbol, 0.0, Norm(sl), Norm(tp), "{ea_name}"))
+        {{
+         // la distancia del trailing queda fijada con el ATR de esta vela
+         g_trailDist = (InpTrailATR > 0.0) ? InpTrailATR * atr : 0.0;
+         g_bestPx = ask;
+        }}
+      else ReportFailure("BUY", vol, ask, sl, tp);
      }}
    else if(goShort)
      {{
@@ -290,8 +299,12 @@ void OnTick()
          return;
         }}
       ReportSize("SELL", false, vol, bid, sl);
-      if(!trade.Sell(vol, _Symbol, 0.0, Norm(sl), Norm(tp), "{ea_name}"))
-         ReportFailure("SELL", vol, bid, sl, tp);
+      if(trade.Sell(vol, _Symbol, 0.0, Norm(sl), Norm(tp), "{ea_name}"))
+        {{
+         g_trailDist = (InpTrailATR > 0.0) ? InpTrailATR * atr : 0.0;
+         g_bestPx = bid;
+        }}
+      else ReportFailure("SELL", vol, bid, sl, tp);
      }}
   }}
 //+------------------------------------------------------------------+
@@ -422,6 +435,64 @@ bool ValidStops(const bool isLong, const double price, double &sl, double &tp)
         }
      }
    return true;
+  }
+//+------------------------------------------------------------------+
+//| Gestion de la posicion abierta: trailing y salida por tiempo.      |
+//| Devuelve true si hay una posicion (haya que gestionarla o no), asi |
+//| OnTick no busca una entrada nueva mientras haya uno abierto.       |
+//|                                                                   |
+//| El trailing usa el ATR de la vela de ENTRADA, no el actual: es lo  |
+//| que hace el backtest, y recalcularlo en cada vela daria una salida |
+//| distinta a la que se minó.                                         |
+//+------------------------------------------------------------------+
+bool ManageOpenPosition()
+  {
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol ||
+         PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+
+      // --- salida por tiempo
+      if(InpMaxBars > 0)
+        {
+         datetime abierta = (datetime)PositionGetInteger(POSITION_TIME);
+         int velas = Bars(_Symbol, _Period, abierta, TimeCurrent()) - 1;
+         if(velas >= InpMaxBars)
+           {
+            if(InpVerbose) PrintFormat("[QF] Cierre por tiempo: %d velas", velas);
+            trade.PositionClose(ticket);
+            return true;
+           }
+        }
+
+      // --- trailing: el stop persigue al precio y nunca retrocede
+      if(InpTrailATR > 0.0 && g_trailDist > 0.0)
+        {
+         long   tipo = PositionGetInteger(POSITION_TYPE);
+         double sl   = PositionGetDouble(POSITION_SL);
+         double tp   = PositionGetDouble(POSITION_TP);
+         double nuevo;
+         if(tipo == POSITION_TYPE_BUY)
+           {
+            g_bestPx = MathMax(g_bestPx, iHigh(_Symbol, _Period, 1));
+            nuevo = g_bestPx - g_trailDist;
+            if(nuevo > sl) trade.PositionModify(ticket, Norm(nuevo), tp);
+           }
+         else
+           {
+            g_bestPx = (g_bestPx <= 0.0) ? iLow(_Symbol, _Period, 1)
+                                         : MathMin(g_bestPx, iLow(_Symbol, _Period, 1));
+            nuevo = g_bestPx + g_trailDist;
+            if(sl <= 0.0 || nuevo < sl) trade.PositionModify(ticket, Norm(nuevo), tp);
+           }
+        }
+      return true;
+     }
+   g_trailDist = 0.0;
+   g_bestPx = 0.0;
+   return false;
   }
 //+------------------------------------------------------------------+
 //| Cuanto se arriesga DE VERDAD en esta operacion, en plata y en %   |
