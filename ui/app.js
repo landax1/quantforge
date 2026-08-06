@@ -196,6 +196,28 @@ function isFullRange(ds) {
   return !b.lo || (r.from <= b.lo && r.to >= b.hi);
 }
 
+/* Al cambiar de instrumento el período elegido se conserva — comparar el mismo
+   tramo entre mercados es media razón para tener el selector. Lo único que se
+   ajusta son los bordes: BTCUSD arranca en 2017, así que un "desde 2013"
+   heredado del S&P no existe ahí. Devuelve true si hubo que recortar. */
+function clampRangeTo(ds) {
+  const b = datasetBounds(ds);
+  if (!b.lo || (!S.sel.dateFrom && !S.sel.dateTo)) return false;
+  const from = S.sel.dateFrom || b.lo, to = S.sel.dateTo || b.hi;
+  const newFrom = from < b.lo ? b.lo : from;
+  const newTo = to > b.hi ? b.hi : to;
+  // si el tramo pedido no se solapa con el historial nuevo, no hay nada
+  // sensato que conservar: se vuelve al historial completo
+  if (newFrom >= newTo) {
+    S.sel.dateFrom = S.sel.dateTo = "";
+    return true;
+  }
+  const changed = newFrom !== from || newTo !== to;
+  S.sel.dateFrom = newFrom;
+  S.sel.dateTo = newTo;
+  return changed;
+}
+
 /* Las fechas sólo viajan cuando recortan algo: con el historial completo el
    backend recibe el payload de siempre y no hay recorte que pueda fallar. */
 function rangePayload() {
@@ -947,10 +969,15 @@ PAGES.mining = async (main) => {
   const dsSel = $("#sel-dataset"), tfSel = $("#sel-timeframe");
   dsSel.onchange = () => {
     S.sel.dataset_id = dsSel.value;
-    // las fechas del instrumento anterior no significan nada en el nuevo
-    S.sel.dateFrom = S.sel.dateTo = "";
-    adoptInstrumentDefaults();       // costos del broker del mercado nuevo
-    navigate("mining");              // refresca la pastilla de contexto
+    const ds = S.datasets.find(d => d.id === dsSel.value);
+    const clamped = clampRangeTo(ds);   // el período elegido se conserva
+    adoptInstrumentDefaults();          // costos del broker del mercado nuevo
+    navigate("mining").then(() => {     // refresca la pastilla de contexto
+      if (clamped) {
+        toast(`${ds.name.replace(/ M1.*/, "")} no cubre todo ese período — ` +
+              `las fechas se ajustaron a su historial`, "ok");
+      }
+    });
   };
 
   /* período a minar: campos libres + atajos para el split in/out-of-sample */
