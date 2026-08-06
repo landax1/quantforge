@@ -32,15 +32,24 @@
   --text-dim:  #828ba6;
 
   /* ---- color de marca y semántica ----
-     Un solo acento, usado con cuentagotas: estados activos y foco. El resto
-     de la interfaz se sostiene con grises y jerarquía tipográfica. */
-  --accent:        #6b83e0;
-  --accent-2:      #8b9ae8;
-  --accent-hover:  #7a90e6;
-  --accent-active: #5f77d6;
+     DOS tokens de acento con trabajos distintos, porque ninguno solo puede
+     hacer los dos: `--accent` es el color saturado para RELLENOS (botones,
+     el anillo, la marca) y tiene que dejar leer el blanco encima; `--accent-2`
+     es su versión clara para ACENTO EN TEXTO sobre fondo oscuro. El vivo da
+     4.70:1 con blanco encima pero sólo 3.92:1 como texto, y al revés.
+
+     El verde y el rojo están RESERVADOS para ganancia y pérdida: el color de
+     marca nunca puede competir con ellos, y por eso es índigo y no azul-verde.
+
+     Que se vea vivo no es cuestión de saturación sino de dónde aparece: color
+     saturado en pocos lugares, el resto sostenido con grises. */
+  --accent:        #635bff;
+  --accent-2:      #9d97ff;
+  --accent-hover:  #7570ff;
+  --accent-active: #524aeb;
   --accent-fg:     #fff;                        /* texto sobre el botón lleno */
-  --accent-soft:   rgba(107, 131, 224, 0.10);
-  --accent-line:   rgba(107, 131, 224, 0.28);
+  --accent-soft:   rgba(99, 91, 255, 0.12);
+  --accent-line:   rgba(99, 91, 255, 0.34);
   --pos:           #43c88a;
   --pos-soft:      rgba(67, 200, 138, 0.09);
   --pos-line:      rgba(67, 200, 138, 0.28);
@@ -51,7 +60,7 @@
   --warn:          #d9a441;
   --warn-soft:     rgba(217, 164, 65, 0.08);
   --warn-line:     rgba(217, 164, 65, 0.28);
-  --selection:     rgba(107, 131, 224, 0.28);
+  --selection:     rgba(99, 91, 255, 0.34);
 
   /* ---- superficies compuestas (barras fijas, tooltips, overlays) ---- */
   --glass:      rgba(17, 20, 29, .92);          /* barras pegajosas con blur */
@@ -64,7 +73,7 @@
   --scroll-thin:  #2a3145;
 
   /* flecha de los <select> y icono del calendario, embebidos como data URI */
-  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236d768f' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M5 9l7 7 7-7'/%3E%3C/svg%3E");
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23828ba6' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M5 9l7 7 7-7'/%3E%3C/svg%3E");
   --date-icon: invert(.65);
 
   /* ---- forma y profundidad ---- */
@@ -76,7 +85,7 @@
   --sh-1: 0 1px 2px rgba(0,0,0,.28);
   --sh-2: 0 4px 16px rgba(0,0,0,.3);
   --sh-3: 0 20px 56px rgba(0,0,0,.5);
-  --ring: 0 0 0 3px rgba(107,131,224,.18);
+  --ring: 0 0 0 3px rgba(99,91,255,.22);
 
   /* alturas de control, para que todo lo clickeable quede parejo */
   --h-ctl: 34px;
@@ -112,13 +121,13 @@
      las cuatro superficies reales, este valor no baja de 5:1 en ninguna. */
   --text-dim:  #5f6775;
 
-  --accent:        #4d63c8;
-  --accent-2:      #3f52ad;
-  --accent-hover:  #4459b8;
-  --accent-active: #3a4da3;
+  --accent:        #5348e8;
+  --accent-2:      #4338ca;
+  --accent-hover:  #4a3fd6;
+  --accent-active: #4034bd;
   --accent-fg:     #fff;
-  --accent-soft:   rgba(77, 99, 200, 0.07);
-  --accent-line:   rgba(77, 99, 200, 0.24);
+  --accent-soft:   rgba(83, 72, 232, 0.08);
+  --accent-line:   rgba(83, 72, 232, 0.26);
   --pos:           #0c784a;
   --pos-soft:      rgba(12, 120, 74, 0.07);
   --pos-line:      rgba(12, 120, 74, 0.24);
@@ -129,7 +138,7 @@
   --warn:          #895f0b;
   --warn-soft:     rgba(137, 95, 11, 0.06);
   --warn-line:     rgba(137, 95, 11, 0.22);
-  --selection:     rgba(77, 99, 200, 0.18);
+  --selection:     rgba(83, 72, 232, 0.20);
 
   --glass:      rgba(255, 255, 255, .88);
   --overlay:    rgba(24, 28, 38, .38);
@@ -146,7 +155,7 @@
   --sh-1: 0 1px 2px rgba(16,24,40,.05);
   --sh-2: 0 4px 14px rgba(16,24,40,.07);
   --sh-3: 0 18px 48px rgba(16,24,40,.14);
-  --ring: 0 0 0 3px rgba(77,99,200,.16);
+  --ring: 0 0 0 3px rgba(83,72,232,.18);
 
   color-scheme: light;
 }
@@ -187,11 +196,13 @@ body {
   padding: 20px 14px 14px;
 }
 .logo { display: flex; align-items: center; gap: 11px; padding: 4px 8px 26px; }
+/* Primer momento de color: la marca. Es lo primero que se ve y el único
+   lugar de la barra lateral donde el acento aparece relleno. */
 .logo-mark {
   width: 30px; height: 30px; flex-shrink: 0;
   display: grid; place-items: center; border-radius: 8px;
-  background: var(--card-2); border: 1px solid var(--border);
-  color: var(--accent-2);
+  background: var(--accent); border: none;
+  color: var(--accent-fg);
 }
 .logo-mark svg { width: 18px; height: 18px; }
 .logo-text {
@@ -214,7 +225,12 @@ body {
   transition: background .14s var(--ease), color .14s var(--ease);
 }
 #nav button:hover { background: var(--card-2); color: var(--text); }
-#nav button.active { background: var(--card-2); color: var(--text); }
+/* Segundo momento: dónde estás parado. El acento como tinte y como texto
+   dice "acá" sin necesidad de una barra ni un borde extra. */
+#nav button.active {
+  background: var(--accent-soft); color: var(--accent-2);
+}
+#nav button.active .ic { opacity: 1; }
 #nav .ic { width: 18px; height: 18px; display: grid; place-items: center; opacity: .9; }
 #nav .ic svg { width: 17px; height: 17px; }
 
@@ -485,7 +501,7 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 .datefld:hover { border-color: var(--border-strong); }
 
 .linkbtn {
-  font: inherit; font-size: inherit; font-weight: 650; color: var(--accent);
+  font: inherit; font-size: inherit; font-weight: 650; color: var(--accent-2);
   background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline;
 }
 
@@ -599,7 +615,7 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 .blocklist-actions { display: flex; gap: 12px; margin: 9px 0 5px; }
 .blocklist-actions button {
   font: inherit; font-size: 11px; font-weight: 550; background: none; border: none;
-  color: var(--accent); cursor: pointer; padding: 0;
+  color: var(--accent-2); cursor: pointer; padding: 0;
 }
 .blocklist-actions button:hover { text-decoration: underline; }
 .help-note { color: var(--text-dim); font-size: 11px; line-height: 1.5; margin-top: 6px; }
@@ -708,21 +724,25 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 .banner b { font-weight: 650; }
 
 /* ====================================================== hero campeón ==== */
+/* Tercer momento: el campeón. Es el resultado de toda la corrida, así que se
+   permite el único fondo teñido de la app — un filo saturado a la izquierda y
+   un tinte muy leve. Sin degradados de neón: el color entra por el borde. */
 .champ {
   position: relative; overflow: hidden;
-  background: var(--card);
-  border: 1px solid var(--border-strong);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-left: 3px solid var(--accent);
   border-radius: var(--r-lg); padding: 22px 24px; margin-bottom: 18px;
   display: grid; grid-template-columns: minmax(240px, 1fr) 1.7fr; gap: 26px;
   align-items: center; cursor: pointer;
   transition: border-color .16s var(--ease), background .16s var(--ease);
 }
-.champ:hover { border-color: var(--accent-line); background: var(--card-2); }
+.champ:hover { border-color: var(--accent); background: var(--card-hover); }
 @media (max-width: 1000px) { .champ { grid-template-columns: 1fr; } }
 .champ-tag {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 9.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--text-dim); margin-bottom: 10px;
+  color: var(--accent-2); margin-bottom: 10px;
 }
 .champ h2 {
   font-size: 18px; font-weight: 650; letter-spacing: -.02em; margin-bottom: 6px;
