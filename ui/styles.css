@@ -1,8 +1,14 @@
 /* =========================================================================
-   QuantForge — sistema de diseño v4
+   QuantForge — sistema de diseño v5
    Un único stylesheet: tokens, primitivas y componentes. Sin dependencias.
-   Estética "terminal de trading": oscuro, denso donde importan los números,
-   aireado donde se toman decisiones.
+
+   DOS TEMAS. El oscuro es el de siempre y vive en :root, así que sigue siendo
+   el default aunque falle el JavaScript. El claro sobrescribe sólo los tokens
+   de color en :root[data-theme="light"] — ninguna regla de componente sabe en
+   qué tema está, y por eso agregar un tema no toca 900 líneas de CSS.
+
+   Todo lo que pinta se declara acá arriba: si un componente necesita un color
+   nuevo, se agrega el token en los dos temas y no un hex suelto.
    ========================================================================= */
 
 :root {
@@ -20,21 +26,46 @@
   /* ---- texto ---- */
   --text:      #e9ecf7;
   --text-2:    #a6aec7;
-  --text-dim:  #6d768f;
+  /* #6d768f quedaba en 3.58:1 sobre las filas resaltadas y 4.06:1 sobre las
+     tarjetas — por debajo del mínimo legible, y ahí vive casi todo el texto
+     secundario. Este valor no baja de 4.78:1 en ninguna superficie oscura. */
+  --text-dim:  #828ba6;
 
   /* ---- color de marca y semántica ----
      Un solo acento, usado con cuentagotas: estados activos y foco. El resto
      de la interfaz se sostiene con grises y jerarquía tipográfica. */
-  --accent:       #6b83e0;
-  --accent-2:     #8b9ae8;
-  --accent-soft:  rgba(107, 131, 224, 0.10);
-  --accent-line:  rgba(107, 131, 224, 0.28);
-  --pos:          #43c88a;
-  --pos-soft:     rgba(67, 200, 138, 0.09);
-  --neg:          #e0736f;
-  --neg-soft:     rgba(224, 115, 111, 0.09);
-  --warn:         #d9a441;
-  --warn-soft:    rgba(217, 164, 65, 0.08);
+  --accent:        #6b83e0;
+  --accent-2:      #8b9ae8;
+  --accent-hover:  #7a90e6;
+  --accent-active: #5f77d6;
+  --accent-fg:     #fff;                        /* texto sobre el botón lleno */
+  --accent-soft:   rgba(107, 131, 224, 0.10);
+  --accent-line:   rgba(107, 131, 224, 0.28);
+  --pos:           #43c88a;
+  --pos-soft:      rgba(67, 200, 138, 0.09);
+  --pos-line:      rgba(67, 200, 138, 0.28);
+  --pos-glow:      rgba(67, 200, 138, 0.16);
+  --neg:           #e0736f;
+  --neg-soft:      rgba(224, 115, 111, 0.09);
+  --neg-line:      rgba(224, 115, 111, 0.28);
+  --warn:          #d9a441;
+  --warn-soft:     rgba(217, 164, 65, 0.08);
+  --warn-line:     rgba(217, 164, 65, 0.28);
+  --selection:     rgba(107, 131, 224, 0.28);
+
+  /* ---- superficies compuestas (barras fijas, tooltips, overlays) ---- */
+  --glass:      rgba(17, 20, 29, .92);          /* barras pegajosas con blur */
+  --overlay:    rgba(4, 5, 9, .80);             /* fondo del inspector */
+  --sheet-fade: rgba(12, 14, 21, .98);          /* degradado del encabezado */
+  --tooltip-bg: rgba(12, 14, 21, .96);
+  --toast-bg:   rgba(22, 26, 37, .97);
+  --scroll:       #262d40;
+  --scroll-hover: #333c55;
+  --scroll-thin:  #2a3145;
+
+  /* flecha de los <select> y icono del calendario, embebidos como data URI */
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236d768f' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M5 9l7 7 7-7'/%3E%3C/svg%3E");
+  --date-icon: invert(.65);
 
   /* ---- forma y profundidad ---- */
   --r-sm: 7px;
@@ -54,6 +85,70 @@
   --font: "Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SF Mono", Consolas, monospace;
   --ease: cubic-bezier(.22, .61, .36, 1);
+
+  color-scheme: dark;
+}
+
+/* ====================================================== tema claro ======
+   No es el oscuro invertido. Sobre blanco hay que bajar la luminosidad de
+   los colores semánticos para que un "+8,1%" en verde siga siendo legible
+   (el verde del tema oscuro sobre blanco queda en ~2:1 de contraste), y las
+   sombras pasan a ser muy tenues porque sobre claro se leen como suciedad.  */
+:root[data-theme="light"] {
+  --bg:            #ffffff;
+  --bg-soft:       #f6f7f9;
+  --card:          #ffffff;
+  --card-2:        #f7f8fa;
+  --card-hover:    #f0f2f6;
+  --border:        #e2e5ec;
+  --border-soft:   #eef0f4;
+  --border-strong: #ccd2dd;
+  --grid:          #eef0f4;
+
+  --text:      #16191f;
+  --text-2:    #4a5262;
+  /* #6b7280 daba 4.83:1 sobre blanco puro pero 4.31:1 sobre las tarjetas
+     grisadas, y ahí es donde vive la mayoría del texto tenue. Medido sobre
+     las cuatro superficies reales, este valor no baja de 5:1 en ninguna. */
+  --text-dim:  #5f6775;
+
+  --accent:        #4d63c8;
+  --accent-2:      #3f52ad;
+  --accent-hover:  #4459b8;
+  --accent-active: #3a4da3;
+  --accent-fg:     #fff;
+  --accent-soft:   rgba(77, 99, 200, 0.07);
+  --accent-line:   rgba(77, 99, 200, 0.24);
+  --pos:           #0c784a;
+  --pos-soft:      rgba(12, 120, 74, 0.07);
+  --pos-line:      rgba(12, 120, 74, 0.24);
+  --pos-glow:      rgba(12, 120, 74, 0.14);
+  --neg:           #bc3934;
+  --neg-soft:      rgba(188, 57, 52, 0.06);
+  --neg-line:      rgba(188, 57, 52, 0.22);
+  --warn:          #895f0b;
+  --warn-soft:     rgba(137, 95, 11, 0.06);
+  --warn-line:     rgba(137, 95, 11, 0.22);
+  --selection:     rgba(77, 99, 200, 0.18);
+
+  --glass:      rgba(255, 255, 255, .88);
+  --overlay:    rgba(24, 28, 38, .38);
+  --sheet-fade: rgba(255, 255, 255, .98);
+  --tooltip-bg: rgba(255, 255, 255, .98);
+  --toast-bg:   rgba(255, 255, 255, .98);
+  --scroll:       #d3d8e0;
+  --scroll-hover: #bcc3ce;
+  --scroll-thin:  #d3d8e0;
+
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M5 9l7 7 7-7'/%3E%3C/svg%3E");
+  --date-icon: none;
+
+  --sh-1: 0 1px 2px rgba(16,24,40,.05);
+  --sh-2: 0 4px 14px rgba(16,24,40,.07);
+  --sh-3: 0 18px 48px rgba(16,24,40,.14);
+  --ring: 0 0 0 3px rgba(77,99,200,.16);
+
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -69,17 +164,17 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-::selection { background: rgba(107,131,224,.28); }
+::selection { background: var(--selection); }
 
 /* scrollbars al tono de la app */
-* { scrollbar-width: thin; scrollbar-color: #2a3145 transparent; }
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thin) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #262d40; border-radius: 99px; border: 2px solid transparent;
+  background: var(--scroll); border-radius: 99px; border: 2px solid transparent;
   background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover { background: #333c55; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-hover); background-clip: content-box; }
 
 .app { display: flex; height: 100vh; position: relative; z-index: 1; }
 
@@ -129,11 +224,33 @@ body {
   padding: 12px 12px 2px; border-top: 1px solid var(--border-soft);
 }
 .sidebar-foot #version { margin-left: auto; font-variant-numeric: tabular-nums; }
+/* Al cambiar de tema no se anima nada. Los componentes tienen transiciones de
+   color para sus estados (hover, activo), y al cambiar las variables de golpe
+   se disparaban todas a la vez: además de verse como un fundido sucio, alguna
+   quedaba colgada y el texto conservaba el color del tema anterior. */
+.theme-switching, .theme-switching *, .theme-switching *::before, .theme-switching *::after {
+  transition: none !important;
+}
+
+/* interruptor de tema: se muestra el icono del tema al que vas a ir */
+.theme-btn {
+  display: grid; place-items: center;
+  width: 26px; height: 26px; padding: 0; border-radius: 7px; cursor: pointer;
+  background: transparent; border: 1px solid transparent; color: var(--text-dim);
+  transition: color .14s, background .14s, border-color .14s;
+}
+.theme-btn:hover { color: var(--text); background: var(--card-2); border-color: var(--border); }
+.theme-btn svg { width: 15px; height: 15px; }
+.theme-btn .ic-sun { display: block; }
+.theme-btn .ic-moon { display: none; }
+:root[data-theme="light"] .theme-btn .ic-sun { display: none; }
+:root[data-theme="light"] .theme-btn .ic-moon { display: block; }
+
 .status-dot {
   width: 7px; height: 7px; border-radius: 50%; background: var(--pos);
-  box-shadow: 0 0 0 3px rgba(67,200,138,.16);
+  box-shadow: 0 0 0 3px var(--pos-glow);
 }
-.status-dot.off { background: var(--neg); box-shadow: 0 0 0 3px rgba(224,115,111,.16); }
+.status-dot.off { background: var(--neg); box-shadow: 0 0 0 3px var(--neg-soft); }
 
 /* ============================================================= main ===== */
 main { flex: 1; overflow-y: auto; padding: 30px 34px 90px; scroll-behavior: smooth; }
@@ -204,21 +321,21 @@ input[type="checkbox"] { width: auto; height: auto; accent-color: var(--accent);
 input[type="file"] { height: auto; padding: 7px 9px; font-size: 12px; }
 select {
   appearance: none; padding-right: 30px; cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236d768f' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M5 9l7 7 7-7'/%3E%3C/svg%3E");
+  background-image: var(--select-arrow);
   background-repeat: no-repeat; background-position: right 10px center;
 }
 .controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
 
 button.btn {
   font: inherit; font-weight: 550; font-size: 13px; letter-spacing: -.005em;
-  background: var(--accent); color: #fff;
+  background: var(--accent); color: var(--accent-fg);
   border: 1px solid transparent; border-radius: var(--r-sm);
   height: var(--h-ctl); padding: 0 16px; cursor: pointer;
   display: inline-flex; align-items: center; gap: 7px; justify-content: center;
   transition: background .14s, border-color .14s, color .14s, opacity .14s;
 }
-button.btn:hover { background: #7a90e6; }
-button.btn:active { background: #5f77d6; }
+button.btn:hover { background: var(--accent-hover); }
+button.btn:active { background: var(--accent-active); }
 button.btn:disabled { opacity: .4; cursor: default; background: var(--accent); }
 button.btn.ghost {
   background: var(--card-2); color: var(--text-2); border-color: var(--border);
@@ -303,7 +420,7 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 .setup.locked .sect > summary { cursor: default; }
 .lock-note {
   display: flex; gap: 9px; align-items: flex-start;
-  background: var(--warn-soft); border: 1px solid rgba(217,164,65,.28);
+  background: var(--warn-soft); border: 1px solid var(--warn-line);
   border-radius: var(--r-sm); padding: 10px 12px;
   font-size: 11.5px; line-height: 1.5; color: var(--text-2);
 }
@@ -361,7 +478,7 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
    tema oscuro, asi que hay que invertirlo o directamente no se ve */
 .datefld { cursor: pointer; font-variant-numeric: tabular-nums; }
 .datefld::-webkit-calendar-picker-indicator {
-  filter: invert(0.75); cursor: pointer; opacity: .8;
+  filter: var(--date-icon); cursor: pointer; opacity: .8;
   padding: 2px; border-radius: 4px;
 }
 .datefld::-webkit-calendar-picker-indicator:hover { opacity: 1; background: var(--card-hover); }
@@ -389,7 +506,7 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 .idle-ready p b { color: var(--text); }
 .idle-warn {
   margin-top: 10px; padding: 9px 12px; border-radius: var(--r-sm);
-  background: var(--warn-soft); border: 1px solid rgba(217,164,65,.26);
+  background: var(--warn-soft); border: 1px solid var(--warn-line);
   color: var(--text-2); font-size: 12px; line-height: 1.55;
 }
 .idle-warn b { color: var(--warn); }
@@ -452,7 +569,7 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
   border-radius: var(--r-sm); padding: 9px 11px;
 }
 .stage-note b { color: var(--text); font-variant-numeric: tabular-nums; }
-.stage-note.danger { background: var(--neg-soft); border-color: rgba(224,115,111,.3); }
+.stage-note.danger { background: var(--neg-soft); border-color: var(--neg-line); }
 .stage-sub {
   color: var(--text-dim); font-size: 10px; font-weight: 700;
   text-transform: uppercase; letter-spacing: .09em; margin: 16px 0 9px;
@@ -486,12 +603,15 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 }
 .blocklist-actions button:hover { text-decoration: underline; }
 .help-note { color: var(--text-dim); font-size: 11px; line-height: 1.5; margin-top: 6px; }
+/* lo resaltado dentro de una nota tiene que destacar: heredar el gris tenue
+   anula el énfasis y además deja el texto más importante en el peor contraste */
+.help-note b { color: var(--text); }
 
 /* ==================================================== barra de corrida == */
 .runbar {
   position: sticky; top: -1px; z-index: 20;
   display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap;
-  background: rgba(17,20,29,.92); backdrop-filter: blur(14px);
+  background: var(--glass); backdrop-filter: blur(14px);
   border: 1px solid var(--border-strong);
   border-radius: var(--r-lg); padding: 15px 18px; margin-bottom: 18px;
   box-shadow: var(--sh-2);
@@ -580,10 +700,10 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
   display: flex; align-items: flex-start; gap: 12px;
   border-radius: var(--r); padding: 13px 16px; margin-top: 16px;
   font-size: 12.5px; line-height: 1.55;
-  background: var(--warn-soft); border: 1px solid rgba(217,164,65,.28); color: var(--text);
+  background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--text);
 }
 .banner.info { background: var(--accent-soft); border-color: var(--accent-line); }
-.banner.ok   { background: var(--pos-soft); border-color: rgba(67,200,138,.28); }
+.banner.ok   { background: var(--pos-soft); border-color: var(--pos-line); }
 .banner .b-ic { font-size: 15px; line-height: 1.2; }
 .banner b { font-weight: 650; }
 
@@ -688,7 +808,7 @@ svg.spark { display: block; border-radius: 4px; }
                  background: none; border: none; font-size: 10px; }
 .heat-table td { padding: 6px 7px; text-align: center; border-radius: 5px; border: none;
                  font-variant-numeric: tabular-nums; }
-.heat-table td.empty { color: #39405400; background: var(--bg-soft); }
+.heat-table td.empty { color: transparent; background: var(--bg-soft); }
 .heat-table tbody tr:hover td { background-color: inherit; }
 
 /* =========================================================== QF Score ==== */
@@ -705,10 +825,10 @@ svg.spark { display: block; border-radius: 4px; }
 .score-badge.huge { flex-direction: column; align-items: center; gap: 3px; padding: 16px 22px; }
 .score-badge.huge b { font-size: 30px; font-weight: 600; line-height: 1; }
 .score-badge.huge em { font-size: 10.5px; }
-.score-badge.s-top  { background: var(--pos-soft); color: var(--pos); border-color: rgba(67,200,138,.24); }
+.score-badge.s-top  { background: var(--pos-soft); color: var(--pos); border-color: var(--pos-line); }
 .score-badge.s-good { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-line); }
-.score-badge.s-mid  { background: var(--warn-soft); color: var(--warn); border-color: rgba(217,164,65,.22); }
-.score-badge.s-low  { background: var(--neg-soft); color: var(--neg); border-color: rgba(224,115,111,.22); }
+.score-badge.s-mid  { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
+.score-badge.s-low  { background: var(--neg-soft); color: var(--neg); border-color: var(--neg-line); }
 
 .score-bars { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; }
 .sb-row { display: grid; grid-template-columns: 1fr 90px 44px; align-items: center; gap: 9px; }
@@ -735,7 +855,7 @@ svg.spark { display: block; border-radius: 4px; }
 table.runs td { font-size: 12.5px; vertical-align: top; }
 table.runs .run-sub { font-size: 10.5px; color: var(--text-dim); margin-top: 2px; }
 table.runs .run-crit { max-width: 250px; font-size: 11.5px; color: var(--text-2); line-height: 1.45; }
-table.runs tr.best-run td { background: rgba(67,200,138,.06); }
+table.runs tr.best-run td { background: var(--pos-soft); }
 table.runs tr.best-run td:first-child { box-shadow: inset 2px 0 0 var(--pos); }
 
 /* ========================================================= métricas ===== */
@@ -755,7 +875,7 @@ table.runs tr.best-run td:first-child { box-shadow: inset 2px 0 0 var(--pos); }
 .chart-box.tall { height: 330px; }
 .chart-tip {
   position: absolute; top: 6px; transform: translateX(-50%);
-  background: rgba(12,14,21,.96); border: 1px solid var(--border-strong);
+  background: var(--tooltip-bg); border: 1px solid var(--border-strong);
   border-radius: var(--r-sm); padding: 8px 12px; pointer-events: none;
   opacity: 0; transition: opacity .12s; z-index: 5; box-shadow: var(--sh-2);
   display: flex; flex-direction: column; gap: 2px; white-space: nowrap;
@@ -766,7 +886,7 @@ table.runs tr.best-run td:first-child { box-shadow: inset 2px 0 0 var(--pos); }
 
 /* ======================================================== inspector ===== */
 .overlay {
-  position: fixed; inset: 0; background: rgba(4,5,9,.8); backdrop-filter: blur(5px);
+  position: fixed; inset: 0; background: var(--overlay); backdrop-filter: blur(5px);
   z-index: 60; display: flex; align-items: flex-start; justify-content: center;
   padding: 34px 20px; overflow-y: auto; animation: fade .16s var(--ease);
 }
@@ -782,7 +902,7 @@ table.runs tr.best-run td:first-child { box-shadow: inset 2px 0 0 var(--pos); }
   position: sticky; top: 0; z-index: 3;
   display: flex; align-items: flex-start; gap: 16px;
   padding: 22px 26px 16px; margin-bottom: 20px;
-  background: linear-gradient(180deg, rgba(12,14,21,.98) 72%, rgba(12,14,21,0));
+  background: linear-gradient(180deg, var(--sheet-fade) 72%, transparent);
   border-radius: var(--r-xl) var(--r-xl) 0 0;
 }
 .sheet-head h2 { font-size: 20px; font-weight: 700; letter-spacing: -.025em;
@@ -872,9 +992,9 @@ table.runs tr.best-run td:first-child { box-shadow: inset 2px 0 0 var(--pos); }
   padding: 3px 9px; border-radius: 999px; letter-spacing: .01em;
   background: var(--accent-soft); color: var(--accent-2); border: 1px solid var(--accent-line);
 }
-.badge.green { background: var(--pos-soft); color: var(--pos); border-color: rgba(67,200,138,.3); }
-.badge.red { background: var(--neg-soft); color: var(--neg); border-color: rgba(224,115,111,.3); }
-.badge.yellow { background: var(--warn-soft); color: var(--warn); border-color: rgba(217,164,65,.3); }
+.badge.green { background: var(--pos-soft); color: var(--pos); border-color: var(--pos-line); }
+.badge.red { background: var(--neg-soft); color: var(--neg); border-color: var(--neg-line); }
+.badge.yellow { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
 
 .pos { color: var(--pos); }
 .neg { color: var(--neg); }
@@ -891,7 +1011,7 @@ table.runs tr.best-run td:first-child { box-shadow: inset 2px 0 0 var(--pos); }
 .empty-state p { font-size: 13px; max-width: 560px; margin-left: auto; margin-right: auto; }
 
 .suggestion {
-  background: var(--warn-soft); border: 1px solid rgba(217,164,65,.3);
+  background: var(--warn-soft); border: 1px solid var(--warn-line);
   border-radius: var(--r); padding: 17px 19px;
   max-width: 660px; margin: 16px auto 0; text-align: left;
 }
@@ -906,7 +1026,7 @@ table.runs tr.best-run td:first-child { box-shadow: inset 2px 0 0 var(--pos); }
 #toast-host { position: fixed; bottom: 24px; right: 24px; display: flex;
               flex-direction: column; gap: 9px; z-index: 80; }
 .toast {
-  background: rgba(22,26,37,.97); border: 1px solid var(--border-strong);
+  background: var(--toast-bg); border: 1px solid var(--border-strong);
   border-left: 3px solid var(--accent); color: var(--text);
   border-radius: var(--r-sm); padding: 12px 16px; font-size: 13px;
   box-shadow: var(--sh-2); animation: slide-in .22s var(--ease); max-width: 360px;

@@ -1700,6 +1700,39 @@ function condLabel(c) {
   return `${side(c.left)} ${opLbl} ${side(c.right)}`;
 }
 
+/* ------------------------------------------------------------------ tema
+   El oscuro es el default y vive en :root; el claro se activa poniendo
+   data-theme="light" en <html>. Los gráficos leen sus colores del CSS con
+   getComputedStyle, así que al cambiar de tema hay que volver a dibujarlos:
+   el SVG ya generado conserva los colores viejos. */
+function applyTheme(theme, redraw) {
+  const light = theme === "light";
+  const root = document.documentElement;
+  // se cortan las transiciones mientras dura el cambio: si no, todas las
+  // propiedades de color se animan a la vez y alguna queda a mitad de camino
+  root.classList.add("theme-switching");
+  root.setAttribute("data-theme", light ? "light" : "dark");
+  try { localStorage.setItem("qf.theme", light ? "light" : "dark"); } catch (e) { /* noop */ }
+  const btn = $("#theme-btn");
+  if (btn) btn.title = light ? "Cambiar a tema oscuro" : "Cambiar a tema claro";
+  if (redraw) navigate(S.page);
+  // dos cuadros: uno para aplicar los colores nuevos, otro para devolver las
+  // transiciones sin que el navegador las vea como un cambio animable
+  requestAnimationFrame(() => requestAnimationFrame(
+    () => root.classList.remove("theme-switching")));
+}
+
+function initTheme() {
+  let saved = null;
+  try { saved = localStorage.getItem("qf.theme"); } catch (e) { /* noop */ }
+  applyTheme(saved === "light" ? "light" : "dark", false);
+  const btn = $("#theme-btn");
+  if (btn) btn.onclick = () => {
+    const now = document.documentElement.getAttribute("data-theme");
+    applyTheme(now === "light" ? "dark" : "light", true);
+  };
+}
+
 /* -------------------------------------------------------------------- boot */
 (async function boot() {
   try {
@@ -1707,6 +1740,7 @@ function condLabel(c) {
     $("#version").textContent = `v${S.meta.version}`;
     await refreshDatasets();
   } catch (e) { toast(`No se pudo conectar con el backend: ${e.message}`, "err"); }
+  initTheme();
   $$("#nav button").forEach(b => b.onclick = () => navigate(b.dataset.page));
   navigate(S.datasets.length ? "mining" : "data");
 })();
