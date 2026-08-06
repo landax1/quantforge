@@ -415,16 +415,21 @@ void ReportFailure(const string side, const double vol, const double price,
 """
 
 _HELPER_DONCHIAN = """//+------------------------------------------------------------------+
-//| Canal de Donchian emulado (MT5 no lo trae nativo)                 |
+//| Canal de Donchian emulado (MT5 no lo trae nativo).                |
+//|                                                                   |
+//| El canal EXCLUYE la vela evaluada: se arranca en shift+1. Si se   |
+//| incluyera, "close[1] > maximo(high[1..n])" seria imposible por    |
+//| definicion — el high de una vela siempre es >= su close — y el EA |
+//| no abriria una sola operacion en toda la corrida.                 |
 //+------------------------------------------------------------------+
 double DonchianUpper(const int period, const int shift)
   {
-   int idx = iHighest(_Symbol, _Period, MODE_HIGH, period, shift);
+   int idx = iHighest(_Symbol, _Period, MODE_HIGH, period, shift + 1);
    return (idx < 0) ? 0.0 : iHigh(_Symbol, _Period, idx);
   }
 double DonchianLower(const int period, const int shift)
   {
-   int idx = iLowest(_Symbol, _Period, MODE_LOW, period, shift);
+   int idx = iLowest(_Symbol, _Period, MODE_LOW, period, shift + 1);
    return (idx < 0) ? 0.0 : iLow(_Symbol, _Period, idx);
   }
 """

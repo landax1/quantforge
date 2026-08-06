@@ -28,7 +28,11 @@ _PINE: dict[str, dict[str, str]] = {
     "Bollinger": {"middle": "ta.sma(close, {period})",
                   "upper": "(ta.sma(close, {period}) + {mult} * ta.stdev(close, {period}))",
                   "lower": "(ta.sma(close, {period}) - {mult} * ta.stdev(close, {period}))"},
-    "Donchian": {"upper": "ta.highest(high, {period})", "lower": "ta.lowest(low, {period})"},
+    # high[1]/low[1] como fuente = el canal excluye la vela evaluada, igual que
+    # el shift(1) del backtest. Sin eso "close > maximo(high)" incluiria la
+    # propia vela y jamas se cumpliria: cero operaciones.
+    "Donchian": {"upper": "ta.highest(high[1], {period})",
+                 "lower": "ta.lowest(low[1], {period})"},
     "VolumeSMA": {"value": "ta.sma(volume, {period})"},
     "VWAP": {"value": "ta.vwap(hlc3)"},
     "Ichimoku": {"tenkan": "_donchMid({tenkan})", "kijun": "_donchMid({kijun})",
