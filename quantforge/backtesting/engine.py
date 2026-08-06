@@ -175,7 +175,16 @@ def run_backtest(
             if direction != 0:
                 fill = o[i] * (1.0 + direction * slip) + direction * abs_slip
                 sl, tp = _levels(i, direction, fill)
-                sz = _size(fill, sl, cash)
+                # Un stop pedido que todavía no se puede calcular —el ATR está
+                # en su período de calentamiento— no puede terminar en una
+                # entrada sin protección: quedaría dimensionada al 100% del
+                # capital y, en una estrategia de un solo sentido, sin ninguna
+                # condición que la cierre. Medido en EURUSD H1: se convertía en
+                # una única operación de 134.259 velas. El EA exportado tampoco
+                # entra en esa situación, así que además desincronizaba el
+                # backtest con lo que después corre en MetaTrader.
+                unhedged = risk.stop_type not in ("none", "money") and np.isnan(sl)
+                sz = 0.0 if unhedged else _size(fill, sl, cash)
                 if sz > 0:
                     m_sl, m_tp = _money_levels(direction, fill, sz)
                     if not np.isnan(m_sl):
