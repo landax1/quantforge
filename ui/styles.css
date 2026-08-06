@@ -352,6 +352,16 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 .knob .help-note b { color: var(--text-2); font-weight: 600; }
 .help-note.danger-note b { color: var(--warn); }
 
+/* campos de fecha: el icono nativo del calendario es negro sobre negro en
+   tema oscuro, asi que hay que invertirlo o directamente no se ve */
+.datefld { cursor: pointer; font-variant-numeric: tabular-nums; }
+.datefld::-webkit-calendar-picker-indicator {
+  filter: invert(0.75); cursor: pointer; opacity: .8;
+  padding: 2px; border-radius: 4px;
+}
+.datefld::-webkit-calendar-picker-indicator:hover { opacity: 1; background: var(--card-hover); }
+.datefld:hover { border-color: var(--border-strong); }
+
 .linkbtn {
   font: inherit; font-size: inherit; font-weight: 650; color: var(--accent);
   background: none; border: none; padding: 0; cursor: pointer; text-decoration: underline;
