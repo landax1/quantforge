@@ -684,6 +684,22 @@ PAGES.mining = async (main) => {
               <label class="fld"><span>Dirección</span><select data-cfg="direction">
                 ${opt("long", c.direction, "Solo largos")}${opt("both", c.direction, "Largos y cortos")}${opt("short", c.direction, "Solo cortos")}</select></label>
             </div>
+
+            <div class="stage-sub">Período a minar</div>
+            <div class="fld-pair">
+              <label class="fld"><span>Desde</span>
+                <input type="date" id="m-date-from" value="${esc(S.sel.dateFrom || "")}"></label>
+              <label class="fld"><span>Hasta</span>
+                <input type="date" id="m-date-to" value="${esc(S.sel.dateTo || "")}"></label>
+            </div>
+            <div class="goal-presets mt" id="m-date-presets">
+              <button data-range="all">Todo</button>
+              <button data-range="is">Minar 70%</button>
+              <button data-range="oos">Validar 30%</button>
+            </div>
+            <p class="help-note">Dejalo en <b>Todo</b> para explorar. Para saber si una
+              estrategia sirve de verdad, mineá sobre el 70% y después probá la exportada
+              sobre el 30% que la búsqueda nunca vio.</p>
             <p class="stage-note" id="m-dsnote"></p>
           </div>
         </details>
@@ -896,9 +912,42 @@ PAGES.mining = async (main) => {
   const dsSel = $("#sel-dataset"), tfSel = $("#sel-timeframe");
   dsSel.onchange = () => {
     S.sel.dataset_id = dsSel.value;
+    // las fechas del instrumento anterior no significan nada en el nuevo
+    S.sel.dateFrom = S.sel.dateTo = "";
     adoptInstrumentDefaults();       // costos del broker del mercado nuevo
     navigate("mining");              // refresca la pastilla de contexto
   };
+
+  /* período a minar: campos libres + atajos para el split in/out-of-sample */
+  const dFrom = $("#m-date-from", main), dTo = $("#m-date-to", main);
+  const onDate = () => {
+    S.sel.dateFrom = dFrom.value;
+    S.sel.dateTo = dTo.value;
+    saveCfg();
+    updateNotes();
+  };
+  dFrom.onchange = onDate;
+  dTo.onchange = onDate;
+
+  $$("#m-date-presets button", main).forEach(b => b.onclick = () => {
+    const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
+    if (!ds) return;
+    const kind = b.dataset.range;
+    if (kind === "all") {
+      S.sel.dateFrom = S.sel.dateTo = "";
+    } else {
+      // el corte 70/30 se calcula sobre el calendario del dataset
+      const lo = new Date(ds.start), hi = new Date(ds.end);
+      const cut = new Date(lo.getTime() + (hi - lo) * 0.7);
+      const iso = (d) => d.toISOString().slice(0, 10);
+      if (kind === "is") { S.sel.dateFrom = iso(lo); S.sel.dateTo = iso(cut); }
+      else { S.sel.dateFrom = iso(cut); S.sel.dateTo = iso(hi); }
+    }
+    dFrom.value = S.sel.dateFrom;
+    dTo.value = S.sel.dateTo;
+    saveCfg();
+    updateNotes();
+  });
   tfSel.onchange = () => { S.sel.timeframe = tfSel.value; saveCfg(); updateNotes(); };
   $$("[data-cfg]", main).forEach(el => el.oninput = () => { harvestCfg(main); updateNotes(); });
 
@@ -906,9 +955,20 @@ PAGES.mining = async (main) => {
     const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
     const dsNote = $("#m-dsnote");
     if (ds && dsNote) {
-      dsNote.innerHTML = `<b>${fmtInt(ds.rows)}</b> velas M1 · ` +
-        `${esc(String(ds.start).slice(0, 10))} → ${esc(String(ds.end).slice(0, 10))} · ` +
-        `último precio <b>${ds.last_close}</b>`;
+      const full = `${String(ds.start).slice(0, 10)} → ${String(ds.end).slice(0, 10)}`;
+      const from = S.sel.dateFrom || String(ds.start).slice(0, 10);
+      const to = S.sel.dateTo || String(ds.end).slice(0, 10);
+      const years = (new Date(to) - new Date(from)) / (365.25 * 24 * 3600 * 1000);
+      const partial = S.sel.dateFrom || S.sel.dateTo;
+      dsNote.innerHTML =
+        `Historial completo: <b>${esc(full)}</b> · último precio <b>${ds.last_close}</b><br>` +
+        (partial
+          ? `Vas a minar <b>${esc(from)} → ${esc(to)}</b> (${years.toFixed(1)} años) —
+             el resto queda sin tocar para validar.`
+          : `Vas a minar <b>todo</b> el historial (${years.toFixed(1)} años).`);
+      const presets = $$("#m-date-presets button", main);
+      presets.forEach(b => b.classList.toggle("on",
+        b.dataset.range === "all" ? !partial : false));
     }
     updateSummaries(ds);
     const note = $("#m-costnote");
@@ -1043,6 +1103,7 @@ PAGES.mining = async (main) => {
     try {
       const result = await runJob("/api/mine", {
         dataset_id: S.sel.dataset_id, timeframe: S.sel.timeframe || "1h",
+        date_from: S.sel.dateFrom || undefined, date_to: S.sel.dateTo || undefined,
         drivers, filters: checked("#m-filters"),
         // el objetivo manda; max_candidates es solo el tope de seguridad
         target_keep: cfg.goal, keep_top: Math.max(cfg.goal, 100),
@@ -1338,6 +1399,9 @@ async function openInspector(row) {
     // que muestra el databank
     const { result } = await api.post("/api/backtest", {
       dataset_id: S.sel.dataset_id, timeframe: S.sel.timeframe || "1h",
+      // el mismo tramo que se minó: si no, la curva del inspector no
+      // coincidiría con la fila del databank que el usuario acaba de clickear
+      date_from: S.sel.dateFrom || undefined, date_to: S.sel.dateTo || undefined,
       spec: row.spec,
       settings: {
         spread: cfg.spread, slippage: cfg.slippage,

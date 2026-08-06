@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -55,14 +56,48 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     app = FastAPI(title="QuantForge", version=__version__, docs_url="/api/docs")
 
+    #: por debajo de esto no hay con qué: las plantillas usan períodos de hasta
+    #: 350 velas, así que un rango corto dejaría los indicadores en NaN
+    MIN_BARS = 500
+
+    def _slice_dates(df, payload: dict[str, Any]):
+        """Recorta el frame al rango pedido. Sin fechas, devuelve todo.
+
+        Es lo que permite minar sobre un tramo y validar sobre otro: el
+        rango viaja en el payload, así que la misma estrategia se puede
+        re-evaluar fuera de la muestra sin tocar nada más.
+        """
+        raw_from, raw_to = payload.get("date_from"), payload.get("date_to")
+        if not raw_from and not raw_to:
+            return df
+        try:
+            lo = pd.Timestamp(raw_from) if raw_from else None
+            hi = pd.Timestamp(raw_to) if raw_to else None
+        except ValueError as exc:
+            raise HTTPException(400, f"Fecha inválida: {exc}") from exc
+        if lo is not None and hi is not None and lo >= hi:
+            raise HTTPException(400, "La fecha 'desde' tiene que ser anterior a la de 'hasta'")
+        # una fecha sin hora significa el día entero, no su primer segundo
+        if hi is not None and hi == hi.normalize():
+            hi = hi + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
+        out = df.loc[lo:hi]
+        if len(out) < MIN_BARS:
+            span = f"{raw_from or 'inicio'} → {raw_to or 'fin'}"
+            raise HTTPException(
+                400, f"El rango {span} deja sólo {len(out):,} velas en este timeframe. "
+                     f"Hacen falta al menos {MIN_BARS:,} para que los indicadores "
+                     f"tengan historia suficiente.")
+        return out
+
     def _load_df(payload: dict[str, Any]):
         ds_id = payload.get("dataset_id")
         if not ds_id:
             raise HTTPException(400, "dataset_id is required")
         try:
-            return store.load(ds_id, payload.get("timeframe") or None)
+            df = store.load(ds_id, payload.get("timeframe") or None)
         except (FileNotFoundError, KeyError) as exc:
             raise HTTPException(404, str(exc)) from exc
+        return _slice_dates(df, payload)
 
     def _spec(payload: dict[str, Any]) -> StrategySpec:
         raw = payload.get("spec")
@@ -292,8 +327,14 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         target_keep = (int(min(max(int(raw_target), 1), 1000))
                        if raw_target not in (None, "") else None)
 
+        # el tramo realmente usado viaja con el resultado: sin esto no se sabe
+        # sobre qué período se minó una estrategia, que es el dato que separa
+        # una validación out-of-sample honesta de una que se engaña sola
+        used_range = {"from": str(df.index[0]), "to": str(df.index[-1]),
+                      "bars": int(len(df))}
+
         def work(handle):
-            return mine(
+            out = mine(
                 df, drv, flt,
                 max_filters=int(min(max(int(payload.get("max_filters", 2)), 0), 4)),
                 direction=payload.get("direction", "both"),
@@ -309,6 +350,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 seed=seed,
                 handle=handle,
             )
+            out["range"] = used_range
+            return out
         return {"job_id": jobs.submit_streaming("mine", work)}
 
     @app.post("/api/generate")
