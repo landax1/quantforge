@@ -1,0 +1,24 @@
+# Entorno virtual (se recrea con requirements.txt)
+.venv/
+env/
+
+# Datos y base local: pesan GB y se regeneran descargando de Dukascopy
+workspace/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Exportaciones generadas
+*.mq5
+*.pine
+*.xlsx
+
+# Sistema
+.DS_Store
+Thumbs.db
+desktop.ini
