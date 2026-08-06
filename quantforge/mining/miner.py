@@ -85,6 +85,7 @@ def _row(genome: Genome, spec, m: dict[str, float], score: float,
 #: acceptance criterion -> (metric, comparison, human label)
 _CRITERIA: tuple[tuple[str, str, str, str], ...] = (
     ("min_pf", "profit_factor", "min", "profit factor"),
+    ("min_win_rate_pct", "win_rate_pct", "min", "porcentaje de aciertos"),
     ("min_sharpe", "sharpe", "min", "Sharpe"),
     ("max_dd_pct", "max_drawdown_pct", "max", "max drawdown"),
     ("min_net_pct", "net_profit_pct", "min", "ganancia total"),

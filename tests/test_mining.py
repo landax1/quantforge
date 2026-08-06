@@ -107,6 +107,21 @@ def test_reward_ratio_changes_only_the_target(df):
     assert b[0]["spec"]["risk"]["target_value"] == pytest.approx(b[0]["stop_mult"] * 3.0)
 
 
+def test_win_rate_is_an_acceptance_filter(df):
+    """El porcentaje de aciertos filtra como cualquier otro criterio."""
+    r = mine(df, DRIVERS, FILTERS, max_candidates=60, min_trades=5, seed=13,
+             accept={"min_win_rate_pct": 45.0})
+    for row in r["databank"]:
+        assert row["metrics"]["win_rate_pct"] >= 45.0
+
+    # y cuando es imposible, el diagnóstico lo nombra
+    imposible = mine(df, DRIVERS, FILTERS, max_candidates=30, min_trades=5, seed=13,
+                     accept={"min_win_rate_pct": 100.0})
+    assert imposible["passed"] == 0
+    assert imposible["diagnosis"]["reason"] == "min_win_rate_pct"
+    assert "aciertos" in imposible["diagnosis"]["text"]
+
+
 def test_mine_acceptance_filters(df):
     r = mine(df, DRIVERS, FILTERS, max_candidates=60, min_trades=5, seed=7,
              accept={"min_pf": 1.05, "max_dd_pct": 30.0, "min_sharpe": None,

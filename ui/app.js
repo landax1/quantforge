@@ -45,7 +45,7 @@ function lossStreakCost(pct, n = 10) {
 
 const DEFAULT_CFG = {
   spread: 0.36, slippage: 0.1, commission: 0, capital: 10000,
-  minPf: 1.10, minSharpe: 0.30, maxDd: 25, minNet: 20,
+  minPf: 1.10, minSharpe: 0.30, maxDd: 25, minNet: 20, minWinRate: 50,
   maxFilters: 2, direction: "long", minTrades: 30,
   minCagr: 5, minExposure: 5,
   // ningún filtro opcional activo de arranque: primero mostrale que encuentra
@@ -86,6 +86,7 @@ const GOAL_PRESETS = [10, 25, 50, 100];
    activan de a uno, y sólo cuentan los que estén tildados. */
 const CRITERIA = [
   { key: "minPf",       label: "Profit factor ≥",       step: 0.05, min: 0, def: 1.10, unit: "" },
+  { key: "minWinRate",  label: "Aciertos ≥",            step: 1,    min: 0, def: 50,   unit: "%" },
   { key: "minNet",      label: "Ganancia total ≥",      step: 5,    min: 0, def: 20,   unit: "%" },
   { key: "minCagr",     label: "Rendimiento anual ≥",   step: 1,    min: 0, def: 5,    unit: "%" },
   // el motor mide el drawdown sobre la curva real: pedir menos de 4% deja
@@ -266,6 +267,7 @@ function riskPayload() {
 const CRIT_FIELD = {
   minPf: "min_pf", minSharpe: "min_sharpe", maxDd: "max_dd_pct",
   minNet: "min_net_pct", minCagr: "min_cagr_pct", minExposure: "min_exposure_pct",
+  minWinRate: "min_win_rate_pct",
 };
 function acceptPayload() {
   const out = {};
@@ -858,6 +860,7 @@ PAGES.mining = async (main) => {
               </div>
               ${CRITERIA.map(critRow).join("")}
             </div>
+            <p class="help-note" id="m-crithelp"></p>
           </div>
         </details>
 
@@ -1071,6 +1074,25 @@ PAGES.mining = async (main) => {
          cualquier estrategia que encuentres: <b>10 pérdidas seguidas</b> se llevan el
          <b>${streak.toFixed(0)}%</b> de la cuenta.`;
       riskHelp.classList.toggle("danger-note", streak >= 25);
+    }
+
+    /* El porcentaje de aciertos no se puede leer solo: con relación 1:3 hasta
+       un 30% es rentable, y pedir 60% ahí es casi imposible por construcción. */
+    const critHelp = $("#m-crithelp");
+    if (critHelp) {
+      if (!S.cfg.critOn.minWinRate) {
+        critHelp.innerHTML = "";
+      } else {
+        const rr = +S.cfg.rr, be = 100 / (1 + rr), pedido = +S.cfg.minWinRate;
+        critHelp.innerHTML = pedido <= be
+          ? `<b class="neg">⚠ ${pedido}% de aciertos no alcanza para ganar plata</b> con
+             relación 1:${rr}: el punto de equilibrio está en <b>${be.toFixed(0)}%</b>.
+             Por debajo de ahí, acertar más veces sigue dando pérdida.`
+          : `Con relación 1:${rr} el equilibrio está en <b>${be.toFixed(0)}%</b>, así que
+             pedís <b>${(pedido - be).toFixed(0)} puntos</b> de ventaja.${
+               pedido - be > 15 ? " Es una vara muy alta: probá bajarla si no aparece nada."
+                                : ""}`;
+      }
     }
 
     const lotsHelp = $("#m-lotshelp");

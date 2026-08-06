@@ -317,6 +317,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             v = payload.get(key)
             return float(v) if v not in (None, "") else None
         accept = {"min_pf": _crit("min_pf"), "min_sharpe": _crit("min_sharpe"),
+                  "min_win_rate_pct": _crit("min_win_rate_pct"),
                   "max_dd_pct": _crit("max_dd_pct"), "min_net_pct": _crit("min_net_pct"),
                   "min_cagr_pct": _crit("min_cagr_pct"),
                   "min_exposure_pct": _crit("min_exposure_pct")}
