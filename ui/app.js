@@ -572,10 +572,24 @@ PAGES.data = async (main) => {
       <td class="num"><button class="btn ghost small" data-del="${d.id}">Borrar</button></td>
     </tr>`).join("");
 
+  // resumen del workspace, con números reales — nada estimado
+  const totalVelas = S.datasets.reduce((a, d) => a + (d.rows || 0), 0);
+  const fechas = S.datasets.filter(d => d.start && d.end);
+  const desde = fechas.length ? fechas.map(d => String(d.start)).sort()[0].slice(0, 10) : "—";
+  const hasta = fechas.length ? fechas.map(d => String(d.end)).sort().slice(-1)[0].slice(0, 10) : "—";
+  const compacto = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M`
+                        : n >= 1e3 ? `${(n / 1e3).toFixed(0)}k` : String(n);
+
   main.innerHTML = `
-  ${pageHead("Datos",
+  ${pageHead("Tus datos de mercado",
     "Los instrumentos más operados, listos para minar. Descargá con un clic o importá tu propio CSV.",
     ctxPill())}
+
+  ${S.datasets.length ? `<div class="statcards">
+    <div class="statcard"><span>Instrumentos</span><b>${S.datasets.length}</b></div>
+    <div class="statcard"><span>Velas totales</span><b>${compacto(totalVelas)}</b></div>
+    <div class="statcard"><span>Historial cubierto</span><b class="sm">${esc(desde)} → ${esc(hasta)}</b></div>
+  </div>` : ""}
 
   <div class="card">
     <h2>Biblioteca de instrumentos <span class="hint">M1 real de Dukascopy, en hora del servidor (NY+7)</span></h2>
@@ -943,7 +957,8 @@ PAGES.mining = async (main) => {
             </div>
 
             <div class="knob mt" id="rk-risk-box" ${c.sizing === "lots" ? "hidden" : ""}>
-              <div class="knob-head"><b>Riesgo por operación</b>
+              <div class="knob-head"><span class="valrow-t"><b>Riesgo por operación</b>
+                <span>% del balance que se juega en cada una</span></span>
                 <span class="knob-val"><input type="number" id="rk-risk" step="0.1" min="0.1" max="10"
                   value="${c.riskPct}"><em>%</em></span></div>
               <div class="goal-presets" id="rk-risk-presets">
@@ -963,7 +978,8 @@ PAGES.mining = async (main) => {
             </div>
 
             <div class="knob mt">
-              <div class="knob-head"><b>Relación riesgo / beneficio</b>
+              <div class="knob-head"><span class="valrow-t"><b>Relación riesgo / beneficio</b>
+                <span>cuánto vale el objetivo respecto del stop</span></span>
                 <span class="knob-val"><em>1 :</em><input type="number" id="rk-rr" step="0.25" min="0.25" max="10"
                   value="${c.rr}"></span></div>
               <div class="goal-presets" id="rk-rr-presets">
