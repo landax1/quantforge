@@ -875,8 +875,12 @@ PAGES.mining = async (main) => {
               <label class="fld"><span>Instrumento</span><select id="sel-dataset">${dsOpts}</select></label>
               <label class="fld"><span>Timeframe <span class="hint">las velas M1 se agrupan a este TF</span></span>
                 <select id="sel-timeframe">${tfOpts}</select></label>
-              <label class="fld"><span>Dirección</span><select data-cfg="direction">
-                ${opt("long", c.direction, "Solo largos")}${opt("both", c.direction, "Largos y cortos")}${opt("short", c.direction, "Solo cortos")}</select></label>
+              <div class="fld"><span>Dirección</span>
+                <div class="seg full" id="m-dir">
+                  ${[["long", "Largos"], ["short", "Cortos"], ["both", "Ambos"]]
+                    .map(([v, t]) => `<button data-dir="${v}" class="${c.direction === v ? "on" : ""}">${t}</button>`).join("")}
+                </div>
+              </div>
             </div>
 
             <div class="stage-sub">Período a minar</div>
@@ -1149,6 +1153,15 @@ PAGES.mining = async (main) => {
   });
 
   tfSel.onchange = () => { S.sel.timeframe = tfSel.value; saveCfg(); updateNotes(); };
+
+  /* dirección: tres opciones excluyentes se eligen mejor viéndolas todas que
+     abriendo un desplegable para descubrir cuáles hay */
+  $$("#m-dir button", main).forEach(b => b.onclick = () => {
+    S.cfg.direction = b.dataset.dir;
+    $$("#m-dir button", main).forEach(x => x.classList.toggle("on", x === b));
+    saveCfg();
+    updateNotes();
+  });
   $$("[data-cfg]", main).forEach(el => el.oninput = () => { harvestCfg(main); updateNotes(); });
 
   function updateNotes() {
