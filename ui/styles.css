@@ -62,37 +62,6 @@
   --warn-line:     rgba(217, 164, 65, 0.28);
   --selection:     rgba(99, 91, 255, 0.34);
 
-  /* ---- barra lateral ----
-     Tiene sus propios tokens porque es navy en los DOS temas: en claro hace
-     de ancla oscura contra el fondo casi blanco, y en oscuro se funde con el
-     resto. Si heredara las superficies generales, en claro quedaría gris. */
-  --side-bg:        #101827;
-  --side-text:      #e6ecf8;
-  --side-text-dim:  #93a3c2;
-  --side-hover:     #1a2438;
-  --side-line:      #232f47;
-
-  /* ---- familia decorativa ----
-     Para categorías e iconos de sección. NO incluye verde ni rojo: esos dos
-     significan ganancia y pérdida y no pueden usarse de adorno. */
-  --c-indigo: #5b5bd6;  --c-indigo-bg: rgba(91, 91, 214, 0.13);
-  --c-teal:   #14b8a6;  --c-teal-bg:   rgba(20, 184, 166, 0.13);
-  --c-pink:   #ec4899;  --c-pink-bg:   rgba(236, 72, 153, 0.13);
-  --c-blue:   #3b82f6;  --c-blue-bg:   rgba(59, 130, 246, 0.13);
-  --c-amber:  #f59e0b;  --c-amber-bg:  rgba(245, 158, 11, 0.13);
-  --c-violet: #8b5cf6;  --c-violet-bg: rgba(139, 92, 246, 0.13);
-  /* versión legible de cada familia, para cuando el color va en TEXTO */
-  --c-indigo-tx: #a5b4fc;
-  --c-teal-tx:   #5eead4;
-  --c-pink-tx:   #f9a8d4;
-  --c-blue-tx:   #93c5fd;
-  --c-amber-tx:  #fcd34d;
-  --c-violet-tx: #c4b5fd;
-
-  /* degradado de marca: rellenos importantes (botón primario, ítem activo) */
-  --grad: linear-gradient(145deg, #5b5bd6, #7c6cf0);
-  --grad-shadow: rgba(91, 91, 214, .38);
-
   /* ---- superficies compuestas (barras fijas, tooltips, overlays) ---- */
   --glass:      rgba(17, 20, 29, .92);          /* barras pegajosas con blur */
   --overlay:    rgba(4, 5, 9, .80);             /* fondo del inspector */
@@ -108,10 +77,10 @@
   --date-icon: invert(.65);
 
   /* ---- forma y profundidad ---- */
-  --r-sm: 9px;
-  --r:    12px;
-  --r-lg: 18px;
-  --r-xl: 22px;
+  --r-sm: 7px;
+  --r:    10px;
+  --r-lg: 13px;
+  --r-xl: 16px;
   --radius: var(--r-lg);           /* compat con reglas viejas */
   --sh-1: 0 1px 2px rgba(0,0,0,.28);
   --sh-2: 0 4px 16px rgba(0,0,0,.3);
@@ -135,32 +104,15 @@
    (el verde del tema oscuro sobre blanco queda en ~2:1 de contraste), y las
    sombras pasan a ser muy tenues porque sobre claro se leen como suciedad.  */
 :root[data-theme="light"] {
-  /* fondo con un tinte azulado, no blanco puro: las tarjetas blancas encima
-     necesitan algo contra qué recortarse o la pantalla se lee plana */
-  --bg:            #f4f6fb;
-  --bg-soft:       #f7f9fd;
+  --bg:            #ffffff;
+  --bg-soft:       #f6f7f9;
   --card:          #ffffff;
-  --card-2:        #f7f9fd;
-  --card-hover:    #f0f3fa;
-  --border:        #e8ecf4;
-  --border-soft:   #eef1f7;
-  --border-strong: #d6dcea;
-  --grid:          #eef1f7;
-
-  /* la barra lateral sigue siendo navy: es el ancla oscura de la pantalla */
-  --side-bg:       #14243f;
-  --side-text:     #ffffff;
-  --side-text-dim: #a9bada;
-  --side-hover:    #1b2f52;
-  --side-line:     #25406c;
-
-  /* sobre fondo claro las variantes de texto van al otro extremo */
-  --c-indigo-tx: #4338ca;
-  --c-teal-tx:   #0f766e;
-  --c-pink-tx:   #be185d;
-  --c-blue-tx:   #1d4ed8;
-  --c-amber-tx:  #b45309;
-  --c-violet-tx: #6d28d9;
+  --card-2:        #f7f8fa;
+  --card-hover:    #f0f2f6;
+  --border:        #e2e5ec;
+  --border-soft:   #eef0f4;
+  --border-strong: #ccd2dd;
+  --grid:          #eef0f4;
 
   --text:      #16191f;
   --text-2:    #4a5262;
@@ -235,70 +187,69 @@ body {
 
 .app { display: flex; height: 100vh; position: relative; z-index: 1; }
 
-/* ========================================================== sidebar =====
-   Navy en los dos temas. Usa sus propios tokens (--side-*) para no depender
-   de las superficies generales, que en tema claro la dejarían gris. */
+/* ========================================================== sidebar ===== */
 .sidebar {
-  width: 236px; flex-shrink: 0;
-  background: var(--side-bg); color: var(--side-text);
-  border-right: none;
+  width: 226px; flex-shrink: 0;
+  background: var(--bg-soft);
+  border-right: 1px solid var(--border-soft);
   display: flex; flex-direction: column;
-  padding: 24px 14px 16px;
+  padding: 20px 14px 14px;
 }
 .logo { display: flex; align-items: center; gap: 11px; padding: 4px 8px 26px; }
-/* La marca: el único relleno de color de la barra, con sombra propia. */
+/* Primer momento de color: la marca. Es lo primero que se ve y el único
+   lugar de la barra lateral donde el acento aparece relleno. */
 .logo-mark {
-  width: 38px; height: 38px; flex-shrink: 0;
-  display: grid; place-items: center; border-radius: 12px;
-  background: var(--grad); border: none; color: #fff;
-  box-shadow: 0 6px 16px var(--grad-shadow);
+  width: 30px; height: 30px; flex-shrink: 0;
+  display: grid; place-items: center; border-radius: 8px;
+  background: var(--accent); border: none;
+  color: var(--accent-fg);
 }
-.logo-mark svg { width: 19px; height: 19px; }
 .logo-mark svg { width: 18px; height: 18px; }
 .logo-text {
   font-weight: 700; font-size: 16.5px; letter-spacing: -.025em; line-height: 1.1;
   display: flex; flex-direction: column;
 }
 .logo-text em {
-  font-style: normal; font-size: 10.5px; font-weight: 600; letter-spacing: .04em;
-  text-transform: uppercase; color: var(--side-text-dim); margin-top: 3px;
+  font-style: normal; font-size: 10px; font-weight: 500; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-dim); margin-top: 3px;
 }
 
 #nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
 #nav button {
   position: relative;
-  display: flex; align-items: center; gap: 12px;
-  background: none; border: none; color: var(--side-text-dim);
-  font: inherit; font-weight: 600; font-size: 13.5px;
-  padding: 11px 12px; border-radius: 11px;
+  display: flex; align-items: center; gap: 11px;
+  background: none; border: none; color: var(--text-2);
+  font: inherit; font-weight: 500; font-size: 13.5px;
+  padding: 10px 12px; border-radius: var(--r);
   cursor: pointer; text-align: left;
   transition: background .14s var(--ease), color .14s var(--ease);
 }
-#nav button:hover { background: var(--side-hover); color: var(--side-text); }
-/* Dónde estás parado: relleno con el degradado de marca y su sombra. Es el
-   elemento más saturado de la pantalla, y por eso hay uno solo. */
+#nav button:hover { background: var(--card-2); color: var(--text); }
+/* Segundo momento: dónde estás parado. El acento como tinte y como texto
+   dice "acá" sin necesidad de una barra ni un borde extra. */
 #nav button.active {
-  background: var(--grad); color: #fff;
-  box-shadow: 0 6px 16px var(--grad-shadow);
+  background: var(--accent-soft); color: var(--accent-2);
 }
 #nav button.active .ic { opacity: 1; }
 /* cuántas estrategias guardadas hay, sin tener que entrar a mirar */
 .nav-count {
-  margin-left: auto; font-size: 10.5px; font-weight: 700;
-  font-variant-numeric: tabular-nums; color: var(--side-text-dim);
-  background: rgba(255,255,255,.10); border: none;
-  border-radius: 999px; padding: 2px 8px; min-width: 22px; text-align: center;
+  margin-left: auto; font-size: 10.5px; font-weight: 650;
+  font-variant-numeric: tabular-nums; color: var(--text-dim);
+  background: var(--card-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 1px 7px; min-width: 20px; text-align: center;
 }
 .nav-count:empty { display: none; }
-#nav button.active .nav-count { color: #fff; background: rgba(255,255,255,.20); }
+#nav button.active .nav-count {
+  color: var(--accent-2); background: var(--accent-soft); border-color: var(--accent-line);
+}
 
 #nav .ic { width: 18px; height: 18px; display: grid; place-items: center; opacity: .9; }
 #nav .ic svg { width: 17px; height: 17px; }
 
 .sidebar-foot {
   display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
-  color: var(--side-text-dim); font-size: 11.5px;
-  padding: 14px 12px 2px; border-top: 1px solid var(--side-line);
+  color: var(--text-dim); font-size: 11px;
+  padding: 12px 12px 2px; border-top: 1px solid var(--border-soft);
 }
 .sidebar-foot #version { margin-left: auto; font-variant-numeric: tabular-nums; }
 /* Al cambiar de tema no se anima nada. Los componentes tienen transiciones de
@@ -316,8 +267,7 @@ body {
   background: transparent; border: 1px solid transparent; color: var(--text-dim);
   transition: color .14s, background .14s, border-color .14s;
 }
-.theme-btn { color: var(--side-text-dim); }
-.theme-btn:hover { color: var(--side-text); background: var(--side-hover); border-color: transparent; }
+.theme-btn:hover { color: var(--text); background: var(--card-2); border-color: var(--border); }
 .theme-btn svg { width: 15px; height: 15px; }
 .theme-btn .ic-sun { display: block; }
 .theme-btn .ic-moon { display: none; }
@@ -405,23 +355,19 @@ select {
 .controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
 
 button.btn {
-  font: inherit; font-weight: 700; font-size: 13px; letter-spacing: -.005em;
-  background: var(--grad); color: #fff;
-  box-shadow: 0 6px 16px var(--grad-shadow);
+  font: inherit; font-weight: 550; font-size: 13px; letter-spacing: -.005em;
+  background: var(--accent); color: var(--accent-fg);
   border: 1px solid transparent; border-radius: var(--r-sm);
   height: var(--h-ctl); padding: 0 16px; cursor: pointer;
   display: inline-flex; align-items: center; gap: 7px; justify-content: center;
   transition: background .14s, border-color .14s, color .14s, opacity .14s;
 }
-button.btn:hover { filter: brightness(1.06); transform: translateY(-1px);
-                   box-shadow: 0 9px 20px var(--grad-shadow); }
-button.btn:active { transform: translateY(0); filter: brightness(.96); }
-button.btn:disabled { opacity: .45; cursor: default; box-shadow: none; transform: none; filter: none; }
+button.btn:hover { background: var(--accent-hover); }
+button.btn:active { background: var(--accent-active); }
+button.btn:disabled { opacity: .4; cursor: default; background: var(--accent); }
 button.btn.ghost {
   background: var(--card-2); color: var(--text-2); border-color: var(--border);
-  box-shadow: none;
 }
-button.btn.ghost:hover { transform: none; filter: none; box-shadow: none; }
 button.btn.ghost:hover { background: var(--card-hover); color: var(--text); border-color: var(--border-strong); }
 button.btn.danger { background: transparent; color: var(--neg); border-color: var(--border); }
 button.btn.small { height: 28px; padding: 0 11px; font-size: 12px; }
@@ -509,8 +455,8 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 .lock-note b { color: var(--text); }
 
 .setup-run {
-  border-top: 1px solid var(--border); background: var(--bg-soft);
-  padding: 17px 18px; display: flex; flex-direction: column; gap: 12px;
+  border-top: 1px solid var(--border); background: var(--card-2);
+  padding: 15px 16px; display: flex; flex-direction: column; gap: 12px;
 }
 .setup-run.running { background: var(--accent-soft); }
 .setup-run .btn { width: 100%; }
@@ -679,55 +625,6 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 .adv-body { padding: 10px 0 2px; display: flex; flex-direction: column; gap: 8px; }
 .adv-body select { width: 100%; }
 
-
-/* ------------------------------------------ baldosa de icono de sección --
-   Reemplaza al número. Cada sección con su color de familia, del mismo juego
-   decorativo que los tiles de instrumento — sin verde ni rojo. */
-/* Número + icono. Con todas las secciones plegadas, el número es lo único que
-   dice que esto es una secuencia y no una lista de opciones sueltas. */
-.sect-step { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
-.sect-n {
-  font-size: 11px; font-weight: 700; color: var(--text-dim);
-  font-variant-numeric: tabular-nums; width: 9px; text-align: center;
-}
-.sect[open] .sect-n { color: var(--text-2); }
-.sect-ic {
-  width: 32px; height: 32px; flex-shrink: 0; border-radius: 10px;
-  display: grid; place-items: center;
-}
-.sect-ic svg { width: 16px; height: 16px; }
-.ic-indigo { background: var(--c-indigo-bg); color: var(--c-indigo); }
-.ic-teal   { background: var(--c-teal-bg);   color: var(--c-teal); }
-.ic-pink   { background: var(--c-pink-bg);   color: var(--c-pink); }
-.ic-blue   { background: var(--c-blue-bg);   color: var(--c-blue); }
-.ic-amber  { background: var(--c-amber-bg);  color: var(--c-amber); }
-.ic-violet { background: var(--c-violet-bg); color: var(--c-violet); }
-
-/* ---------------------------------------------- filas de Mis estrategias -
-   Tarjeta por estrategia con sus métricas en columnas, como la referencia,
-   en vez de una tabla apretada. */
-.saved-list { display: flex; flex-direction: column; gap: 14px; }
-.saved-row {
-  background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
-  box-shadow: var(--sh-1); padding: 18px 22px; cursor: pointer;
-  display: grid; grid-template-columns: minmax(0,1fr) repeat(4, auto) auto; gap: 24px;
-  align-items: center; transition: transform .16s var(--ease), box-shadow .16s;
-}
-.saved-row:hover { transform: translateY(-2px); box-shadow: var(--sh-2); }
-@media (max-width: 900px) {
-  .saved-row { grid-template-columns: 1fr 1fr; gap: 14px; }
-}
-.saved-row .sr-name { display: flex; align-items: center; gap: 10px; margin-bottom: 3px; }
-.saved-row .sr-name b { font-size: 15px; font-weight: 700; }
-.saved-row .sr-rules { font-size: 12px; color: var(--text-dim); }
-.saved-row .sr-met { text-align: right; }
-.saved-row .sr-met span {
-  display: block; font-size: 9.5px; font-weight: 700; color: var(--text-dim);
-  text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;
-}
-.saved-row .sr-met b { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.saved-row .sr-acts { display: flex; align-items: center; gap: 7px; }
-
 /* ==================================================== lista de bloques == */
 .blocklist {
   display: flex; flex-direction: column; max-height: 250px; overflow-y: auto;
@@ -860,9 +757,9 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 .banner b { font-weight: 650; }
 
 /* ====================================================== hero campeón ==== */
-/* El campeón. Se probó pintarlo entero con el degradado de marca y salió mal:
-   la tarjeta lleva adentro el desglose del score, el badge y un gráfico, y
-   sobre un fondo saturado nada de eso se lee. El color entra por el filo. */
+/* Tercer momento: el campeón. Es el resultado de toda la corrida, así que se
+   permite el único fondo teñido de la app — un filo saturado a la izquierda y
+   un tinte muy leve. Sin degradados de neón: el color entra por el borde. */
 .champ {
   position: relative; overflow: hidden;
   background: var(--accent-soft);
@@ -902,55 +799,15 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 
 /* ================================================ tarjetas instrumento == */
 .inst-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(256px, 1fr)); gap: 16px; }
-/* Tile de instrumento: cada familia de mercado con su color, pintado entero.
-   Es el patrón de categorías de la referencia, y el único lugar donde la app
-   se permite color decorativo. */
 .inst-card {
   position: relative; background: var(--card); border: 1px solid var(--border);
   border-radius: var(--r-lg); padding: 20px;
   display: flex; flex-direction: column; gap: 10px;
   transition: border-color .16s var(--ease), background .16s var(--ease);
 }
-.inst-card.t-indigo { background: linear-gradient(145deg,#6366f1,#4f46e5); }
-.inst-card.t-teal   { background: linear-gradient(145deg,#14b8a6,#0d9488); }
-.inst-card.t-pink   { background: linear-gradient(145deg,#f472b6,#db2777); }
-.inst-card.t-blue   { background: linear-gradient(145deg,#3b82f6,#2563eb); }
-.inst-card.t-violet { background: linear-gradient(145deg,#a78bfa,#7c3aed); }
-/* pintado el fondo, todo lo de adentro pasa a blanco */
-.inst-card.t-indigo, .inst-card.t-teal, .inst-card.t-pink, .inst-card.t-blue, .inst-card.t-violet {
-  border-color: transparent; color: #fff;
-  box-shadow: 0 6px 18px rgba(20,28,43,.14);
-}
-.inst-card.t-indigo h3, .inst-card.t-teal h3, .inst-card.t-pink h3,
-.inst-card.t-blue h3, .inst-card.t-violet h3,
-.inst-card.t-indigo .cat, .inst-card.t-teal .cat, .inst-card.t-pink .cat,
-.inst-card.t-blue .cat, .inst-card.t-violet .cat,
-.inst-card.t-indigo p, .inst-card.t-teal p, .inst-card.t-pink p,
-.inst-card.t-blue p, .inst-card.t-violet p,
-.inst-card.t-indigo .inst-meta, .inst-card.t-teal .inst-meta,
-.inst-card.t-pink .inst-meta, .inst-card.t-blue .inst-meta,
-.inst-card.t-violet .inst-meta { color: #fff; }
-.inst-card.t-indigo p, .inst-card.t-teal p, .inst-card.t-pink p,
-.inst-card.t-blue p, .inst-card.t-violet p,
-.inst-card.t-indigo .inst-meta, .inst-card.t-teal .inst-meta,
-.inst-card.t-pink .inst-meta, .inst-card.t-blue .inst-meta,
-.inst-card.t-violet .inst-meta { opacity: .9; }
-.inst-card.t-indigo .cat, .inst-card.t-teal .cat, .inst-card.t-pink .cat,
-.inst-card.t-blue .cat, .inst-card.t-violet .cat { opacity: .82; }
-.inst-card:hover { transform: translateY(-2px); box-shadow: 0 12px 28px rgba(20,28,43,.22); }
-/* los botones adentro van en blanco translúcido, no en el acento de marca */
-/* el descendiente hay que repetirlo en CADA selector: en una lista, un
-   " .btn" suelto se pega sólo al último y el resto recibe la regla entera */
-.inst-card.t-indigo .btn, .inst-card.t-teal .btn, .inst-card.t-pink .btn, .inst-card.t-blue .btn, .inst-card.t-violet .btn {
-  background: rgba(255,255,255,.20); color: #fff;
-  border: 1px solid rgba(255,255,255,.30); box-shadow: none;
-}
-.inst-card.t-indigo .btn:hover, .inst-card.t-teal .btn:hover, .inst-card.t-pink .btn:hover, .inst-card.t-blue .btn:hover, .inst-card.t-violet .btn:hover {
-  background: rgba(255,255,255,.32); filter: none; transform: none; box-shadow: none;
-}
-.inst-card.t-indigo.ready::before, .inst-card.t-teal.ready::before,
-.inst-card.t-pink.ready::before, .inst-card.t-blue.ready::before,
-.inst-card.t-violet.ready::before { background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,.28); }
+/* la tarjeta reacciona con color, no saltando: el desplazamiento al pasar el
+   mouse desalinea la grilla entera y se lee como un efecto, no como respuesta */
+.inst-card:hover { border-color: var(--border-strong); background: var(--card-2); }
 .inst-card.ready::before {
   content: ""; position: absolute; top: 22px; right: 20px;
   width: 6px; height: 6px; border-radius: 50%; background: var(--pos);
@@ -1023,30 +880,23 @@ svg.spark { display: block; border-radius: 4px; }
 .heat-table tbody tr:hover td { background-color: inherit; }
 
 /* =========================================================== QF Score ==== */
-/* Fondo SÓLIDO, no un tinte. El badge suele vivir dentro de la tarjeta del
-   campeón, que ya está teñida: apilar dos capas translúcidas daba un fondo
-   compuesto de rgb(216,224,237) y dejaba la etiqueta en 4.16:1. Con la
-   superficie de tarjeta debajo, el color del texto rinde lo que promete. */
 .score-badge {
   display: inline-flex; align-items: baseline; gap: 6px;
   border-radius: var(--r-sm); padding: 3px 9px;
-  background: var(--card);
   border: 1px solid transparent; font-variant-numeric: tabular-nums;
 }
 .score-badge b { font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
-/* sin opacidad: bajaba la etiqueta a 4.16:1 sobre el fondo claro. La jerarquía
-   ya la marca el tamaño (10px contra 13px del número), no hace falta atenuar */
 .score-badge em { font-style: normal; font-size: 10px; font-weight: 500;
-                  letter-spacing: .01em; }
+                  letter-spacing: .01em; opacity: .8; }
 .score-badge.big { padding: 4px 10px; }
 .score-badge.big b { font-size: 16px; }
 .score-badge.huge { flex-direction: column; align-items: center; gap: 3px; padding: 16px 22px; }
 .score-badge.huge b { font-size: 30px; font-weight: 600; line-height: 1; }
 .score-badge.huge em { font-size: 10.5px; }
-.score-badge.s-top  { color: var(--pos); border-color: var(--pos-line); }
-.score-badge.s-good { color: var(--accent-2); border-color: var(--accent-line); }
-.score-badge.s-mid  { color: var(--warn); border-color: var(--warn-line); }
-.score-badge.s-low  { color: var(--neg); border-color: var(--neg-line); }
+.score-badge.s-top  { background: var(--pos-soft); color: var(--pos); border-color: var(--pos-line); }
+.score-badge.s-good { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-line); }
+.score-badge.s-mid  { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
+.score-badge.s-low  { background: var(--neg-soft); color: var(--neg); border-color: var(--neg-line); }
 
 .score-bars { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; }
 .sb-row { display: grid; grid-template-columns: 1fr 90px 44px; align-items: center; gap: 9px; }
@@ -1274,17 +1124,11 @@ table.runs tr.best-run td:first-child { box-shadow: inset 2px 0 0 var(--pos); }
 @media (max-width: 1100px) { .guide-steps { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 640px)  { .guide-steps { grid-template-columns: 1fr; } }
 .gstep { display: flex; flex-direction: column; gap: 5px; }
-/* Cada paso con el color de su familia: el color hace de hilo entre lo que
-   se configura arriba y lo que el minero hace con eso. */
 .gnum {
-  width: 26px; height: 26px; display: grid; place-items: center; border-radius: 9px;
+  width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px;
   background: var(--card-2); border: 1px solid var(--border); color: var(--text-2);
-  font-size: 11.5px; font-weight: 700; margin-bottom: 8px;
+  font-size: 10.5px; font-weight: 600; margin-bottom: 4px;
 }
-.gnum.g-indigo { background: var(--c-indigo-bg); border-color: transparent; color: var(--c-indigo-tx); }
-.gnum.g-teal   { background: var(--c-teal-bg);   border-color: transparent; color: var(--c-teal-tx); }
-.gnum.g-pink   { background: var(--c-pink-bg);   border-color: transparent; color: var(--c-pink-tx); }
-.gnum.g-amber  { background: var(--c-amber-bg);  border-color: transparent; color: var(--c-amber-tx); }
 .gstep b { font-size: 13px; font-weight: 600; }
 .gstep p { color: var(--text-2); font-size: 11.5px; line-height: 1.55; }
 .guide-foot { color: var(--text-2); font-size: 12px; margin-top: 18px;
