@@ -97,11 +97,16 @@ const SECT_ICONS = {
   avanzado: ["violet", '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>'],
 };
 
-function sectIcon(clave) {
+function sectIcon(clave, paso) {
   const [tono, path] = SECT_ICONS[clave] || SECT_ICONS.mercado;
-  return `<span class="sect-ic ic-${tono}"><svg viewBox="0 0 24 24" fill="none"
-    stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
-    stroke-linejoin="round">${path}</svg></span>`;
+  // el número va junto al icono: con todas las secciones plegadas, es lo único
+  // que dice que esto es una secuencia y no una lista de opciones sueltas
+  return `<span class="sect-step">
+    <span class="sect-n">${paso}</span>
+    <span class="sect-ic ic-${tono}"><svg viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
+      stroke-linejoin="round">${path}</svg></span>
+  </span>`;
 }
 
 /* Filtros de aceptación al databank. Todos opcionales salvo el mínimo de
@@ -883,8 +888,8 @@ PAGES.mining = async (main) => {
   <div class="workbench">
     <aside class="setup">
       <div class="setup-scroll">
-        <details class="sect" open>
-          <summary>${sectIcon("mercado")}
+        <details class="sect">
+          <summary>${sectIcon("mercado", 1)}
             <span class="sect-t"><b>Mercado</b><em id="sum-market">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -928,7 +933,7 @@ PAGES.mining = async (main) => {
         </details>
 
         <details class="sect">
-          <summary>${sectIcon("bloques")}
+          <summary>${sectIcon("bloques", 2)}
             <span class="sect-t"><b>Bloques</b><em id="sum-blocks">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -945,8 +950,8 @@ PAGES.mining = async (main) => {
           </div>
         </details>
 
-        <details class="sect" open>
-          <summary>${sectIcon("riesgo")}
+        <details class="sect">
+          <summary>${sectIcon("riesgo", 3)}
             <span class="sect-t"><b>Riesgo y salidas</b><em id="sum-risk">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -992,7 +997,7 @@ PAGES.mining = async (main) => {
         </details>
 
         <details class="sect">
-          <summary>${sectIcon("costos")}
+          <summary>${sectIcon("costos", 4)}
             <span class="sect-t"><b>Costos del broker</b><em id="sum-cost">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -1008,8 +1013,8 @@ PAGES.mining = async (main) => {
           </div>
         </details>
 
-        <details class="sect" open>
-          <summary>${sectIcon("filtros")}
+        <details class="sect">
+          <summary>${sectIcon("filtros", 5)}
             <span class="sect-t"><b>Filtros de aceptación</b><em id="sum-crit">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -1029,7 +1034,7 @@ PAGES.mining = async (main) => {
         </details>
 
         <details class="sect">
-          <summary>${sectIcon("avanzado")}
+          <summary>${sectIcon("avanzado", 6)}
             <span class="sect-t"><b>Avanzado</b><em id="sum-adv">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -1409,13 +1414,13 @@ function renderIdle() {
       </div>
     </div>
     <div class="guide-steps">
-      <div class="gstep"><span class="gnum">1</span><b>Se arma una candidata</b>
+      <div class="gstep"><span class="gnum g-indigo">1</span><b>Se arma una candidata</b>
         <p>Combina al azar un disparador de entrada, filtros de contexto y los parámetros de cada indicador.</p></div>
-      <div class="gstep"><span class="gnum">2</span><b>Se backtestea entera</b>
+      <div class="gstep"><span class="gnum g-teal">2</span><b>Se backtestea entera</b>
         <p>Sobre todos los años de datos reales, con tus costos y tu modelo de riesgo.</p></div>
-      <div class="gstep"><span class="gnum">3</span><b>Pasa o se descarta</b>
+      <div class="gstep"><span class="gnum g-pink">3</span><b>Pasa o se descarta</b>
         <p>Si cumple los filtros entra al databank ordenada por fitness; si no, se tira y se prueba otra.</p></div>
-      <div class="gstep"><span class="gnum">4</span><b>Se repite sin parar</b>
+      <div class="gstep"><span class="gnum g-amber">4</span><b>Se repite sin parar</b>
         <p>Hasta juntar las ${S.cfg.goal} que pediste. Cada una se puede inspeccionar y exportar a MetaTrader.</p></div>
     </div>
   </div>`;

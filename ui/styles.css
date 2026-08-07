@@ -81,6 +81,13 @@
   --c-blue:   #3b82f6;  --c-blue-bg:   rgba(59, 130, 246, 0.13);
   --c-amber:  #f59e0b;  --c-amber-bg:  rgba(245, 158, 11, 0.13);
   --c-violet: #8b5cf6;  --c-violet-bg: rgba(139, 92, 246, 0.13);
+  /* versión legible de cada familia, para cuando el color va en TEXTO */
+  --c-indigo-tx: #a5b4fc;
+  --c-teal-tx:   #5eead4;
+  --c-pink-tx:   #f9a8d4;
+  --c-blue-tx:   #93c5fd;
+  --c-amber-tx:  #fcd34d;
+  --c-violet-tx: #c4b5fd;
 
   /* degradado de marca: rellenos importantes (botón primario, ítem activo) */
   --grad: linear-gradient(145deg, #5b5bd6, #7c6cf0);
@@ -146,6 +153,14 @@
   --side-text-dim: #a9bada;
   --side-hover:    #1b2f52;
   --side-line:     #25406c;
+
+  /* sobre fondo claro las variantes de texto van al otro extremo */
+  --c-indigo-tx: #4338ca;
+  --c-teal-tx:   #0f766e;
+  --c-pink-tx:   #be185d;
+  --c-blue-tx:   #1d4ed8;
+  --c-amber-tx:  #b45309;
+  --c-violet-tx: #6d28d9;
 
   --text:      #16191f;
   --text-2:    #4a5262;
@@ -668,6 +683,14 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 /* ------------------------------------------ baldosa de icono de sección --
    Reemplaza al número. Cada sección con su color de familia, del mismo juego
    decorativo que los tiles de instrumento — sin verde ni rojo. */
+/* Número + icono. Con todas las secciones plegadas, el número es lo único que
+   dice que esto es una secuencia y no una lista de opciones sueltas. */
+.sect-step { display: flex; align-items: center; gap: 9px; flex-shrink: 0; }
+.sect-n {
+  font-size: 11px; font-weight: 700; color: var(--text-dim);
+  font-variant-numeric: tabular-nums; width: 9px; text-align: center;
+}
+.sect[open] .sect-n { color: var(--text-2); }
 .sect-ic {
   width: 32px; height: 32px; flex-shrink: 0; border-radius: 10px;
   display: grid; place-items: center;
@@ -1251,11 +1274,17 @@ table.runs tr.best-run td:first-child { box-shadow: inset 2px 0 0 var(--pos); }
 @media (max-width: 1100px) { .guide-steps { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 640px)  { .guide-steps { grid-template-columns: 1fr; } }
 .gstep { display: flex; flex-direction: column; gap: 5px; }
+/* Cada paso con el color de su familia: el color hace de hilo entre lo que
+   se configura arriba y lo que el minero hace con eso. */
 .gnum {
-  width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px;
+  width: 26px; height: 26px; display: grid; place-items: center; border-radius: 9px;
   background: var(--card-2); border: 1px solid var(--border); color: var(--text-2);
-  font-size: 10.5px; font-weight: 600; margin-bottom: 4px;
+  font-size: 11.5px; font-weight: 700; margin-bottom: 8px;
 }
+.gnum.g-indigo { background: var(--c-indigo-bg); border-color: transparent; color: var(--c-indigo-tx); }
+.gnum.g-teal   { background: var(--c-teal-bg);   border-color: transparent; color: var(--c-teal-tx); }
+.gnum.g-pink   { background: var(--c-pink-bg);   border-color: transparent; color: var(--c-pink-tx); }
+.gnum.g-amber  { background: var(--c-amber-bg);  border-color: transparent; color: var(--c-amber-tx); }
 .gstep b { font-size: 13px; font-weight: 600; }
 .gstep p { color: var(--text-2); font-size: 11.5px; line-height: 1.55; }
 .guide-foot { color: var(--text-2); font-size: 12px; margin-top: 18px;
