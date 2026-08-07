@@ -538,9 +538,14 @@ async function navigate(page) {
 PAGES.data = async (main) => {
   await refreshDatasets();
 
+  // cada familia de mercado con su color, como las categorías de la referencia.
+  // Ninguno es verde ni rojo: esos dos ya significan ganancia y pérdida.
+  const COLOR_CAT = { "Índices": "indigo", "Forex": "teal", "Metales": "pink",
+                      "Cripto": "blue" };
   const cards = S.catalog.map(c => {
     const ready = !!c.dataset_id;
-    return `<div class="inst-card ${ready ? "ready" : ""}">
+    const tono = COLOR_CAT[c.category] || "violet";
+    return `<div class="inst-card t-${tono} ${ready ? "ready" : ""}">
       <div class="inst-top"><h3>${esc(c.label)}</h3>
         <span class="cat">${esc(c.category)}</span></div>
       <p>${esc(c.full_name)} · ${esc(c.note)}</p>
