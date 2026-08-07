@@ -85,6 +85,25 @@ if (_saved && _saved.goal == null) {
 
 const GOAL_PRESETS = [10, 25, 50, 100];
 
+/* Iconos de las secciones del setup, cada uno con su color de familia. Un
+   número no dice nada; un icono se reconoce de reojo y le da a cada sección
+   una identidad estable aunque se plieguen y desplieguen. */
+const SECT_ICONS = {
+  mercado: ["indigo", '<path d="M3 12h4l3 8 4-16 3 8h4"/>'],
+  bloques: ["teal", '<circle cx="12" cy="12" r="3.2"/><path d="M12 3v3.4M12 17.6V21M4.9 4.9l2.4 2.4M16.7 16.7l2.4 2.4M3 12h3.4M17.6 12H21M4.9 19.1l2.4-2.4M16.7 7.3l2.4-2.4"/>'],
+  riesgo: ["pink", '<path d="M12 2 3 7v6c0 5 4 8 9 9 5-1 9-4 9-9V7l-9-5Z"/>'],
+  costos: ["blue", '<circle cx="12" cy="12" r="9"/><path d="M15 9.5A3 3 0 0 0 12 8c-1.7 0-3 .9-3 2s1.3 2 3 2 3 .9 3 2-1.3 2-3 2a3 3 0 0 1-3-1.5M12 6.5v11"/>'],
+  filtros: ["amber", '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>'],
+  avanzado: ["violet", '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>'],
+};
+
+function sectIcon(clave) {
+  const [tono, path] = SECT_ICONS[clave] || SECT_ICONS.mercado;
+  return `<span class="sect-ic ic-${tono}"><svg viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
+    stroke-linejoin="round">${path}</svg></span>`;
+}
+
 /* Filtros de aceptación al databank. Todos opcionales salvo el mínimo de
    operaciones: exigir Sharpe/DD/exposición por defecto rechazaba el 90% de las
    candidatas y la búsqueda volvía vacía sin que se entendiera por qué. Se
@@ -716,40 +735,33 @@ PAGES.saved = async (main) => {
   const fila = (s) => {
     const t = s.meta || {}, m = t.metrics || {};
     const q = t.oos_ratio;
-    return `<tr class="clickable" data-sid="${esc(s.id)}">
-      <td><span class="strat-name">${esc(s.name)}</span>
-          <div class="strat-blocks">${esc(t.blocks || "")}</div>
-          <div class="strat-genes">${esc(t.genes_label || "")}</div></td>
-      <td>${esc((t.dataset_name || "—").replace(/ M1.*/, ""))}
-          <div class="muted" style="font-size:11px">${esc(t.timeframe || "")}
-            ${t.direction === "short" ? "· cortos" : t.direction === "both" ? "· ambos" : "· largos"}</div></td>
-      <td class="num ${(m.cagr_pct ?? 0) >= 0 ? "pos" : "neg"}"><b>${m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
-      <td class="num">${m.profit_factor != null ? fmtNum(m.profit_factor) : "—"}</td>
-      <td class="num neg">${m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
-      <td class="num">${q != null
-        ? `<span class="oos-tag ${q >= 0.8 ? "good" : q >= 0.5 ? "mid" : "bad"}"><b>${fmtNum(q, 2)}×</b></span>`
-        : `<span class="muted">—</span>`}</td>
-      <td class="num">${m.trades ?? "—"}</td>
-      <td class="muted" style="white-space:nowrap">${esc(String(s.updated).slice(0, 10))}</td>
-      <td class="num" style="white-space:nowrap">
+    const mercado = esc((t.dataset_name || "—").replace(/ M1.*/, ""));
+    const dir = t.direction === "short" ? "cortos" : t.direction === "both" ? "ambos" : "largos";
+    const met = (rot, val, cls) =>
+      `<div class="sr-met"><span>${rot}</span><b class="${cls || ""}">${val}</b></div>`;
+    return `<div class="saved-row" data-sid="${esc(s.id)}">
+      <div>
+        <div class="sr-name"><b>${esc(s.name)}</b>
+          <span class="badge">${mercado} · ${esc(t.timeframe || "")} · ${dir}</span></div>
+        <div class="sr-rules">${esc(t.blocks || "")}${t.genes_label ? " · " + esc(t.genes_label) : ""}</div>
+      </div>
+      ${met("Anual", m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—",
+            (m.cagr_pct ?? 0) >= 0 ? "pos" : "neg")}
+      ${met("Profit factor", m.profit_factor != null ? fmtNum(m.profit_factor) : "—")}
+      ${met("Max DD", m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—", "neg")}
+      ${met("Fuera de muestra", q != null
+            ? `<span class="oos-tag ${q >= 0.8 ? "good" : q >= 0.5 ? "mid" : "bad"}">${fmtNum(q, 2)}×</span>`
+            : `<span class="muted">—</span>`)}
+      <div class="sr-acts">
         <button class="btn ghost small" data-export="${esc(s.id)}">⬇ MQL5</button>
         <button class="btn ghost small" data-del-strat="${esc(s.id)}" title="Borrar">✕</button>
-      </td>
-    </tr>`;
+      </div>
+    </div>`;
   };
 
   main.innerHTML = pageHead("Mis estrategias",
     `${items.length} guardada${items.length === 1 ? "" : "s"}. Sobreviven a cualquier corrida nueva.`) +
-    `<div class="card">
-      <h2>Guardadas <span class="hint">clic en una fila para volver a analizarla</span></h2>
-      <div class="scroll-x"><table>
-        <thead><tr><th>Estrategia</th><th>Mercado</th><th class="num">Anual</th>
-          <th class="num">PF</th><th class="num">Max DD</th>
-          <th class="num" title="Profit factor fuera de muestra sobre el de adentro">Fuera de muestra</th>
-          <th class="num">Trades</th><th>Guardada</th><th></th></tr></thead>
-        <tbody>${items.map(fila).join("")}</tbody>
-      </table></div>
-    </div>`;
+    `<div class="saved-list">${items.map(fila).join("")}</div>`;
 
   $$("[data-sid]", main).forEach(tr => tr.onclick = (ev) => {
     if (ev.target.closest("button")) return;      // los botones tienen lo suyo
@@ -872,7 +884,7 @@ PAGES.mining = async (main) => {
     <aside class="setup">
       <div class="setup-scroll">
         <details class="sect" open>
-          <summary><span class="sect-num">1</span>
+          <summary>${sectIcon("mercado")}
             <span class="sect-t"><b>Mercado</b><em id="sum-market">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -916,7 +928,7 @@ PAGES.mining = async (main) => {
         </details>
 
         <details class="sect">
-          <summary><span class="sect-num">2</span>
+          <summary>${sectIcon("bloques")}
             <span class="sect-t"><b>Bloques</b><em id="sum-blocks">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -934,7 +946,7 @@ PAGES.mining = async (main) => {
         </details>
 
         <details class="sect" open>
-          <summary><span class="sect-num">3</span>
+          <summary>${sectIcon("riesgo")}
             <span class="sect-t"><b>Riesgo y salidas</b><em id="sum-risk">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -980,7 +992,7 @@ PAGES.mining = async (main) => {
         </details>
 
         <details class="sect">
-          <summary><span class="sect-num">4</span>
+          <summary>${sectIcon("costos")}
             <span class="sect-t"><b>Costos del broker</b><em id="sum-cost">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -997,7 +1009,7 @@ PAGES.mining = async (main) => {
         </details>
 
         <details class="sect" open>
-          <summary><span class="sect-num">5</span>
+          <summary>${sectIcon("filtros")}
             <span class="sect-t"><b>Filtros de aceptación</b><em id="sum-crit">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -1017,7 +1029,7 @@ PAGES.mining = async (main) => {
         </details>
 
         <details class="sect">
-          <summary><span class="sect-num">6</span>
+          <summary>${sectIcon("avanzado")}
             <span class="sect-t"><b>Avanzado</b><em id="sum-adv">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">

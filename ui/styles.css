@@ -495,8 +495,8 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 .lock-note b { color: var(--text); }
 
 .setup-run {
-  border-top: 1px solid var(--border); background: var(--card-2);
-  padding: 15px 16px; display: flex; flex-direction: column; gap: 12px;
+  border-top: 1px solid var(--border); background: var(--bg-soft);
+  padding: 17px 18px; display: flex; flex-direction: column; gap: 12px;
 }
 .setup-run.running { background: var(--accent-soft); }
 .setup-run .btn { width: 100%; }
@@ -664,6 +664,47 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 }
 .adv-body { padding: 10px 0 2px; display: flex; flex-direction: column; gap: 8px; }
 .adv-body select { width: 100%; }
+
+
+/* ------------------------------------------ baldosa de icono de sección --
+   Reemplaza al número. Cada sección con su color de familia, del mismo juego
+   decorativo que los tiles de instrumento — sin verde ni rojo. */
+.sect-ic {
+  width: 32px; height: 32px; flex-shrink: 0; border-radius: 10px;
+  display: grid; place-items: center;
+}
+.sect-ic svg { width: 16px; height: 16px; }
+.ic-indigo { background: var(--c-indigo-bg); color: var(--c-indigo); }
+.ic-teal   { background: var(--c-teal-bg);   color: var(--c-teal); }
+.ic-pink   { background: var(--c-pink-bg);   color: var(--c-pink); }
+.ic-blue   { background: var(--c-blue-bg);   color: var(--c-blue); }
+.ic-amber  { background: var(--c-amber-bg);  color: var(--c-amber); }
+.ic-violet { background: var(--c-violet-bg); color: var(--c-violet); }
+
+/* ---------------------------------------------- filas de Mis estrategias -
+   Tarjeta por estrategia con sus métricas en columnas, como la referencia,
+   en vez de una tabla apretada. */
+.saved-list { display: flex; flex-direction: column; gap: 14px; }
+.saved-row {
+  background: var(--card); border: 1px solid var(--border); border-radius: var(--r-lg);
+  box-shadow: var(--sh-1); padding: 18px 22px; cursor: pointer;
+  display: grid; grid-template-columns: minmax(0,1fr) repeat(4, auto) auto; gap: 24px;
+  align-items: center; transition: transform .16s var(--ease), box-shadow .16s;
+}
+.saved-row:hover { transform: translateY(-2px); box-shadow: var(--sh-2); }
+@media (max-width: 900px) {
+  .saved-row { grid-template-columns: 1fr 1fr; gap: 14px; }
+}
+.saved-row .sr-name { display: flex; align-items: center; gap: 10px; margin-bottom: 3px; }
+.saved-row .sr-name b { font-size: 15px; font-weight: 700; }
+.saved-row .sr-rules { font-size: 12px; color: var(--text-dim); }
+.saved-row .sr-met { text-align: right; }
+.saved-row .sr-met span {
+  display: block; font-size: 9.5px; font-weight: 700; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;
+}
+.saved-row .sr-met b { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.saved-row .sr-acts { display: flex; align-items: center; gap: 7px; }
 
 /* ==================================================== lista de bloques == */
 .blocklist {
