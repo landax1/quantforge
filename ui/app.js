@@ -178,9 +178,11 @@ function fmtDur(seconds) {
 }
 
 /* encabezado de página con la pastilla de contexto a la derecha */
-function pageHead(title, sub, extra = "") {
+function pageHead(title, sub, extra = "", eyebrow = "") {
   return `<div class="page-head">
-    <div class="ph-text"><h1>${esc(title)}</h1><p>${sub}</p></div>${extra}</div>`;
+    <div class="ph-text">
+      ${eyebrow ? `<div class="ph-eyebrow"><span class="dot"></span>${esc(eyebrow)}</div>` : ""}
+      <h1>${esc(title)}</h1><p>${sub}</p></div>${extra}</div>`;
 }
 
 /* Límites del dataset, en el formato que entiende <input type="date">. */
@@ -860,8 +862,10 @@ PAGES.mining = async (main) => {
   };
 
   main.innerHTML = `
-  ${pageHead("Mining",
-    "Elegís cuántas estrategias querés y la búsqueda no para hasta juntarlas.", ctxPill())}
+  ${pageHead("Buscá tu próxima estrategia",
+    "Millones de combinaciones posibles. El minero prueba, backtestea y descarta " +
+    "hasta juntar las que cumplen tu vara.", ctxPill(),
+    S.mining ? "Minando…" : "Motor listo · semilla determinista")}
 
   <div class="workbench">
     <aside class="setup">
