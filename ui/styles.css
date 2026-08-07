@@ -856,11 +856,27 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
   content: ""; position: absolute; top: 22px; right: 20px;
   width: 6px; height: 6px; border-radius: 50%; background: var(--pos);
 }
-.inst-top { display: flex; align-items: baseline; gap: 8px; padding-right: 18px; }
-.inst-top h3 { font-size: 16px; font-weight: 650; letter-spacing: -.02em; }
+/* Cabecera de la tarjeta: símbolo, nombre y familia. El icono va en una
+   baldosa teñida y no pintando la tarjeta entera — con cuatro tarjetas
+   iguales alcanza con eso para distinguirlas de un vistazo. */
+.inst-top { display: flex; align-items: center; gap: 12px; padding-right: 18px; }
+.inst-ic {
+  width: 40px; height: 40px; flex-shrink: 0; border-radius: 12px;
+  display: grid; place-items: center;
+}
+.inst-ic svg { width: 21px; height: 21px; }
+.f-indigo { background: var(--n-indigo-bg); color: var(--n-indigo-tx); }
+.f-teal   { background: var(--n-teal-bg);   color: var(--n-teal-tx); }
+.f-amber  { background: var(--n-amber-bg);  color: var(--n-amber-tx); }
+.f-blue   { background: var(--n-blue-bg);   color: var(--n-blue-tx); }
+.f-violet { background: var(--n-violet-bg); color: var(--n-violet-tx); }
+.inst-id { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.inst-top h3 { font-size: 18px; font-weight: 700; letter-spacing: -.03em; line-height: 1.05; }
 .inst-top .cat {
-  color: var(--text-dim); font-size: 9.5px; font-weight: 600; margin-left: auto;
-  text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text-dim); font-size: 9px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .07em;
+  background: var(--bg-soft); border-radius: 999px; padding: 2px 8px;
+  align-self: flex-start;
 }
 .inst-card p { color: var(--text-2); font-size: 12px; line-height: 1.5; }
 .inst-meta { font-size: 11.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; line-height: 1.55; }

@@ -85,6 +85,28 @@ if (_saved && _saved.goal == null) {
 
 const GOAL_PRESETS = [10, 25, 50, 100];
 
+/* Símbolo por familia de mercado. Con cuatro tarjetas idénticas salvo el
+   texto, el icono es lo que permite encontrar la que buscás de un vistazo.
+   Van dibujados a mano y no con logos de marca: un CFD de Bitcoin no es
+   Bitcoin, y poner el logo real sugeriría una relación que no existe. */
+const INST_FAMILIA = {
+  "Índices": { tono: "indigo", icono:
+    '<path d="M3 20h18"/><rect x="5" y="11" width="3.2" height="6" rx="1"/>' +
+    '<rect x="10.4" y="7" width="3.2" height="10" rx="1"/>' +
+    '<rect x="15.8" y="4" width="3.2" height="13" rx="1"/>' },
+  "Forex": { tono: "teal", icono:
+    '<path d="M4 9h13"/><path d="M14 6l3 3-3 3"/>' +
+    '<path d="M20 15H7"/><path d="M10 12l-3 3 3 3"/>' },
+  "Metales": { tono: "amber", icono:
+    '<path d="M12 3l3.2 4.4L12 21 8.8 7.4 12 3Z"/><path d="M8.8 7.4h6.4"/>' },
+  "Cripto": { tono: "blue", icono:
+    '<circle cx="12" cy="12" r="8.5"/>' +
+    '<path d="M9.6 8.4h4a1.9 1.9 0 0 1 0 3.8H9.6h4.6a1.9 1.9 0 0 1 0 3.8H9.6"/>' +
+    '<path d="M11.2 6.6v1.8M11.2 16v1.8"/>' },
+  _otro: { tono: "violet", icono:
+    '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M9 10h6M9 14h6"/>' },
+};
+
 /* Filtros de aceptación al databank. Todos opcionales salvo el mínimo de
    operaciones: exigir Sharpe/DD/exposición por defecto rechazaba el 90% de las
    candidatas y la búsqueda volvía vacía sin que se entendiera por qué. Se
@@ -540,9 +562,15 @@ PAGES.data = async (main) => {
 
   const cards = S.catalog.map(c => {
     const ready = !!c.dataset_id;
+    const fam = INST_FAMILIA[c.category] || INST_FAMILIA._otro;
     return `<div class="inst-card ${ready ? "ready" : ""}">
-      <div class="inst-top"><h3>${esc(c.label)}</h3>
-        <span class="cat">${esc(c.category)}</span></div>
+      <div class="inst-top">
+        <span class="inst-ic f-${fam.tono}"><svg viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+          stroke-linejoin="round">${fam.icono}</svg></span>
+        <span class="inst-id"><h3>${esc(c.label)}</h3>
+          <span class="cat">${esc(c.category)}</span></span>
+      </div>
       <p>${esc(c.full_name)} · ${esc(c.note)}</p>
       ${ready
         ? `<div class="inst-meta">✓ ${c.rows.toLocaleString()} velas M1<br>
