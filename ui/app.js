@@ -59,8 +59,9 @@ const DEFAULT_CFG = {
   goal: 25,
   // tope de seguridad: sin esto, criterios imposibles buscarían para siempre
   maxCandidates: 20000,
-  // % final del período que la búsqueda no ve, para validar lo que encuentra
-  oosPct: 30,
+  // % final del período que la búsqueda no ve. Desactivada por defecto: la
+  // decisión de partir el período es del usuario, no del programa.
+  oosPct: 0,
   fitness: "composite",
   // Cómo se dimensiona la posición. "risk" ajusta el tamaño para que tocar el
   // stop cueste un % fijo; "lots" manda siempre el mismo volumen — hay brokers
@@ -887,11 +888,6 @@ PAGES.mining = async (main) => {
                 <input type="date" class="datefld" id="m-date-to"
                   min="${esc(bounds.lo)}" max="${esc(bounds.hi)}" value="${esc(range.to)}"></label>
             </div>
-            <div class="goal-presets mt" id="m-date-presets">
-              <button data-range="all">Todo</button>
-              <button data-range="is">Minar 70%</button>
-              <button data-range="oos">Validar 30%</button>
-            </div>
             <p class="stage-note" id="m-dsnote"></p>
 
             <details class="adv" id="m-adv-oos">
@@ -899,18 +895,16 @@ PAGES.mining = async (main) => {
               <div class="adv-body">
                 <label class="fld"><span>Validación fuera de muestra</span>
                   <select data-cfg="oosPct">
-                    ${opt(0, +c.oosPct, "Desactivada — todo in-sample")}
-                    ${opt(20, +c.oosPct, "Reservar el último 20%")}
-                    ${opt(30, +c.oosPct, "Reservar el último 30% (recomendado)")}
-                    ${opt(40, +c.oosPct, "Reservar el último 40%")}
+                    ${opt(0, +c.oosPct, "Desactivada")}
+                    ${opt(30, +c.oosPct, "Minar 70% · validar 30% (sugerido)")}
+                    ${opt(20, +c.oosPct, "Minar 80% · validar 20%")}
+                    ${opt(40, +c.oosPct, "Minar 60% · validar 40%")}
                   </select></label>
-                <p class="help-note">La búsqueda usa sólo el tramo inicial y cada estrategia
-                  aceptada se vuelve a correr sobre el final, con datos que <b>nunca vio</b>.
-                  El databank muestra las dos columnas: si la ventaja se cae afuera, la
-                  estrategia describía el pasado y nada más.</p>
-                <p class="help-note">Distinto de los atajos de arriba: aquellos <b>recortan</b>
-                  el período y dejan el resto para que lo pruebes vos a mano; esto lo parte
-                  automáticamente y valida cada candidata sola.</p>
+                <p class="help-note">Parte el período en dos: la búsqueda usa sólo el tramo
+                  inicial y cada estrategia aceptada se vuelve a correr sobre el final, con
+                  datos que <b>nunca vio</b>. El databank suma una columna que dice si la
+                  ventaja se sostiene o se cae — que es lo que separa una estrategia real de
+                  una casualidad bien ajustada al pasado.</p>
               </div>
             </details>
           </div>
@@ -1154,27 +1148,6 @@ PAGES.mining = async (main) => {
     try { el.showPicker(); } catch (e) { /* el navegador lo abre solo */ }
   });
 
-  $$("#m-date-presets button", main).forEach(b => b.onclick = () => {
-    const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
-    if (!ds) return;
-    const kind = b.dataset.range;
-    const bd = datasetBounds(ds);
-    if (kind === "all") {
-      S.sel.dateFrom = bd.lo;
-      S.sel.dateTo = bd.hi;
-    } else {
-      // el corte 70/30 se calcula sobre el calendario del dataset
-      const lo = new Date(ds.start), hi = new Date(ds.end);
-      const cut = new Date(lo.getTime() + (hi - lo) * 0.7);
-      const iso = (d) => d.toISOString().slice(0, 10);
-      if (kind === "is") { S.sel.dateFrom = bd.lo; S.sel.dateTo = iso(cut); }
-      else { S.sel.dateFrom = iso(cut); S.sel.dateTo = bd.hi; }
-    }
-    dFrom.value = S.sel.dateFrom;
-    dTo.value = S.sel.dateTo;
-    saveCfg();
-    updateNotes();
-  });
   tfSel.onchange = () => { S.sel.timeframe = tfSel.value; saveCfg(); updateNotes(); };
   $$("[data-cfg]", main).forEach(el => el.oninput = () => { harvestCfg(main); updateNotes(); });
 
@@ -1185,14 +1158,18 @@ PAGES.mining = async (main) => {
       const r = effectiveRange(ds);
       const full = isFullRange(ds);
       const years = (new Date(r.to) - new Date(r.from)) / (365.25 * 24 * 3600 * 1000);
-      dsNote.innerHTML = full
+      const oos = +S.cfg.oosPct;
+      const base = full
         ? `Minando <b>todo</b> el historial: ${esc(r.from)} → ${esc(r.to)}
            (${years.toFixed(1)} años) · último precio <b>${ds.last_close}</b>`
         : `Minando <b>${esc(r.from)} → ${esc(r.to)}</b> (${years.toFixed(1)} años de
-           ${esc(datasetBounds(ds).lo)} → ${esc(datasetBounds(ds).hi)}) — el resto
-           queda sin tocar para validar.`;
-      $$("#m-date-presets button", main).forEach(b =>
-        b.classList.toggle("on", b.dataset.range === "all" && full));
+           ${esc(datasetBounds(ds).lo)} → ${esc(datasetBounds(ds).hi)})`;
+      // si la validación está activa, el corte se calcula sobre ESE rango
+      const corte = oos
+        ? `<br>De ese tramo, la búsqueda ve el <b>${100 - oos}%</b> inicial y el
+           <b>${oos}%</b> final queda reservado para validar.`
+        : "";
+      dsNote.innerHTML = base + corte;
     }
     updateSummaries(ds);
     const note = $("#m-costnote");
@@ -1279,7 +1256,8 @@ PAGES.mining = async (main) => {
     set("sum-market", (ds ? `${ds.name.replace(/ M1.*/, "")} · ${S.sel.timeframe} · ${dirLbl[S.cfg.direction]}` : "—") +
       (+S.cfg.oosPct ? ` · valida ${S.cfg.oosPct}%` : ""));
     // el resumen del desplegable: se ve sin abrirlo
-    set("sum-oos", +S.cfg.oosPct ? `validando el último ${S.cfg.oosPct}%` : "");
+    set("sum-oos", +S.cfg.oosPct
+      ? `mina ${100 - +S.cfg.oosPct}% · valida ${S.cfg.oosPct}%` : "");
 
     const drv = $$("#m-drivers .blockitem input", main).filter(x => x.checked).length;
     const flt = $$("#m-filters .blockitem input", main).filter(x => x.checked).length;
