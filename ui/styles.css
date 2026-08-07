@@ -84,7 +84,6 @@
 
   /* degradado de marca: rellenos importantes (botón primario, ítem activo) */
   --grad: linear-gradient(145deg, #5b5bd6, #7c6cf0);
-  --grad-champ: linear-gradient(140deg, #4f46e5, #7c3aed 55%, #9333ea);
   --grad-shadow: rgba(91, 91, 214, .38);
 
   /* ---- superficies compuestas (barras fijas, tooltips, overlays) ---- */
@@ -838,52 +837,45 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 .banner b { font-weight: 650; }
 
 /* ====================================================== hero campeón ==== */
-/* El campeón: el resultado de toda la corrida, y la única superficie de la
-   app pintada por completo. Texto blanco propio porque el fondo es oscuro en
-   los dos temas. */
+/* El campeón. Se probó pintarlo entero con el degradado de marca y salió mal:
+   la tarjeta lleva adentro el desglose del score, el badge y un gráfico, y
+   sobre un fondo saturado nada de eso se lee. El color entra por el filo. */
 .champ {
   position: relative; overflow: hidden;
-  background: var(--grad-champ); color: #fff;
-  border: none;
-  box-shadow: 0 14px 34px rgba(79, 70, 229, .30);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-left: 3px solid var(--accent);
   border-radius: var(--r-lg); padding: 22px 24px; margin-bottom: 18px;
   display: grid; grid-template-columns: minmax(240px, 1fr) 1.7fr; gap: 26px;
   align-items: center; cursor: pointer;
   transition: border-color .16s var(--ease), background .16s var(--ease);
 }
-.champ::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(circle at 88% 0%, rgba(255,255,255,.20), transparent 58%);
-}
-.champ:hover { transform: translateY(-2px); box-shadow: 0 18px 40px rgba(79,70,229,.38); }
-.champ > * { position: relative; z-index: 1; }
+.champ:hover { border-color: var(--accent); background: var(--card-hover); }
 @media (max-width: 1000px) { .champ { grid-template-columns: 1fr; } }
 .champ-tag {
   display: inline-flex; align-items: center; gap: 6px;
-  font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
-  color: #fff; background: rgba(255,255,255,.18); border-radius: 999px;
-  padding: 4px 11px; margin-bottom: 11px;
+  font-size: 9.5px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--accent-2); margin-bottom: 10px;
 }
 .champ h2 {
   font-size: 18px; font-weight: 650; letter-spacing: -.02em; margin-bottom: 6px;
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
 }
-.champ .champ-blocks { color: rgba(255,255,255,.92); font-size: 13px; line-height: 1.5; }
-.champ .champ-genes { color: rgba(255,255,255,.70); font-size: 10.5px; margin-top: 6px; font-family: var(--mono); }
+.champ .champ-blocks { color: var(--text); font-size: 13px; line-height: 1.5; }
+.champ .champ-genes { color: var(--text-dim); font-size: 10.5px; margin-top: 6px; font-family: var(--mono); }
 .champ-spark { margin-top: 16px; }
 .champ-spark svg.spark { width: 100%; max-width: 280px; height: 56px; }
 .champ-cta {
-  margin-top: 14px; font-size: 11.5px; font-weight: 700; color: rgba(255,255,255,.75);
+  margin-top: 14px; font-size: 11.5px; font-weight: 550; color: var(--text-dim);
   transition: color .18s;
 }
-.champ:hover .champ-cta { color: #fff; }
+.champ:hover .champ-cta { color: var(--accent-2); }
 .champ-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 14px 18px; }
 .champ-metrics > div { text-align: left; }
-.champ-metrics span { display: block; color: rgba(255,255,255,.78); font-size: 10px; font-weight: 700;
-                      text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px; }
-.champ .pos, .champ .neg { color: #fff; }
-.champ-metrics b { font-size: 21px; font-weight: 700; font-variant-numeric: tabular-nums;
-                   letter-spacing: -.03em; color: #fff; }
+.champ-metrics span { display: block; color: var(--text-dim); font-size: 10px; font-weight: 500;
+                      margin-bottom: 4px; }
+.champ-metrics b { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums;
+                   letter-spacing: -.02em; }
 
 /* ================================================ tarjetas instrumento == */
 .inst-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(256px, 1fr)); gap: 16px; }
@@ -1008,23 +1000,30 @@ svg.spark { display: block; border-radius: 4px; }
 .heat-table tbody tr:hover td { background-color: inherit; }
 
 /* =========================================================== QF Score ==== */
+/* Fondo SÓLIDO, no un tinte. El badge suele vivir dentro de la tarjeta del
+   campeón, que ya está teñida: apilar dos capas translúcidas daba un fondo
+   compuesto de rgb(216,224,237) y dejaba la etiqueta en 4.16:1. Con la
+   superficie de tarjeta debajo, el color del texto rinde lo que promete. */
 .score-badge {
   display: inline-flex; align-items: baseline; gap: 6px;
   border-radius: var(--r-sm); padding: 3px 9px;
+  background: var(--card);
   border: 1px solid transparent; font-variant-numeric: tabular-nums;
 }
 .score-badge b { font-size: 13px; font-weight: 600; letter-spacing: -.01em; }
+/* sin opacidad: bajaba la etiqueta a 4.16:1 sobre el fondo claro. La jerarquía
+   ya la marca el tamaño (10px contra 13px del número), no hace falta atenuar */
 .score-badge em { font-style: normal; font-size: 10px; font-weight: 500;
-                  letter-spacing: .01em; opacity: .8; }
+                  letter-spacing: .01em; }
 .score-badge.big { padding: 4px 10px; }
 .score-badge.big b { font-size: 16px; }
 .score-badge.huge { flex-direction: column; align-items: center; gap: 3px; padding: 16px 22px; }
 .score-badge.huge b { font-size: 30px; font-weight: 600; line-height: 1; }
 .score-badge.huge em { font-size: 10.5px; }
-.score-badge.s-top  { background: var(--pos-soft); color: var(--pos); border-color: var(--pos-line); }
-.score-badge.s-good { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-line); }
-.score-badge.s-mid  { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
-.score-badge.s-low  { background: var(--neg-soft); color: var(--neg); border-color: var(--neg-line); }
+.score-badge.s-top  { color: var(--pos); border-color: var(--pos-line); }
+.score-badge.s-good { color: var(--accent-2); border-color: var(--accent-line); }
+.score-badge.s-mid  { color: var(--warn); border-color: var(--warn-line); }
+.score-badge.s-low  { color: var(--neg); border-color: var(--neg-line); }
 
 .score-bars { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; }
 .sb-row { display: grid; grid-template-columns: 1fr 90px 44px; align-items: center; gap: 9px; }
