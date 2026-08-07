@@ -866,8 +866,8 @@ PAGES.mining = async (main) => {
   <div class="workbench">
     <aside class="setup">
       <div class="setup-scroll">
-        <details class="sect" open>
-          <summary><span class="sect-num">1</span>
+        <details class="sect">
+          <summary><span class="sect-num n-indigo">1</span>
             <span class="sect-t"><b>Mercado</b><em id="sum-market">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -911,7 +911,7 @@ PAGES.mining = async (main) => {
         </details>
 
         <details class="sect">
-          <summary><span class="sect-num">2</span>
+          <summary><span class="sect-num n-teal">2</span>
             <span class="sect-t"><b>Bloques</b><em id="sum-blocks">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -928,8 +928,8 @@ PAGES.mining = async (main) => {
           </div>
         </details>
 
-        <details class="sect" open>
-          <summary><span class="sect-num">3</span>
+        <details class="sect">
+          <summary><span class="sect-num n-pink">3</span>
             <span class="sect-t"><b>Riesgo y salidas</b><em id="sum-risk">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -975,7 +975,7 @@ PAGES.mining = async (main) => {
         </details>
 
         <details class="sect">
-          <summary><span class="sect-num">4</span>
+          <summary><span class="sect-num n-blue">4</span>
             <span class="sect-t"><b>Costos del broker</b><em id="sum-cost">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -991,8 +991,8 @@ PAGES.mining = async (main) => {
           </div>
         </details>
 
-        <details class="sect" open>
-          <summary><span class="sect-num">5</span>
+        <details class="sect">
+          <summary><span class="sect-num n-amber">5</span>
             <span class="sect-t"><b>Filtros de aceptación</b><em id="sum-crit">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -1012,7 +1012,7 @@ PAGES.mining = async (main) => {
         </details>
 
         <details class="sect">
-          <summary><span class="sect-num">6</span>
+          <summary><span class="sect-num n-violet">6</span>
             <span class="sect-t"><b>Avanzado</b><em id="sum-adv">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">

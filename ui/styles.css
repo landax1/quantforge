@@ -62,6 +62,15 @@
   --warn-line:     rgba(217, 164, 65, 0.28);
   --selection:     rgba(99, 91, 255, 0.34);
 
+  /* un color por paso del setup. Dos variantes por familia: el tinte va de
+     fondo y el "-tx" es el que se puede leer como texto (4.5:1). */
+  --n-indigo-bg: rgba(99,91,255,.14);   --n-indigo-tx: #a5b4fc;
+  --n-teal-bg:   rgba(20,184,166,.14);  --n-teal-tx:   #5eead4;
+  --n-pink-bg:   rgba(236,72,153,.14);  --n-pink-tx:   #f9a8d4;
+  --n-blue-bg:   rgba(59,130,246,.14);  --n-blue-tx:   #93c5fd;
+  --n-amber-bg:  rgba(245,158,11,.14);  --n-amber-tx:  #fcd34d;
+  --n-violet-bg: rgba(139,92,246,.14);  --n-violet-tx: #c4b5fd;
+
   /* ---- superficies compuestas (barras fijas, tooltips, overlays) ---- */
   --glass:      rgba(17, 20, 29, .92);          /* barras pegajosas con blur */
   --overlay:    rgba(4, 5, 9, .80);             /* fondo del inspector */
@@ -139,6 +148,14 @@
   --warn-soft:     rgba(137, 95, 11, 0.06);
   --warn-line:     rgba(137, 95, 11, 0.22);
   --selection:     rgba(83, 72, 232, 0.20);
+
+  /* sobre fondo claro los textos van al extremo oscuro de cada familia */
+  --n-indigo-bg: rgba(79,70,229,.10);   --n-indigo-tx: #4338ca;
+  --n-teal-bg:   rgba(13,148,136,.10);  --n-teal-tx:   #0f766e;
+  --n-pink-bg:   rgba(219,39,119,.10);  --n-pink-tx:   #be185d;
+  --n-blue-bg:   rgba(37,99,235,.10);   --n-blue-tx:   #1d4ed8;
+  --n-amber-bg:  rgba(180,83,9,.10);    --n-amber-tx:  #92400e;
+  --n-violet-bg: rgba(124,58,237,.10);  --n-violet-tx: #6d28d9;
 
   --glass:      rgba(255, 255, 255, .88);
   --overlay:    rgba(24, 28, 38, .38);
@@ -432,7 +449,17 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
   background: var(--bg-soft); color: var(--text-dim); border: 1px solid var(--border);
   transition: all .16s;
 }
-.sect[open] .sect-num { background: var(--card-hover); color: var(--text-2); border-color: var(--border-strong); }
+/* Cada paso con su color. Plegada la sección, el número es lo único visible
+   además del título: darle color le da identidad estable y ayuda a leer el
+   panel como una secuencia y no como seis opciones sueltas. */
+.sect-num.n-indigo { background: var(--n-indigo-bg); color: var(--n-indigo-tx); border-color: transparent; }
+.sect-num.n-teal   { background: var(--n-teal-bg);   color: var(--n-teal-tx);   border-color: transparent; }
+.sect-num.n-pink   { background: var(--n-pink-bg);   color: var(--n-pink-tx);   border-color: transparent; }
+.sect-num.n-blue   { background: var(--n-blue-bg);   color: var(--n-blue-tx);   border-color: transparent; }
+.sect-num.n-amber  { background: var(--n-amber-bg);  color: var(--n-amber-tx);  border-color: transparent; }
+.sect-num.n-violet { background: var(--n-violet-bg); color: var(--n-violet-tx); border-color: transparent; }
+/* abierta, el color se refuerza en vez de cambiar de familia */
+.sect[open] .sect-num { box-shadow: 0 0 0 1px currentColor inset; }
 .sect-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .sect-t b { font-size: 13.5px; font-weight: 650; letter-spacing: -.01em; }
 .sect-t em {
