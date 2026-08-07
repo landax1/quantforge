@@ -1392,13 +1392,13 @@ function renderIdle() {
       </div>
     </div>
     <div class="guide-steps">
-      <div class="gstep"><span class="gnum">1</span><b>Se arma una candidata</b>
+      <div class="gstep"><span class="gnum g-indigo">1</span><b>Se arma una candidata</b>
         <p>Combina al azar un disparador de entrada, filtros de contexto y los parámetros de cada indicador.</p></div>
-      <div class="gstep"><span class="gnum">2</span><b>Se backtestea entera</b>
+      <div class="gstep"><span class="gnum g-teal">2</span><b>Se backtestea entera</b>
         <p>Sobre todos los años de datos reales, con tus costos y tu modelo de riesgo.</p></div>
-      <div class="gstep"><span class="gnum">3</span><b>Pasa o se descarta</b>
+      <div class="gstep"><span class="gnum g-pink">3</span><b>Pasa o se descarta</b>
         <p>Si cumple los filtros entra al databank ordenada por fitness; si no, se tira y se prueba otra.</p></div>
-      <div class="gstep"><span class="gnum">4</span><b>Se repite sin parar</b>
+      <div class="gstep"><span class="gnum g-amber">4</span><b>Se repite sin parar</b>
         <p>Hasta juntar las ${S.cfg.goal} que pediste. Cada una se puede inspeccionar y exportar a MetaTrader.</p></div>
     </div>
   </div>`;
