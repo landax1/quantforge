@@ -165,3 +165,60 @@ def test_start_redirects_to_google_with_a_state_cookie(con_auth):
 def test_start_is_unavailable_when_not_configured(sin_auth):
     assert sin_auth.get("/api/auth/google/start",
                         follow_redirects=False).status_code == 503
+
+
+# --------------------------------------------------------- destino del login
+def _estado_firmado(cliente, destino: str) -> str:
+    """Corre la ida del login y devuelve el `state` que se generó."""
+    r = cliente.get(f"/api/auth/google/start?next={destino}", follow_redirects=False)
+    return r.headers["location"].split("state=")[1].split("&")[0]
+
+
+@pytest.mark.parametrize("hostil", [
+    "https://sitio-falso.example/login",     # otro dominio
+    "//sitio-falso.example",                 # sin esquema, el navegador lo completa
+    "/api/datasets/download",                # interno pero no es una pantalla
+    "/app/../../etc",                        # travesía
+])
+def test_the_login_never_redirects_off_site(con_auth, hostil, monkeypatch):
+    """Un login que vuelve a donde le digan es un redirector abierto: el enlace
+    sale del dominio real y termina en otro. Es la pieza que hace creíble un
+    phishing, así que sólo se aceptan destinos de una lista blanca."""
+    estado = _estado_firmado(con_auth, hostil)
+
+    monkeypatch.setattr(appmod, "exchange_code", lambda cfg, code: {"access_token": "t"})
+    monkeypatch.setattr(appmod, "fetch_profile", lambda tok: {
+        "sub": "sub-1", "email": "yo@example.com", "name": "Yo", "picture": ""})
+
+    r = con_auth.get(f"/api/auth/google/callback?code=abc&state={estado}",
+                     follow_redirects=False)
+    assert r.headers["location"] == "/?login=ok"
+
+
+def test_the_login_comes_back_to_the_app_when_it_started_there(con_auth, monkeypatch):
+    """Si el usuario entró desde el candado de descarga, devolverlo a la
+    portada le hace perder lo que estaba haciendo."""
+    estado = _estado_firmado(con_auth, "/app")
+
+    monkeypatch.setattr(appmod, "exchange_code", lambda cfg, code: {"access_token": "t"})
+    monkeypatch.setattr(appmod, "fetch_profile", lambda tok: {
+        "sub": "sub-2", "email": "yo@example.com", "name": "Yo", "picture": ""})
+
+    r = con_auth.get(f"/api/auth/google/callback?code=abc&state={estado}",
+                     follow_redirects=False)
+    assert r.headers["location"] == "/app?login=ok"
+
+
+# ------------------------------------------------------------------ portada
+def test_the_landing_is_served_at_the_root(sin_auth):
+    r = sin_auth.get("/")
+    assert r.status_code == 200
+    assert "Botiquant" in r.text
+    # la portada, no la aplicación: la aplicación carga su bundle
+    assert "/static/app.js" not in r.text
+
+
+def test_the_app_lives_under_slash_app(sin_auth):
+    r = sin_auth.get("/app")
+    assert r.status_code == 200
+    assert "/static/app.js" in r.text

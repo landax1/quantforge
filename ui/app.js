@@ -7,6 +7,7 @@
 /* ------------------------------------------------------------------ state */
 const S = {
   meta: null,
+  auth: null,           // {configurado, usuario} — ver refreshAuth()
   datasets: [],
   catalog: [],
   page: "data",
@@ -142,7 +143,9 @@ const api = {
     if (!r.ok) {
       let msg = `${r.status}`;
       try { msg = (await r.json()).detail || msg; } catch (e) { /* noop */ }
-      throw new Error(msg);
+      // el código viaja con el error para que quien llama pueda distinguir
+      // "falta cuenta" de un fallo cualquiera
+      throw Object.assign(new Error(msg), { status: r.status });
     }
     return r.json();
   },
@@ -802,13 +805,16 @@ PAGES.saved = async (main) => {
           dataset_id: (s.meta || {}).dataset_id,
           timeframe: (s.meta || {}).timeframe, metrics: (s.meta || {}).metrics }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail || r.status);
+      if (!r.ok) {
+        const detalle = await r.json().then(j => j.detail).catch(() => r.status);
+        throw Object.assign(new Error(detalle), { status: r.status });
+      }
       const url = URL.createObjectURL(new Blob([await r.text()], { type: "text/plain" }));
       const a = document.createElement("a");
       a.href = url; a.download = `${safe}.mq5`; a.click();
       URL.revokeObjectURL(url);
       toast("EA descargado", "ok");
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     b.disabled = false;
   });
 
@@ -1881,14 +1887,17 @@ function renderInspector(box, row, res) {
           metrics: m,
         }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail || r.status);
+      if (!r.ok) {
+        const detalle = await r.json().then(j => j.detail).catch(() => r.status);
+        throw Object.assign(new Error(detalle), { status: r.status });
+      }
       const code = await r.text();
       const url = URL.createObjectURL(new Blob([code], { type: "text/plain" }));
       const a = document.createElement("a");
       a.href = url; a.download = `${safe}.${ext}`;
       a.click(); URL.revokeObjectURL(url);
       toast(done, "ok");
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     btn.disabled = false;
   }
 
@@ -1984,6 +1993,106 @@ function initTheme() {
   };
 }
 
+/* ---------------------------------------------------------------- cuenta
+   Minar y ver resultados son libres; la cuenta hace falta sólo para bajarse
+   el archivo. Así que acá no hay ningún muro: la sesión se consulta al
+   arrancar y sólo se usa para dos cosas, mostrar quién sos y explicar el
+   candado cuando lo tocás. */
+
+async function refreshAuth() {
+  try { S.auth = await api.get("/api/auth/me"); }
+  catch (e) { S.auth = { configurado: false, usuario: null }; }
+  renderAuth();
+}
+
+function renderAuth() {
+  const caja = $("#acct");
+  if (!caja) return;
+  // Sin login configurado (instalación local) no se menciona el tema: ofrecer
+  // una cuenta que no existe sólo confunde.
+  if (!S.auth || !S.auth.configurado) { caja.hidden = true; return; }
+  caja.hidden = false;
+  caja.replaceChildren();
+
+  const u = S.auth.usuario;
+  if (!u) {
+    const b = document.createElement("a");
+    b.className = "acct-in";
+    b.href = "/api/auth/google/start?next=/app";
+    b.append(googleMark(), Object.assign(document.createElement("span"),
+                                         { textContent: "Entrar con Google" }));
+    caja.appendChild(b);
+    return;
+  }
+
+  const chip = document.createElement("div");
+  chip.className = "acct-chip";
+  if (u.picture) {
+    const img = document.createElement("img");
+    img.src = u.picture; img.alt = ""; img.referrerPolicy = "no-referrer";
+    chip.appendChild(img);
+  }
+  // textContent y no innerHTML: el nombre lo eligió el usuario en Google y
+  // podría traer marcado.
+  const txt = document.createElement("div");
+  txt.className = "acct-txt";
+  const n = document.createElement("b"); n.textContent = u.name || u.email;
+  const e = document.createElement("span"); e.textContent = u.email;
+  txt.append(n, e);
+  const out = document.createElement("button");
+  out.className = "acct-out"; out.title = "Cerrar sesión"; out.textContent = "Salir";
+  out.onclick = async () => {
+    try { await api.post("/api/auth/logout", {}); } catch (err) { /* igual salimos */ }
+    S.auth.usuario = null; renderAuth(); toast("Sesión cerrada", "ok");
+  };
+  chip.append(txt, out);
+  caja.appendChild(chip);
+}
+
+function googleMark() {
+  const s = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  s.setAttribute("viewBox", "0 0 48 48"); s.setAttribute("class", "g-mark");
+  s.innerHTML =
+    '<path fill="#4285F4" d="M45.1 24.5c0-1.6-.1-3.2-.4-4.7H24v8.9h11.8c-.5 2.7-2 5.1-4.4 6.7v5.5h7.1c4.2-3.8 6.6-9.5 6.6-16.4z"/>' +
+    '<path fill="#34A853" d="M24 46c6 0 11-2 14.6-5.4l-7.1-5.5c-2 1.3-4.5 2.1-7.5 2.1-5.8 0-10.7-3.9-12.4-9.1H4.3v5.7C7.9 41.1 15.4 46 24 46z"/>' +
+    '<path fill="#FBBC05" d="M11.6 28.1c-.4-1.3-.7-2.7-.7-4.1s.2-2.8.7-4.1v-5.7H4.3C2.8 17.1 2 20.4 2 24s.8 6.9 2.3 9.8l7.3-5.7z"/>' +
+    '<path fill="#EA4335" d="M24 10.8c3.3 0 6.2 1.1 8.5 3.3l6.3-6.3C35 4.2 30 2 24 2 15.4 2 7.9 6.9 4.3 14.2l7.3 5.7c1.7-5.2 6.6-9.1 12.4-9.1z"/>';
+  return s;
+}
+
+/* El candado no puede ser un cartel que se va solo: el usuario tiene que
+   poder actuar. Devuelve true si el error era falta de cuenta. */
+function pedirCuenta(status) {
+  if (status !== 401) return false;
+  const fondo = document.createElement("div");
+  fondo.className = "gate-back";
+  fondo.innerHTML = `
+    <div class="gate" role="dialog" aria-modal="true" aria-labelledby="gate-t">
+      <h3 id="gate-t">Creá tu cuenta para descargar</h3>
+      <p>Minar, backtestear y mirar resultados no necesitan cuenta y seguirán
+         sin necesitarla. Sólo pedimos una para llevarte el archivo.</p>
+      <p class="gate-fine">Google nos da tu nombre, tu correo y tu foto. Nada más:
+         no pedimos permiso sobre tu correo ni tus archivos, y no vas a escribir
+         ninguna contraseña acá.</p>
+      <div class="gate-row">
+        <button class="btn ghost" data-x>Ahora no</button>
+        <a class="btn" href="/api/auth/google/start?next=/app"></a>
+      </div>
+    </div>`;
+  const entrar = $("a", fondo);
+  entrar.append(googleMark(), Object.assign(document.createElement("span"),
+                                            { textContent: "Entrar con Google" }));
+  const cerrar = () => fondo.remove();
+  $("[data-x]", fondo).onclick = cerrar;
+  fondo.onclick = (ev) => { if (ev.target === fondo) cerrar(); };
+  document.addEventListener("keydown", function esc(ev) {
+    if (ev.key === "Escape") { cerrar(); document.removeEventListener("keydown", esc); }
+  });
+  document.body.appendChild(fondo);
+  entrar.focus();
+  return true;
+}
+
 /* -------------------------------------------------------------------- boot */
 (async function boot() {
   try {
@@ -1991,6 +2100,7 @@ function initTheme() {
     $("#version").textContent = `v${S.meta.version}`;
     await refreshDatasets();
   } catch (e) { toast(`No se pudo conectar con el backend: ${e.message}`, "err"); }
+  refreshAuth();
   initTheme();
   refreshSavedCount();
   $$("#nav button").forEach(b => b.onclick = () => navigate(b.dataset.page));

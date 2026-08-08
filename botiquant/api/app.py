@@ -51,6 +51,7 @@ from botiquant.reports.report import excel_report, html_report, metrics_csv, tra
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 UI_DIR = ROOT / "ui"
+LANDING_DIR = ROOT / "landing"
 WORK_DIR = ROOT / "workspace"
 
 #: En una máquina propia el usuario ya puede leer sus archivos, así que la
@@ -378,16 +379,24 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             },
         }
 
+    #: A dónde puede volver el usuario después de entrar. Lista blanca y no
+    #: validación: aceptar un destino cualquiera convierte el login en un
+    #: redirector abierto, que es la pieza que hace creíble un phishing —
+    #: el enlace sale del dominio real y termina en otro.
+    DESTINOS = {"/", "/app"}
+
     @app.get("/api/auth/google/start", include_in_schema=False)
-    def auth_start() -> Response:
+    def auth_start(next: str = "/") -> Response:
         if not _auth_listo():
             raise HTTPException(503, "El inicio de sesión no está configurado en este servidor.")
         estado = new_state()
+        destino = next if next in DESTINOS else "/"
         r = RedirectResponse(authorize_url(gcfg, estado), status_code=307)
         # el state viaja firmado en una cookie propia y corta: es lo que
         # permite comprobar en el callback que la vuelta corresponde a una ida
-        # que salió de acá y no de otro sitio
-        r.set_cookie("bq_oauth_state", sign({"s": estado}, SECRET, max_age=600),
+        # que salió de acá y no de otro sitio. El destino viaja con él, dentro
+        # de la firma, para que no se pueda cambiar por el camino.
+        r.set_cookie("bq_oauth_state", sign({"s": estado, "d": destino}, SECRET, max_age=600),
                      max_age=600, httponly=True, samesite="lax",
                      secure=COOKIE_SECURE, path="/")
         return r
@@ -414,7 +423,12 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
         u = db.upsert_user(perfil["sub"], perfil["email"], perfil["name"],
                            perfil["picture"])
-        r = RedirectResponse("/?login=ok", status_code=303)
+        # el destino salió firmado; aun así se vuelve a filtrar por la lista
+        # blanca, porque una firma vieja podría traer algo que ya no aceptamos
+        destino = str(guardado.get("d", "/"))
+        if destino not in DESTINOS:
+            destino = "/"
+        r = RedirectResponse(f"{destino}?login=ok", status_code=303)
         set_cookie(r, sign({"uid": u["id"]}, SECRET), secure=COOKIE_SECURE)
         r.delete_cookie("bq_oauth_state", path="/")
         return r
@@ -781,7 +795,20 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     _NO_CACHE = {"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"}
 
     @app.get("/", include_in_schema=False)
-    def index() -> HTMLResponse:
+    def landing() -> HTMLResponse:
+        """La portada explica el producto; la aplicación vive en /app.
+
+        Si la landing no está (por ejemplo en un checkout parcial) se sirve la
+        aplicación: quedarse sin portada es un problema, quedarse sin producto
+        es otro mucho peor.
+        """
+        portada = LANDING_DIR / "index.html"
+        if not portada.exists():
+            return app_ui()
+        return HTMLResponse(portada.read_text(encoding="utf-8"), headers=_NO_CACHE)
+
+    @app.get("/app", include_in_schema=False)
+    def app_ui() -> HTMLResponse:
         html = (UI_DIR / "index.html").read_text(encoding="utf-8")
         for asset in ("app.js", "charts.js", "styles.css"):
             path = UI_DIR / asset

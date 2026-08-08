@@ -13,9 +13,12 @@
 :root{
   --bg:#07080c; --bg-soft:#0c0e15; --card:#11141d; --card-2:#161a25;
   --border:#222839; --border-soft:#1a1f2c; --border-strong:#2f3750;
-  --text:#e9ecf7; --text-2:#a6aec7; --text-dim:#6d768f;
-  --accent:#6b83e0; --accent-2:#8b9ae8;
-  --accent-soft:rgba(107,131,224,.10); --accent-line:rgba(107,131,224,.28);
+  --text:#e9ecf7; --text-2:#a6aec7;
+  /* #6d768f daba 4.42:1 en la nota bajo el botón y en el aviso de riesgo,
+     por debajo del mínimo legible. Mismo valor que ya usa la aplicación. */
+  --text-dim:#828ba6;
+  --accent:#635bff; --accent-2:#9d97ff;
+  --accent-soft:rgba(99, 91, 255,.10); --accent-line:rgba(99, 91, 255,.28);
   --pos:#43c88a; --neg:#e0736f; --warn:#d9a441;
   --r:10px; --r-lg:13px; --r-xl:18px;
   --font:"Inter","Segoe UI Variable","Segoe UI",system-ui,-apple-system,sans-serif;
@@ -25,7 +28,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
-::selection{background:rgba(107,131,224,.28)}
+::selection{background:rgba(99, 91, 255,.28)}
 a{color:inherit;text-decoration:none}
 .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
 
@@ -39,7 +42,7 @@ header{position:sticky;top:0;z-index:50;background:rgba(7,8,12,.82);backdrop-fil
 .nav-links a:hover{color:var(--text)}
 @media(max-width:760px){.nav-links{display:none}}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:38px;padding:0 18px;border-radius:var(--r);border:1px solid transparent;background:var(--accent);color:#fff;font:inherit;font-size:14px;font-weight:550;cursor:pointer;transition:background .14s,border-color .14s,color .14s}
-.btn:hover{background:#7a90e6}
+.btn:hover{background:#7570ff}
 .btn.ghost{background:var(--card-2);color:var(--text-2);border-color:var(--border)}
 .btn.ghost:hover{background:#1b2030;color:var(--text);border-color:var(--border-strong)}
 .btn.lg{height:46px;padding:0 24px;font-size:15px}
@@ -114,6 +117,15 @@ details summary::after{content:"+";margin-left:auto;color:var(--text-dim);font-s
 details[open] summary::after{transform:rotate(45deg)}
 details p{color:var(--text-2);font-size:15px;padding:0 0 22px}
 
+/* ------------------------------------------------------------ cuenta */
+.cuenta{display:flex;align-items:center;gap:10px}
+.chip{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--text-2);
+      background:var(--card);border:1px solid var(--border);border-radius:999px;
+      padding:4px 12px 4px 5px;max-width:190px}
+.chip img{width:24px;height:24px;border-radius:50%;flex:none;object-fit:cover}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:620px){.chip{display:none}}
+
 /* -------------------------------------------------------------- misc */
 .final{text-align:center;padding:88px 0}
 footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-dim);font-size:13px}
@@ -137,14 +149,15 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
       <a href="#limites">Qué no hace</a>
       <a href="#faq">Preguntas</a>
     </nav>
-    <a class="btn ghost" href="#descargar">Descargar</a>
+    <!-- lo llena auth.js: "Entrar" si no hay sesión, el nombre si la hay -->
+    <div id="cuenta" class="cuenta"><a class="btn ghost" href="/app">Abrir la app</a></div>
   </div>
 </header>
 
 <main id="top">
 
 <div class="wrap hero">
-  <div class="eyebrow"><span class="dot"></span> Corre en tu máquina · sin conexión</div>
+  <div class="eyebrow"><span class="dot"></span> En el navegador · sin instalar nada</div>
   <h1>Buscá estrategias que tu broker <em>pueda ejecutar</em></h1>
   <p class="sub">
     Botiquant prueba millones de combinaciones de reglas sobre años de velas reales
@@ -152,21 +165,24 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
     TradingView con las mismas reglas que se backtestearon.
   </p>
   <div class="cta">
-    <a class="btn lg" href="#descargar">Descargar para Windows</a>
+    <a class="btn lg" href="/app">Empezar a minar</a>
     <a class="btn lg ghost" href="#como">Ver cómo funciona</a>
   </div>
-  <p class="cta-note">Gratis mientras está en desarrollo · Windows 10/11 · ~200 MB</p>
+  <p class="cta-note">
+    Gratis y sin cuenta. Los datos de mercado ya están cargados: entrás y minás.
+    La cuenta hace falta sólo para descargar el archivo.
+  </p>
 
   <div class="shot">
     <div class="shot-bar"><i></i><i></i><i></i><span>Botiquant — Mining</span></div>
     <svg viewBox="0 0 1000 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vista del minado: panel de configuración a la izquierda y databank de estrategias a la derecha">
       <defs>
         <linearGradient id="eq" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#6b83e0" stop-opacity=".35"/>
-          <stop offset="100%" stop-color="#6b83e0" stop-opacity="0"/>
+          <stop offset="0%" stop-color="#635bff" stop-opacity=".35"/>
+          <stop offset="100%" stop-color="#635bff" stop-opacity="0"/>
         </linearGradient>
         <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#6b83e0"/><stop offset="100%" stop-color="#8b9ae8"/>
+          <stop offset="0%" stop-color="#635bff"/><stop offset="100%" stop-color="#9d97ff"/>
         </linearGradient>
       </defs>
       <rect width="1000" height="520" fill="#11141d"/>
@@ -187,7 +203,7 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
         <rect x="182" y="86" width="22" height="22" rx="7" fill="#161a25" stroke="#2f3750"/>
         <rect x="214" y="89" width="54" height="9" rx="3" fill="#e9ecf7"/>
         <rect x="214" y="103" width="120" height="7" rx="3"/>
-        <rect x="182" y="130" width="22" height="22" rx="7" fill="#6b83e0" fill-opacity=".18" stroke="#6b83e0" stroke-opacity=".4"/>
+        <rect x="182" y="130" width="22" height="22" rx="7" fill="#635bff" fill-opacity=".18" stroke="#635bff" stroke-opacity=".4"/>
         <rect x="214" y="133" width="96" height="9" rx="3" fill="#e9ecf7"/>
         <rect x="214" y="147" width="132" height="7" rx="3"/>
       </g>
@@ -204,8 +220,8 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
       <text x="363" y="263" font-family="monospace" font-size="12" fill="#e9ecf7" text-anchor="middle">1:2</text>
       <!-- criteria -->
       <g>
-        <rect x="182" y="300" width="218" height="26" rx="6" fill="#6b83e0" fill-opacity=".07"/>
-        <rect x="192" y="309" width="9" height="9" rx="2" fill="#6b83e0"/>
+        <rect x="182" y="300" width="218" height="26" rx="6" fill="#635bff" fill-opacity=".07"/>
+        <rect x="192" y="309" width="9" height="9" rx="2" fill="#635bff"/>
         <rect x="209" y="309" width="96" height="8" rx="3" fill="#a6aec7"/>
         <rect x="348" y="306" width="42" height="15" rx="4" fill="#161a25"/>
         <rect x="182" y="330" width="218" height="26" rx="6" fill="#0c0e15"/>
@@ -220,7 +236,7 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
       <rect x="182" y="424" width="70" height="8" rx="3" fill="#6d768f"/>
       <rect x="182" y="440" width="52" height="26" rx="7" fill="#0c0e15" stroke="#2f3750"/>
       <text x="208" y="457" font-family="monospace" font-size="13" fill="#e9ecf7" text-anchor="middle">25</text>
-      <rect x="182" y="474" width="218" height="14" rx="7" fill="#6b83e0"/>
+      <rect x="182" y="474" width="218" height="14" rx="7" fill="#635bff"/>
       <!-- results: goal card -->
       <rect x="432" y="22" width="552" height="128" rx="12" fill="#11141d" stroke="#222839"/>
       <circle cx="494" cy="86" r="38" fill="none" stroke="#222839" stroke-width="8"/>
@@ -241,9 +257,9 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
         <text x="780" y="122" font-family="monospace" font-size="14" font-weight="700" fill="#e9ecf7">4m 12s</text>
       </g>
       <!-- champion -->
-      <rect x="432" y="162" width="552" height="120" rx="12" fill="#141827" stroke="#6b83e0" stroke-opacity=".28"/>
-      <rect x="450" y="180" width="104" height="16" rx="8" fill="#6b83e0" fill-opacity=".14" stroke="#6b83e0" stroke-opacity=".3"/>
-      <text x="502" y="192" font-family="Inter,sans-serif" font-size="9" font-weight="700" fill="#8b9ae8" text-anchor="middle">MEJOR ENCONTRADA</text>
+      <rect x="432" y="162" width="552" height="120" rx="12" fill="#141827" stroke="#635bff" stroke-opacity=".28"/>
+      <rect x="450" y="180" width="104" height="16" rx="8" fill="#635bff" fill-opacity=".14" stroke="#635bff" stroke-opacity=".3"/>
+      <text x="502" y="192" font-family="Inter,sans-serif" font-size="9" font-weight="700" fill="#9d97ff" text-anchor="middle">MEJOR ENCONTRADA</text>
       <text x="450" y="222" font-family="Inter,sans-serif" font-size="19" font-weight="700" fill="#e9ecf7">S-018</text>
       <rect x="450" y="234" width="188" height="7" rx="3" fill="#a6aec7"/>
       <rect x="450" y="248" width="150" height="6" rx="3" fill="#6d768f"/>
@@ -418,23 +434,25 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
 </section>
 
 <!-- -------------------------------------------------------- descargar -->
-<section id="descargar">
+<section id="empezar">
   <div class="wrap">
     <div class="sec-head">
-      <div class="sec-eyebrow">Descargar</div>
-      <h2>Corre en tu máquina, con tu procesador</h2>
-      <p>El minado usa tu CPU, así que no hay cola ni límite de uso. Los datos de
-         mercado se descargan una vez y quedan en tu disco.</p>
+      <div class="sec-eyebrow">Empezar</div>
+      <h2>Entrás y minás. No hay paso previo.</h2>
+      <p>Los 22 millones de velas ya están cargadas del lado del servidor, así que no
+         descargás datos ni esperás nada. La cuenta aparece recién cuando querés
+         llevarte el archivo.</p>
     </div>
     <div class="grid g3">
-      <div class="card"><h3>Windows 10 / 11</h3><p>Instalador de ~200 MB. Incluye todo
-        lo necesario; no hace falta instalar Python ni nada más.</p>
-        <a class="btn" style="margin-top:16px" href="#" data-download>Descargar</a></div>
-      <div class="card"><h3>Requisitos</h3><p>4 GB de RAM y ~3 GB libres de disco para
-        los datos de mercado. Cuantos más núcleos tenga tu procesador, más rápido mina.</p></div>
-      <div class="card"><h3>Tu cuenta</h3><p>Iniciás sesión una vez para activar la
-        aplicación. Los datos y las estrategias no salen nunca de tu computadora.</p>
-        <a class="btn ghost" style="margin-top:16px" href="#" data-login>Entrar con Google</a></div>
+      <div class="card"><h3>Probar</h3><p>Elegís instrumento, marcás qué bloques puede
+        usar el buscador y arrancás. Sin registro, sin tarjeta y sin límite de corridas.</p>
+        <a class="btn" style="margin-top:16px" href="/app">Abrir la app</a></div>
+      <div class="card"><h3>Descargar</h3><p>Bajar el Expert Advisor de MetaTrader o el
+        script de TradingView necesita una cuenta. Es el único momento en que hace falta.</p>
+        <a class="btn ghost" style="margin-top:16px" href="/api/auth/google/start">Entrar con Google</a></div>
+      <div class="card"><h3>Tus estrategias</h3><p>Las que guardás sobreviven a las
+        corridas siguientes, así que podés volver a exportarlas sin repetir la
+        búsqueda.</p></div>
     </div>
   </div>
 </section>
@@ -454,16 +472,22 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
       <p>No. Elegís bloques de una lista con casillas y ajustás dos números de riesgo.
          El código de MetaTrader o TradingView lo genera la aplicación.</p></details>
     <details><summary>¿De dónde salen los datos?</summary>
-      <p>De Dukascopy, con velas de un minuto desde 2005 según el instrumento. Se
-         descargan desde la aplicación con un clic. También podés importar tu propio
-         CSV de MetaTrader, TradingView o Binance.</p></details>
+      <p>De Dukascopy, con velas de un minuto desde 2005 según el instrumento. Ya están
+         cargados: SP500, EURUSD, XAUUSD y BTCUSD suman unos 22 millones de velas. No
+         los descargás vos. También podés subir tu propio CSV de MetaTrader,
+         TradingView o Binance.</p></details>
     <details><summary>¿Puedo usar mi propio broker y mis costos?</summary>
       <p>Sí, y deberías. El spread, el slippage y la comisión se configuran a mano,
          y la aplicación te muestra cuánto suma eso por operación en unidades de precio
          y en porcentaje del precio actual.</p></details>
-    <details><summary>¿Mis estrategias son mías?</summary>
-      <p>Sí. Todo se guarda en tu disco. La aplicación funciona sin conexión salvo
-         cuando descargás datos de mercado o validás tu cuenta.</p></details>
+    <details><summary>¿Hace falta cuenta para probarlo?</summary>
+      <p>No. Minás, backtesteás y mirás resultados sin registrarte. La cuenta se pide
+         únicamente al descargar el Expert Advisor o el script, que es el momento en
+         que te llevás algo.</p></details>
+    <details><summary>¿Qué ve Botiquant de mi cuenta de Google?</summary>
+      <p>Tu nombre, tu dirección de correo y tu foto. Nada más: no se piden permisos
+         sobre tu correo, tu agenda ni tus archivos. Nunca vas a escribir tu contraseña
+         en Botiquant, porque la validación la hace Google.</p></details>
     <details><summary>¿Sirve para operar en automático?</summary>
       <p>El Expert Advisor exportado puede operar solo en MetaTrader 5. Antes de
          ponerlo con plata real, corrélo en el Strategy Tester de tu propio broker
@@ -475,7 +499,7 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
   <h2>Probalo sobre tus propios datos</h2>
   <p class="sub">La única forma de saber si sirve es minar sobre el instrumento que
      operás, con los costos de tu broker.</p>
-  <div class="cta"><a class="btn lg" href="#descargar">Descargar Botiquant</a></div>
+  <div class="cta"><a class="btn lg" href="/app">Empezar a minar</a></div>
 </div>
 
 </main>
@@ -503,16 +527,66 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
 </footer>
 
 <script>
-  // Los destinos reales todavía no existen: mejor decirlo que simular un flujo.
-  document.querySelectorAll("[data-download], [data-login]").forEach(el => {
-    el.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      el.textContent = el.hasAttribute("data-login")
-        ? "Próximamente" : "Todavía no disponible";
-      el.style.pointerEvents = "none";
-      el.style.opacity = ".6";
-    });
-  });
+/* Estado de sesión. Tres situaciones distintas, y la del medio es la que se
+   suele olvidar:
+
+   - login apagado (instalación local): no hay cuentas, así que ofrecer
+     "Entrar con Google" sería mandar al usuario a un callejón sin salida.
+     Se esconde todo lo que hable de cuentas.
+   - login encendido y sin sesión: se ofrece entrar.
+   - con sesión: se muestra quién es y cómo salir.
+
+   Si la consulta falla se deja el marcado de entrada, que ya trae un enlace
+   útil a la app: un error de red no puede dejar la página sin salida. */
+(async function cuenta() {
+  const caja = document.getElementById("cuenta");
+  let est;
+  try {
+    est = await (await fetch("/api/auth/me", { credentials: "same-origin" })).json();
+  } catch (e) { return; }
+
+  const login = document.querySelectorAll('[href="/api/auth/google/start"]');
+  if (!est.configurado) {
+    login.forEach(a => { const c = a.closest(".card"); (c || a).style.display = "none"; });
+    return;
+  }
+
+  const u = est.usuario;
+  if (!u) {
+    caja.innerHTML = '<a class="btn ghost" href="/api/auth/google/start">Entrar</a>'
+                   + '<a class="btn" href="/app">Abrir la app</a>';
+    return;
+  }
+
+  // textContent y no innerHTML: el nombre viene de un tercero y podría traer
+  // marcado. Es la diferencia entre mostrar un nombre y ejecutarlo.
+  const chip = document.createElement("span");
+  chip.className = "chip";
+  if (u.picture) {
+    const img = document.createElement("img");
+    img.src = u.picture; img.alt = ""; img.referrerPolicy = "no-referrer";
+    chip.appendChild(img);
+  }
+  const nom = document.createElement("span");
+  nom.textContent = u.name || u.email;
+  chip.appendChild(nom);
+
+  caja.replaceChildren(chip);
+  // Salir es POST a propósito: si fuera un GET, cualquier sitio podría
+  // desloguearte con una imagen apuntada a esa dirección.
+  const salir = document.createElement("button");
+  salir.className = "btn ghost"; salir.textContent = "Salir";
+  salir.onclick = async () => {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    location.reload();
+  };
+  const app = document.createElement("a");
+  app.className = "btn"; app.href = "/app"; app.textContent = "Abrir la app";
+  caja.append(salir, app);
+
+  login.forEach(a => { a.textContent = "Ya entraste"; a.setAttribute("aria-disabled", "true");
+                       a.style.pointerEvents = "none"; a.style.opacity = ".55"; });
+})();
 </script>
 </body>
 </html>

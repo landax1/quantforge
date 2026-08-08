@@ -116,7 +116,7 @@ def test_datasets_carry_exit_and_cost_suggestions(client):
 def test_ui_assets_are_cache_busted(client):
     """A stale app.js silently shows an older app — asset URLs must change
     whenever the file does."""
-    html = client.get("/").text
+    html = client.get("/app").text
     assert "/static/app.js?v=" in html
     assert "/static/charts.js?v=" in html
     assert "/static/styles.css?v=" in html
