@@ -7,16 +7,23 @@ background jobs polled via ``/api/jobs/{id}``.
 
 from __future__ import annotations
 
+import hmac
 import os
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, Response
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.responses import (
+    FileResponse, HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response,
+)
 from fastapi.staticfiles import StaticFiles
 
 from quantforge import __version__
+from quantforge.auth import SessionError, clear_cookie, read_cookie, set_cookie, sign, verify
+from quantforge.auth.google import (
+    GoogleConfig, authorize_url, exchange_code, fetch_profile, new_state,
+)
 from quantforge.analysis.montecarlo import monte_carlo
 from quantforge.analysis.walkforward import walk_forward
 from quantforge.backtesting.engine import run_backtest
@@ -308,6 +315,94 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                                  kind="backtest", strategy_id=payload.get("strategy_id"))
             out["result_id"] = rid
         return out
+
+    # ------------------------------------------------------------------ auth
+    gcfg = GoogleConfig.from_env()
+    SECRET = os.environ.get("SESSION_SECRET", "").strip()
+    #: en localhost la cookie viaja por http, así que no puede pedir `secure`
+    COOKIE_SECURE = gcfg.redirect_uri.startswith("https://")
+
+    def _auth_listo() -> bool:
+        return gcfg.enabled and bool(SECRET)
+
+    def usuario_actual(request: Request) -> dict[str, Any] | None:
+        """Quién está del otro lado, o None si nadie inició sesión."""
+        if not SECRET:
+            return None
+        try:
+            datos = verify(read_cookie(request), SECRET)
+            return db.get_user(str(datos.get("uid", "")))
+        except (SessionError, KeyError):
+            return None
+
+    def _exigir_para_descargar(request: Request) -> dict[str, Any] | None:
+        """Sin login configurado —una instalación local— no se le pide cuenta a
+        nadie. Con login configurado, bajarse un archivo requiere estar dentro."""
+        if not _auth_listo():
+            return None
+        u = usuario_actual(request)
+        if u is None:
+            raise HTTPException(
+                401, "Creá tu cuenta para descargar la estrategia. "
+                     "Minar y ver resultados es libre.")
+        return u
+
+    @app.get("/api/auth/me")
+    def auth_me(request: Request) -> dict[str, Any]:
+        u = usuario_actual(request)
+        return {
+            "configurado": _auth_listo(),
+            "usuario": None if u is None else {
+                "email": u["email"], "name": u["name"], "picture": u["picture"],
+            },
+        }
+
+    @app.get("/api/auth/google/start", include_in_schema=False)
+    def auth_start() -> Response:
+        if not _auth_listo():
+            raise HTTPException(503, "El inicio de sesión no está configurado en este servidor.")
+        estado = new_state()
+        r = RedirectResponse(authorize_url(gcfg, estado), status_code=307)
+        # el state viaja firmado en una cookie propia y corta: es lo que
+        # permite comprobar en el callback que la vuelta corresponde a una ida
+        # que salió de acá y no de otro sitio
+        r.set_cookie("qf_oauth_state", sign({"s": estado}, SECRET, max_age=600),
+                     max_age=600, httponly=True, samesite="lax",
+                     secure=COOKIE_SECURE, path="/")
+        return r
+
+    @app.get("/api/auth/google/callback", include_in_schema=False)
+    def auth_callback(request: Request, code: str = "", state: str = "",
+                      error: str = "") -> Response:
+        if error:
+            return RedirectResponse(f"/?login=error&motivo={error}", status_code=303)
+        if not _auth_listo() or not code:
+            return RedirectResponse("/?login=error", status_code=303)
+        try:
+            guardado = verify(request.cookies.get("qf_oauth_state", ""), SECRET)
+        except SessionError:
+            return RedirectResponse("/?login=expirado", status_code=303)
+        if not state or not hmac.compare_digest(str(guardado.get("s", "")), state):
+            return RedirectResponse("/?login=error", status_code=303)
+
+        try:
+            token = exchange_code(gcfg, code)
+            perfil = fetch_profile(token["access_token"])
+        except Exception:                       # red caída, code vencido, etc.
+            return RedirectResponse("/?login=error", status_code=303)
+
+        u = db.upsert_user(perfil["sub"], perfil["email"], perfil["name"],
+                           perfil["picture"])
+        r = RedirectResponse("/?login=ok", status_code=303)
+        set_cookie(r, sign({"uid": u["id"]}, SECRET), secure=COOKIE_SECURE)
+        r.delete_cookie("qf_oauth_state", path="/")
+        return r
+
+    @app.post("/api/auth/logout")
+    def auth_logout() -> Response:
+        r = JSONResponse({"status": "ok"})
+        clear_cookie(r)
+        return r
 
     # ------------------------------------------------------------------ jobs
     @app.get("/api/jobs/{job_id}")
@@ -616,8 +711,13 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             headers={"Content-Disposition": f'attachment; filename="report_{rid}.xlsx"'})
 
     @app.post("/api/export/mql5")
-    def export_mql5_endpoint(payload: dict[str, Any]) -> PlainTextResponse:
-        """Render a mined strategy as a compilable MQL5 Expert Advisor."""
+    def export_mql5_endpoint(payload: dict[str, Any], request: Request) -> PlainTextResponse:
+        """Render a mined strategy as a compilable MQL5 Expert Advisor.
+
+        Minar y mirar resultados es libre; bajarse el archivo pide cuenta. Es
+        el momento en que el usuario se lleva algo, y el unico donde la
+        friccion del registro se justifica."""
+        _exigir_para_descargar(request)
         spec = _spec(payload)
         name = str(payload.get("name") or "QF_Strategy").replace(" ", "_")
         ds_name = ""
@@ -634,8 +734,9 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                                           f'attachment; filename="{name}.mq5"'})
 
     @app.post("/api/export/pine")
-    def export_pine_endpoint(payload: dict[str, Any]) -> PlainTextResponse:
+    def export_pine_endpoint(payload: dict[str, Any], request: Request) -> PlainTextResponse:
         """Render a mined strategy as a TradingView Pine Script v5 strategy."""
+        _exigir_para_descargar(request)
         spec = _spec(payload)
         name = str(payload.get("name") or "QF Strategy")
         ds_name = ""

@@ -25,6 +25,15 @@ CREATE TABLE IF NOT EXISTS datasets (
     timeframe TEXT NOT NULL,
     created TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    google_sub TEXT NOT NULL UNIQUE,
+    email TEXT NOT NULL DEFAULT '',
+    name TEXT NOT NULL DEFAULT '',
+    picture TEXT NOT NULL DEFAULT '',
+    created TEXT NOT NULL,
+    last_seen TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS strategies (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -66,6 +75,37 @@ class Database:
             self._conn.executescript(_SCHEMA)
             self._migrate()
             self._conn.commit()
+
+    # ---------------------------------------------------------------- usuarios
+    def upsert_user(self, sub: str, email: str, name: str = "",
+                    picture: str = "") -> dict[str, Any]:
+        """Busca por el `sub` de Google y actualiza, o crea si es la primera vez.
+
+        La clave es el `sub`, nunca el mail: un usuario puede cambiar su
+        dirección, y una dirección liberada puede terminar en otra cuenta.
+        """
+        filas = self._rows("SELECT * FROM users WHERE google_sub=?", (sub,))
+        if filas:
+            uid = filas[0]["id"]
+            self._exec(
+                "UPDATE users SET email=?, name=?, picture=?, last_seen=? WHERE id=?",
+                (email, name, picture, _now(), uid))
+        else:
+            uid = _new_id()
+            self._exec(
+                "INSERT INTO users (id, google_sub, email, name, picture, created, last_seen) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (uid, sub, email, name, picture, _now(), _now()))
+        return self.get_user(uid)
+
+    def get_user(self, uid: str) -> dict[str, Any]:
+        filas = self._rows("SELECT * FROM users WHERE id=?", (uid,))
+        if not filas:
+            raise KeyError(f"User {uid} not found")
+        return filas[0]
+
+    def count_users(self) -> int:
+        return int(self._rows("SELECT COUNT(*) AS n FROM users")[0]["n"])
 
     def _migrate(self) -> None:
         """Additive column migrations for workspaces created by older builds."""
