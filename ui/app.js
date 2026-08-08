@@ -255,6 +255,13 @@ function rangePayload() {
   return { date_from: r.from, date_to: r.to };
 }
 
+/* En una instalación compartida, los instrumentos del catálogo son de todos:
+   un "Borrar" ahí dejaría al resto sin 4,6 millones de velas. Sólo lo que
+   subió el propio usuario se puede borrar. */
+function puedeBorrar(d) {
+  return !S.meta?.multiuser || d.source === "upload";
+}
+
 /* qué instrumento y timeframe están cargados ahora mismo */
 function ctxPill() {
   const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
@@ -577,7 +584,9 @@ PAGES.data = async (main) => {
              ${esc(String(c.start).slice(0, 10))} → ${esc(String(c.end).slice(0, 10))}</div>
            <button class="btn ghost" data-mine="${c.dataset_id}" data-key="${c.key}">Minar este</button>`
         : `<div class="inst-meta">Historial M1 desde ${esc(c.from)}</div>
-           <button class="btn" data-dl="${c.key}">↓ Descargar</button>`}
+           ${S.meta?.multiuser
+             ? `<span class="muted" style="font-size:11.5px">No disponible en este instrumento</span>`
+             : `<button class="btn" data-dl="${c.key}">↓ Descargar</button>`}`}
     </div>`;
   }).join("") + `
     <button class="inst-card add-card" id="inst-add">
@@ -595,7 +604,9 @@ PAGES.data = async (main) => {
       <td class="muted">${esc(String(d.start).slice(0, 16))}</td>
       <td class="muted">${esc(String(d.end).slice(0, 16))}</td>
       <td>${esc(d.timeframe)}</td>
-      <td class="num"><button class="btn ghost small" data-del="${d.id}">Borrar</button></td>
+      <td class="num">${puedeBorrar(d)
+        ? `<button class="btn ghost small" data-del="${d.id}">Borrar</button>`
+        : `<span class="muted" title="Instrumento compartido: lo usan todos los usuarios">compartido</span>`}</td>
     </tr>`).join("");
 
   main.innerHTML = `

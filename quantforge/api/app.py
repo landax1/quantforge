@@ -131,6 +131,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             "operators": list(OPERATORS),
             "price_fields": list(PRICE_FIELDS),
             "timeframes": ["native", "15m", "30m", "1h", "4h", "1d"],
+            # la UI lo necesita para no ofrecer botones que van a dar 403
+            "multiuser": MULTIUSER,
             # el desglose del QF Score se define en un solo lugar
             "score_parts": [{"key": k, "label": l, "weight": w}
                             for k, l, w in SCORE_PARTS],
@@ -205,7 +207,16 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     @app.post("/api/datasets/download")
     def download_dataset(payload: dict[str, Any]) -> dict[str, str]:
-        """Fetch a catalogue instrument from Dukascopy (needs node + network)."""
+        """Fetch a catalogue instrument from Dukascopy (needs node + network).
+
+        En modo multiusuario no se expone: los instrumentos del catálogo ya
+        vienen cargados y son compartidos. Dejarlo abierto permitiría que
+        cualquiera dispare descargas de cientos de MB desde el servidor.
+        """
+        if MULTIUSER:
+            raise HTTPException(
+                403, "Los instrumentos del catálogo ya vienen cargados y son "
+                     "compartidos. Para usar tus propios datos, subí un CSV.")
         key = str(payload.get("key", ""))
         if key not in BY_KEY:
             raise HTTPException(400, f"Instrumento desconocido: {key}")
@@ -252,8 +263,28 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             return meta
         return {"job_id": jobs.submit("import", work)}
 
+    #: lo que un usuario puede borrar: sólo lo que él mismo subió. Todo lo
+    #: demás es infraestructura compartida — los instrumentos del catálogo
+    #: existen una sola vez y los minan todos.
+    BORRABLE = {"upload"}
+
     @app.delete("/api/datasets/{ds_id}")
     def delete_dataset(ds_id: str) -> dict[str, str]:
+        """En modo multiusuario, los datasets compartidos no se borran.
+
+        Sin esto, un clic en "Borrar" de cualquier usuario deja al resto sin
+        el S&P 500 hasta que alguien lo reponga a mano: 4,6 millones de velas
+        que hay que volver a descargar de Dukascopy.
+        """
+        if MULTIUSER:
+            try:
+                fuente = db.get_dataset(ds_id).get("source", "")
+            except KeyError as exc:
+                raise HTTPException(404, str(exc)) from exc
+            if fuente not in BORRABLE:
+                raise HTTPException(
+                    403, "Este instrumento es compartido y no se puede borrar. "
+                         "Sólo podés borrar los CSV que subiste vos.")
         store.delete(ds_id)
         return {"status": "deleted"}
 
