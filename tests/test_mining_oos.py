@@ -9,8 +9,8 @@ búsqueda nunca vio.
 
 from __future__ import annotations
 
-from quantforge.generator.templates import drivers, filters
-from quantforge.mining.miner import mine
+from botiquant.generator.templates import drivers, filters
+from botiquant.mining.miner import mine
 
 DRIVERS = [d.id for d in drivers()]
 FILTERS = [f.id for f in filters()]
@@ -56,8 +56,8 @@ def test_in_sample_metrics_ignore_the_reserved_tail(df):
     ya habría "visto" los datos con los que se la juzga. Se comprueba sobre la
     MISMA estrategia, reproduciendo su backtest a mano en los dos tramos.
     """
-    from quantforge.backtesting.engine import run_backtest
-    from quantforge.core.models import StrategySpec
+    from botiquant.backtesting.engine import run_backtest
+    from botiquant.core.models import StrategySpec
 
     r = mine(df, DRIVERS, FILTERS, max_candidates=20, min_trades=5, seed=3,
              oos_pct=40.0, accept={"min_pf": 1.0})

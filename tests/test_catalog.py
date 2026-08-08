@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from quantforge.data.catalog import BY_KEY, CATALOG, to_server_time
+from botiquant.data.catalog import BY_KEY, CATALOG, to_server_time
 
 
 def test_catalog_entries_complete():

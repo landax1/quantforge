@@ -1,8 +1,8 @@
-# ⚡ QuantForge
+# ⚡ Botiquant
 
 **The analytical power of StrategyQuant, redesigned for simplicity.**
 
-QuantForge is an offline quantitative strategy builder: compose trading strategies from
+Botiquant is an offline quantitative strategy builder: compose trading strategies from
 indicator blocks, generate and evolve them algorithmically, validate them with Monte Carlo
 and walk-forward analysis, and combine them into portfolios — with zero AI, zero cloud,
 zero external APIs. Every computation is deterministic Python.
@@ -12,7 +12,7 @@ zero external APIs. Every computation is deterministic Python.
 ## Quick start
 
 ```bash
-cd QuantForge
+cd Botiquant
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt      # Windows
 .venv\Scripts\python run.py
@@ -53,7 +53,7 @@ Run the tests:
 ## Architecture
 
 ```
-quantforge/
+botiquant/
   core/          domain models (dataclass specs), thread job manager
   data/          format-tolerant CSV loader, resampling, seeded sample generator, store
   indicators/    15 built-in indicators + @register decorator for custom ones
@@ -76,7 +76,7 @@ Strategies serialize to plain JSON, so they can be stored, diffed and shared as 
 ### Adding a custom indicator
 
 ```python
-from quantforge.indicators.base import Indicator, ParamDef, register
+from botiquant.indicators.base import Indicator, ParamDef, register
 
 @register
 class HullMA(Indicator):

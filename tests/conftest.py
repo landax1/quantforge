@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from quantforge.core.models import Condition, Operand, RiskConfig, StrategySpec
-from quantforge.data.sample import generate_sample
+from botiquant.core.models import Condition, Operand, RiskConfig, StrategySpec
+from botiquant.data.sample import generate_sample
 
 
 @pytest.fixture(scope="session")
@@ -18,7 +18,7 @@ def client_with_sample(tmp_path):
     """API client whose workspace holds one synthetic EURUSD dataset."""
     from fastapi.testclient import TestClient
 
-    from quantforge.api.app import create_app
+    from botiquant.api.app import create_app
 
     app = create_app(workdir=tmp_path)
     with TestClient(app) as c:

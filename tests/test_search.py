@@ -5,14 +5,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from quantforge.analysis.montecarlo import monte_carlo
-from quantforge.analysis.walkforward import walk_forward
-from quantforge.backtesting.engine import run_backtest
-from quantforge.generator.generator import Genome, build_spec, generate_strategies
-from quantforge.generator.templates import TEMPLATES, drivers, filters
-from quantforge.genetic.evolution import evolve
-from quantforge.optimizer.optimizer import apply_values, discover_dimensions, optimize
-from quantforge.portfolio.portfolio import build_portfolio
+from botiquant.analysis.montecarlo import monte_carlo
+from botiquant.analysis.walkforward import walk_forward
+from botiquant.backtesting.engine import run_backtest
+from botiquant.generator.generator import Genome, build_spec, generate_strategies
+from botiquant.generator.templates import TEMPLATES, drivers, filters
+from botiquant.genetic.evolution import evolve
+from botiquant.optimizer.optimizer import apply_values, discover_dimensions, optimize
+from botiquant.portfolio.portfolio import build_portfolio
 
 
 def test_templates_build_valid_specs(df):

@@ -11,7 +11,7 @@ import io
 
 import pytest
 
-from quantforge.database.db import Database
+from botiquant.database.db import Database
 
 
 def _spec() -> dict:
@@ -83,7 +83,7 @@ def test_path_import_is_refused_in_multiuser_mode(tmp_path, monkeypatch):
     """Leer una ruta arbitraria del servidor sólo es aceptable en local."""
     from fastapi.testclient import TestClient
 
-    import quantforge.api.app as appmod
+    import botiquant.api.app as appmod
 
     monkeypatch.setattr(appmod, "MULTIUSER", True)
     c = TestClient(appmod.create_app(tmp_path))

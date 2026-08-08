@@ -3,8 +3,8 @@ modo de falla posible cuando el usuario está mirando el Strategy Tester."""
 
 from __future__ import annotations
 
-from quantforge.core.models import Condition, Operand, RiskConfig, StrategySpec
-from quantforge.reports.mql5 import export_mql5
+from botiquant.core.models import Condition, Operand, RiskConfig, StrategySpec
+from botiquant.reports.mql5 import export_mql5
 
 
 def _spec(**risk_kw) -> StrategySpec:

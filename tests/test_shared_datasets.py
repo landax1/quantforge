@@ -13,7 +13,7 @@ import io
 import pytest
 from fastapi.testclient import TestClient
 
-import quantforge.api.app as appmod
+import botiquant.api.app as appmod
 
 
 @pytest.fixture()

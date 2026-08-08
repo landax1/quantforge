@@ -6,8 +6,8 @@ import time
 
 import pytest
 
-from quantforge.generator.templates import drivers, filters
-from quantforge.mining.miner import _CRIT_BY_KEY, mine
+from botiquant.generator.templates import drivers, filters
+from botiquant.mining.miner import _CRIT_BY_KEY, mine
 
 DRIVERS = [d.id for d in drivers()]
 FILTERS = [f.id for f in filters()]
@@ -77,7 +77,7 @@ def test_impossible_goal_stops_at_the_safety_cap(df):
 def test_exit_distance_is_searched_per_candidate(df):
     """El usuario sólo elige riesgo % y relación R:B; la distancia del stop la
     busca el minero, en volatilidad, así vale igual en cualquier mercado."""
-    from quantforge.core.models import RiskConfig
+    from botiquant.core.models import RiskConfig
 
     risk = RiskConfig(size_mode="risk_pct", size_value=1, reward_ratio=2.5)
     r = mine(df, DRIVERS, FILTERS, max_candidates=40, min_trades=5, seed=41, risk=risk)
@@ -97,7 +97,7 @@ def test_exit_distance_is_searched_per_candidate(df):
 
 
 def test_reward_ratio_changes_only_the_target(df):
-    from quantforge.core.models import RiskConfig
+    from botiquant.core.models import RiskConfig
 
     kw = dict(max_candidates=12, min_trades=5, seed=44)
     a = mine(df, DRIVERS, FILTERS, risk=RiskConfig(reward_ratio=1.0), **kw)["databank"]
@@ -188,7 +188,7 @@ def test_empty_databank_explains_itself(df):
 def test_unreachable_return_target_suggests_more_risk(df):
     """Asking for more than the risk level can deliver must produce a concrete
     suggestion — the needed risk AND the drawdown it would cost."""
-    from quantforge.core.models import RiskConfig
+    from botiquant.core.models import RiskConfig
 
     risk = RiskConfig(stop_type="points", stop_value=2, target_type="points",
                       target_value=4, size_mode="risk_pct", size_value=1)
@@ -205,7 +205,7 @@ def test_unreachable_return_target_suggests_more_risk(df):
 
 def test_absurd_target_proposes_a_realistic_one_instead(df):
     """When even huge leverage wouldn't get there, say so and counter-offer."""
-    from quantforge.core.models import RiskConfig
+    from botiquant.core.models import RiskConfig
 
     risk = RiskConfig(stop_type="points", stop_value=2, target_type="points",
                       target_value=4, size_mode="risk_pct", size_value=1)
@@ -220,7 +220,7 @@ def test_absurd_target_proposes_a_realistic_one_instead(df):
 
 def test_no_risk_suggestion_when_sizing_is_fixed(df):
     """With fixed lots there is no risk knob to turn — do not invent advice."""
-    from quantforge.core.models import RiskConfig
+    from botiquant.core.models import RiskConfig
 
     risk = RiskConfig(stop_type="points", stop_value=2, target_type="points",
                       target_value=4, size_mode="fixed_units", size_value=1)

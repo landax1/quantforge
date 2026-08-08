@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from quantforge.core.models import Condition, Operand, RiskConfig, StrategySpec
-from quantforge.reports.pine import export_pine
+from botiquant.core.models import Condition, Operand, RiskConfig, StrategySpec
+from botiquant.reports.pine import export_pine
 
 
 def _spec(**risk_kw) -> StrategySpec:

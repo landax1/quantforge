@@ -1,4 +1,4 @@
-/* QuantForge SPA — sin frameworks, sin build, 100% offline.
+/* Botiquant SPA — sin frameworks, sin build, 100% offline.
    v4: la corrida se define por OBJETIVO (cuántas estrategias tiene que juntar
    el databank), no por cuántas candidatas probar. Rediseño completo de la UI. */
 
@@ -795,7 +795,7 @@ PAGES.saved = async (main) => {
     const s = items.find(x => x.id === b.dataset.export);
     b.disabled = true;
     try {
-      const safe = `QF_${s.name.replace(/[^\w]/g, "_")}`;
+      const safe = `BQ_${s.name.replace(/[^\w]/g, "_")}`;
       const r = await fetch("/api/export/mql5", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ spec: s.spec, name: safe,
@@ -1871,7 +1871,7 @@ function renderInspector(box, row, res) {
   async function exportAs(btnId, endpoint, ext, done) {
     const btn = $(`#${btnId}`, box);
     btn.disabled = true;
-    const safe = `QF_${row.name.replace("-", "_")}`;
+    const safe = `BQ_${row.name.replace("-", "_")}`;
     try {
       const r = await fetch(endpoint, {
         method: "POST", headers: { "Content-Type": "application/json" },

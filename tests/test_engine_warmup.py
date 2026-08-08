@@ -16,8 +16,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from quantforge.backtesting.engine import run_backtest
-from quantforge.core.models import (
+from botiquant.backtesting.engine import run_backtest
+from botiquant.core.models import (
     BacktestSettings, Condition, Operand, RiskConfig, StrategySpec,
 )
 
@@ -46,7 +46,7 @@ def _always_in_spec(direction: str = "long", atr_period: int = 14) -> StrategySp
 
 
 def test_no_entry_while_the_atr_is_still_warming_up(rising_frame):
-    from quantforge.indicators.base import IndicatorCache
+    from botiquant.indicators.base import IndicatorCache
 
     res = run_backtest(rising_frame, _always_in_spec(), BacktestSettings())
     assert res.trades, "tiene que operar una vez que el ATR esté listo"

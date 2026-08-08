@@ -11,9 +11,9 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-import quantforge.api.app as appmod
-from quantforge.auth import SessionError, sign, verify
-from quantforge.auth.google import GoogleConfig, authorize_url, new_state
+import botiquant.api.app as appmod
+from botiquant.auth import SessionError, sign, verify
+from botiquant.auth.google import GoogleConfig, authorize_url, new_state
 
 SECRET = "un-secreto-de-prueba-suficientemente-largo-para-hmac"
 
@@ -104,18 +104,18 @@ def _spec() -> dict:
 def test_local_install_never_asks_for_an_account(sin_auth):
     """Sin login configurado, la app se comporta como siempre."""
     assert sin_auth.get("/api/auth/me").json() == {"configurado": False, "usuario": None}
-    r = sin_auth.post("/api/export/mql5", json={"spec": _spec(), "name": "QF_T"})
+    r = sin_auth.post("/api/export/mql5", json={"spec": _spec(), "name": "BQ_T"})
     assert r.status_code == 200
     assert "OnTick" in r.text
 
 
 def test_downloads_require_an_account_when_login_is_on(con_auth):
-    r = con_auth.post("/api/export/mql5", json={"spec": _spec(), "name": "QF_T"})
+    r = con_auth.post("/api/export/mql5", json={"spec": _spec(), "name": "BQ_T"})
     assert r.status_code == 401
     assert "cuenta" in r.json()["detail"]
     # y el de TradingView igual
     assert con_auth.post("/api/export/pine",
-                         json={"spec": _spec(), "name": "QF_T"}).status_code == 401
+                         json={"spec": _spec(), "name": "BQ_T"}).status_code == 401
 
 
 def test_mining_and_results_stay_free(con_auth):
@@ -128,19 +128,19 @@ def test_mining_and_results_stay_free(con_auth):
 
 
 def test_a_forged_cookie_does_not_open_the_door(con_auth):
-    con_auth.cookies.set("qf_session", sign({"uid": "cualquiera"}, "otro-secreto"))
-    r = con_auth.post("/api/export/mql5", json={"spec": _spec(), "name": "QF_T"})
+    con_auth.cookies.set("bq_session", sign({"uid": "cualquiera"}, "otro-secreto"))
+    r = con_auth.post("/api/export/mql5", json={"spec": _spec(), "name": "BQ_T"})
     assert r.status_code == 401
 
 
 def test_a_real_session_can_download(con_auth, tmp_path):
     """Con una sesión válida de un usuario que existe, la descarga sale."""
-    from quantforge.database.db import Database
+    from botiquant.database.db import Database
 
-    db = Database(tmp_path / "quantforge.sqlite")
+    db = Database(tmp_path / "botiquant.sqlite")
     u = db.upsert_user("sub-google-1", "yo@example.com", "Yo")
-    con_auth.cookies.set("qf_session", sign({"uid": u["id"]}, SECRET))
-    r = con_auth.post("/api/export/mql5", json={"spec": _spec(), "name": "QF_T"})
+    con_auth.cookies.set("bq_session", sign({"uid": u["id"]}, SECRET))
+    r = con_auth.post("/api/export/mql5", json={"spec": _spec(), "name": "BQ_T"})
     assert r.status_code == 200, r.text
     assert "OnTick" in r.text
 
@@ -152,14 +152,14 @@ def test_the_callback_refuses_a_mismatched_state(con_auth):
                      follow_redirects=False)
     assert r.status_code == 303
     assert "login=" in r.headers["location"]
-    assert "qf_session" not in r.headers.get("set-cookie", "")
+    assert "bq_session" not in r.headers.get("set-cookie", "")
 
 
 def test_start_redirects_to_google_with_a_state_cookie(con_auth):
     r = con_auth.get("/api/auth/google/start", follow_redirects=False)
     assert r.status_code == 307
     assert r.headers["location"].startswith("https://accounts.google.com/")
-    assert "qf_oauth_state" in r.headers.get("set-cookie", "")
+    assert "bq_oauth_state" in r.headers.get("set-cookie", "")
 
 
 def test_start_is_unavailable_when_not_configured(sin_auth):

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from quantforge.indicators.base import REGISTRY, IndicatorCache
+from botiquant.indicators.base import REGISTRY, IndicatorCache
 
 
 def test_registry_complete():

@@ -1,4 +1,4 @@
-/* QuantForge chart library — tiny, dependency-free SVG charts.
+/* Botiquant chart library — tiny, dependency-free SVG charts.
    Everything renders offline; colors come from CSS variables. */
 
 "use strict";

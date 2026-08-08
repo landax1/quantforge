@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from quantforge.core.models import Condition, Operand, RiskConfig, StrategySpec
-from quantforge.reports.mql5 import export_mql5
+from botiquant.core.models import Condition, Operand, RiskConfig, StrategySpec
+from botiquant.reports.mql5 import export_mql5
 
 
 def _spec(entry, direction="long", risk=None):
@@ -13,7 +13,7 @@ def _spec(entry, direction="long", risk=None):
 
 def test_export_has_valid_ea_skeleton():
     ema = lambda p: Operand(type="indicator", name="EMA", params={"period": p})
-    code = export_mql5(_spec([Condition(ema(20), "cross_above", ema(80))]), ea_name="QF_T")
+    code = export_mql5(_spec([Condition(ema(20), "cross_above", ema(80))]), ea_name="BQ_T")
     for token in ("#include <Trade\\Trade.mqh>", "int OnInit()", "void OnTick()",
                   "void OnDeinit", "CTrade   trade;", "iMA(_Symbol, _Period, 20"):
         assert token in code, f"falta {token}"

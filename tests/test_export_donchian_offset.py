@@ -1,6 +1,6 @@
 """El canal de Donchian exportado tiene que excluir la vela evaluada.
 
-Bug real (QF_S_001/002, agosto 2026): el EA emulaba el canal incluyendo la
+Bug real (BQ_S_001/002, agosto 2026): el EA emulaba el canal incluyendo la
 vela que estaba evaluando, así que la ruptura "close[1] > máximo(high[1..n])"
 era imposible por definición — el high de una vela siempre es >= su close.
 Los EA compilaban, no daban ningún error y no abrían una sola operación.
@@ -11,10 +11,10 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from quantforge.core.models import Condition, Operand, RiskConfig, StrategySpec
-from quantforge.indicators.library import Donchian
-from quantforge.reports.mql5 import export_mql5
-from quantforge.reports.pine import export_pine
+from botiquant.core.models import Condition, Operand, RiskConfig, StrategySpec
+from botiquant.indicators.library import Donchian
+from botiquant.reports.mql5 import export_mql5
+from botiquant.reports.pine import export_pine
 
 
 def _breakout_spec() -> StrategySpec:
@@ -66,7 +66,7 @@ def test_volume_average_does_NOT_shift_like_donchian():
     vela. Verificado en las tres implementaciones — si alguien "arregla" ésta
     copiando el shift del Donchian, rompe la equivalencia con el backtest.
     """
-    from quantforge.indicators.library import VolumeSMA
+    from botiquant.indicators.library import VolumeSMA
 
     n = 30
     df = pd.DataFrame({

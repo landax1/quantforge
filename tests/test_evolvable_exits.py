@@ -12,13 +12,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from quantforge.backtesting.engine import run_backtest
-from quantforge.core.models import (
+from botiquant.backtesting.engine import run_backtest
+from botiquant.core.models import (
     BacktestSettings, Condition, Operand, RiskConfig, StrategySpec,
 )
-from quantforge.generator.generator import Genome, build_spec, random_genome
-from quantforge.reports.mql5 import export_mql5
-from quantforge.reports.pine import export_pine
+from botiquant.generator.generator import Genome, build_spec, random_genome
+from botiquant.reports.mql5 import export_mql5
+from botiquant.reports.pine import export_pine
 
 DRV = ["ema_cross", "price_ema", "donchian_break"]
 FLT = ["ema_trend_filter"]

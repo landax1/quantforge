@@ -6,8 +6,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from quantforge.backtesting.engine import run_backtest
-from quantforge.core.models import (
+from botiquant.backtesting.engine import run_backtest
+from botiquant.core.models import (
     BacktestSettings, Condition, Operand, RiskConfig, StrategySpec, TimeFilter,
 )
 
@@ -88,8 +88,8 @@ def test_money_stop_scales_with_position_size():
 def test_cagr_uses_calendar_years_not_bar_count(df):
     """Hourly data covers fewer 'bar years' than calendar years — using bar
     count as the denominator would inflate CAGR by roughly 50%."""
-    from quantforge.backtesting.metrics import compute_metrics
-    from quantforge.core.models import Trade
+    from botiquant.backtesting.metrics import compute_metrics
+    from botiquant.core.models import Trade
 
     # 2 calendar years of hourly bars, but only trading hours (8/day, 5/7 days)
     idx = pd.date_range("2020-01-01", "2022-01-01", freq="1h")
