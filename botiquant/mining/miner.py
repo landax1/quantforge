@@ -291,6 +291,10 @@ def mine(
             "rejected": tested - passed,
             "kept": len(bank),
             "accept": accept,
+            # el mínimo de operaciones se pasa aparte de `accept`, pero para
+            # quien mira los resultados es un filtro más: sin él, la pantalla no
+            # puede decir la vara completa que se aplicó
+            "min_trades": min_trades,
             "best_fitness": bank[0]["fitness"] if bank else 0.0,
             "elapsed_s": round(time.time() - t0, 1),
             "eta_s": _eta_s(),

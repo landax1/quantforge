@@ -274,3 +274,25 @@ def test_mine_stop_via_handle(df):
     assert r["stopped"] is True
     assert r["tested"] < 100_000
     assert time.time() - t0 < 60
+
+
+def test_the_run_reports_the_bar_it_applied(df):
+    """Los filtros son opcionales y arrancan destildados, pero sus casillas de
+    número muestran igual un valor sugerido: leído rápido parece una vara
+    puesta. Si el resultado no dice qué se exigió de verdad, la aplicación
+    parece estar ignorando filtros que nunca se le pidieron."""
+    out = mine(df, DRIVERS, [], max_candidates=6, min_trades=17,
+               accept={"min_pf": 1.2, "max_dd_pct": 30}, seed=1)
+
+    assert out["min_trades"] == 17
+    assert out["accept"]["min_pf"] == 1.2
+    assert out["accept"]["max_dd_pct"] == 30
+
+
+def test_a_run_without_quality_filters_says_so(df):
+    """Sin criterios, `accept` queda vacío y la pantalla lo usa para avisar que
+    entra casi cualquier cosa en vez de aparentar que filtró."""
+    out = mine(df, DRIVERS, [], max_candidates=6, min_trades=30, seed=1)
+
+    assert out["min_trades"] == 30
+    assert all(v is None for v in out["accept"].values())

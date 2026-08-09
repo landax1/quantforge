@@ -306,6 +306,36 @@ const CRIT_FIELD = {
   minNet: "min_net_pct", minCagr: "min_cagr_pct", minExposure: "min_exposure_pct",
   minWinRate: "min_win_rate_pct",
 };
+/* Qué se exigió DE VERDAD en esta corrida.
+
+   Los filtros son opcionales y arrancan destildados, pero sus casillas de
+   número muestran igual un valor sugerido. Leído rápido eso parece una vara
+   puesta, y no lo es: con sólo el mínimo de operaciones activo entra
+   prácticamente cualquier cosa y el databank se llena en segundos con
+   estrategias flojas. Sin decirlo acá, la aplicación parece estar ignorando
+   filtros que en realidad nunca se le pidieron.
+
+   Se lee de lo que devolvió el minero y no de la configuración actual de la
+   pantalla: si no, cambiar un filtro después de correr reescribiría la
+   historia de una corrida ya hecha. */
+function varaAplicada(snap) {
+  const a = snap.accept || {};
+  const partes = [`mínimo <b>${fmtInt(snap.min_trades ?? 0)}</b> operaciones`];
+  for (const cr of CRITERIA) {
+    const v = a[CRIT_FIELD[cr.key]];
+    if (v == null) continue;
+    partes.push(`${esc(cr.label.replace(/ [≥≤]$/, ""))} ${cr.label.slice(-1)}
+                 <b>${fmtNum(v, cr.step < 1 ? 2 : 0)}${cr.unit}</b>`);
+  }
+  if (partes.length > 1) {
+    return `<div class="vara">Se exigió: ${partes.join(" · ")}</div>`;
+  }
+  return `<div class="vara floja"><b>Sin filtros de calidad.</b> Lo único que se
+    exigió fue ${partes[0]}, así que entra casi cualquier candidata — incluidas
+    las que pierden plata. Tildá lo que te importe en
+    <b>Filtros de aceptación</b> y volvé a minar.</div>`;
+}
+
 function acceptPayload() {
   const out = {};
   for (const cr of CRITERIA) {
@@ -1083,6 +1113,7 @@ PAGES.mining = async (main) => {
           <div class="sect-body">
             <p class="help-note">Una estrategia entra al databank si cumple TODO lo que esté tildado.
               Activá sólo lo que te importe: cada filtro extra hace la búsqueda más lenta.</p>
+            <p class="help-note" id="m-critaviso"></p>
             <div class="critlist mt">
               <div class="critrow on always">
                 <label class="crit-check"><input type="checkbox" checked disabled>
@@ -1302,6 +1333,19 @@ PAGES.mining = async (main) => {
 
     /* El porcentaje de aciertos no se puede leer solo: con relación 1:3 hasta
        un 30% es rentable, y pedir 60% ahí es casi imposible por construcción. */
+    // Destildado no es "sin configurar": es "no se exige". Con la casilla en
+    // blanco el número de al lado igual se ve, y eso hace creer que la vara
+    // está puesta.
+    const critAviso = $("#m-critaviso");
+    if (critAviso) {
+      const activos = CRITERIA.filter(cr => S.cfg.critOn[cr.key]).length;
+      critAviso.innerHTML = activos ? "" :
+        `<b class="neg">⚠ No hay ningún filtro de calidad tildado.</b> Con sólo
+         <b>${S.cfg.minTrades}+ operaciones</b> entra casi cualquier candidata: el
+         databank se llena en segundos con estrategias que pierden plata. Los
+         números de abajo no se aplican hasta que tildes su casilla.`;
+    }
+
     const critHelp = $("#m-crithelp");
     if (critHelp) {
       if (!S.cfg.critOn.minWinRate) {
@@ -1575,9 +1619,10 @@ function renderMining(snap, finished) {
         </span>`}
       </div>
       <div class="goal-sub">${goal
-        ? `No se detiene hasta juntar <b>${goal}</b> que cumplan los filtros — faltan <b>${Math.max(goal - kept, 0)}</b>.`
+        ? `No se detiene hasta juntar <b>${goal}</b> que cumplan la vara — faltan <b>${Math.max(goal - kept, 0)}</b>.`
         : `Probando candidatas hasta llegar a <b>${fmtInt(snap.target)}</b>.`}
         · semilla <b>${snap.seed}</b> para reproducir esta corrida</div>
+      ${varaAplicada(snap)}
       <div class="statgrid">
         <div class="stat"><span>Probadas</span><b>${fmtInt(snap.tested)}</b></div>
         <div class="stat"><span>Con ganancia</span><b class="${winners ? "pos" : "neg"}">${winners}<u>de ${bank.length}</u></b></div>
