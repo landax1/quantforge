@@ -132,6 +132,17 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
 .foot-row{display:flex;gap:20px;flex-wrap:wrap;align-items:center}
 .foot-row .sp{margin-left:auto}
 .disclaimer{margin-top:22px;padding-top:22px;border-top:1px solid var(--border-soft);max-width:78ch;line-height:1.65}
+
+/* aviso de sesión, debajo del encabezado */
+.aviso{background:var(--accent-soft);border-bottom:1px solid var(--accent-line);color:var(--text);
+  font-size:14px;padding:12px 24px;text-align:center}
+.aviso.malo{background:rgba(217,164,65,.10);border-bottom-color:rgba(217,164,65,.32)}
+/* la sesión activa, en el encabezado */
+.cuenta{display:flex;align-items:center;gap:10px;margin-left:auto}
+.chip{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--text-2);
+  background:var(--card);border:1px solid var(--border);border-radius:999px;padding:4px 12px 4px 4px}
+.chip img{width:24px;height:24px;border-radius:50%;display:block}
+@media(max-width:620px){.chip span{display:none}.chip{padding:4px}}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
 </style>
 </head>
@@ -149,8 +160,10 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
       <a href="#limites">Qué no hace</a>
       <a href="#faq">Preguntas</a>
     </nav>
-    <!-- lo llena auth.js: "Entrar" si no hay sesión, el nombre si la hay -->
-    <div id="cuenta" class="cuenta"><a class="btn ghost" href="/app">Abrir la app</a></div>
+    <!-- lo llena el script del pie: "Entrar" si no hay sesión, el nombre si la hay -->
+    <div id="cuenta" class="cuenta">
+      <a class="btn ghost" href="/api/auth/google/start?next=/app">Entrar</a>
+    </div>
   </div>
 </header>
 
@@ -165,12 +178,12 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
     TradingView con las mismas reglas que se backtestearon.
   </p>
   <div class="cta">
-    <a class="btn lg" href="/app">Empezar a minar</a>
+    <a class="btn lg" id="cta-entrar" href="/api/auth/google/start?next=/app">Entrar con Google</a>
     <a class="btn lg ghost" href="#como">Ver cómo funciona</a>
   </div>
   <p class="cta-note">
-    Gratis y sin cuenta. Los datos de mercado ya están cargados: entrás y minás.
-    La cuenta hace falta sólo para descargar el archivo.
+    Gratis. Creás la cuenta con Google en dos clics y no hay nada que instalar:
+    los datos de mercado ya están cargados del lado del servidor.
   </p>
 
   <div class="shot">
@@ -438,21 +451,20 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
   <div class="wrap">
     <div class="sec-head">
       <div class="sec-eyebrow">Empezar</div>
-      <h2>Entrás y minás. No hay paso previo.</h2>
+      <h2>Creás la cuenta y ya estás minando</h2>
       <p>Los 22 millones de velas ya están cargadas del lado del servidor, así que no
-         descargás datos ni esperás nada. La cuenta aparece recién cuando querés
-         llevarte el archivo.</p>
+         descargás datos, no instalás nada y no configurás nada antes de empezar.</p>
     </div>
     <div class="grid g3">
-      <div class="card"><h3>Probar</h3><p>Elegís instrumento, marcás qué bloques puede
-        usar el buscador y arrancás. Sin registro, sin tarjeta y sin límite de corridas.</p>
-        <a class="btn" style="margin-top:16px" href="/app">Abrir la app</a></div>
-      <div class="card"><h3>Descargar</h3><p>Bajar el Expert Advisor de MetaTrader o el
-        script de TradingView necesita una cuenta. Es el único momento en que hace falta.</p>
-        <a class="btn ghost" style="margin-top:16px" href="/api/auth/google/start">Entrar con Google</a></div>
+      <div class="card"><h3>La cuenta</h3><p>Con Google, en dos clics. Gratis y sin
+        tarjeta. No vas a escribir ninguna contraseña acá: la validación la hace
+        Google.</p>
+        <a class="btn" style="margin-top:16px" href="/api/auth/google/start?next=/app">Entrar con Google</a></div>
+      <div class="card"><h3>Minar</h3><p>Elegís instrumento, marcás qué bloques puede
+        usar el buscador y arrancás. Sin límite de corridas.</p></div>
       <div class="card"><h3>Tus estrategias</h3><p>Las que guardás sobreviven a las
-        corridas siguientes, así que podés volver a exportarlas sin repetir la
-        búsqueda.</p></div>
+        corridas siguientes, así que podés volver a exportarlas a MetaTrader o
+        TradingView sin repetir la búsqueda.</p></div>
     </div>
   </div>
 </section>
@@ -480,10 +492,11 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
       <p>Sí, y deberías. El spread, el slippage y la comisión se configuran a mano,
          y la aplicación te muestra cuánto suma eso por operación en unidades de precio
          y en porcentaje del precio actual.</p></details>
-    <details><summary>¿Hace falta cuenta para probarlo?</summary>
-      <p>No. Minás, backtesteás y mirás resultados sin registrarte. La cuenta se pide
-         únicamente al descargar el Expert Advisor o el script, que es el momento en
-         que te llevás algo.</p></details>
+    <details><summary>¿Hace falta cuenta?</summary>
+      <p>Sí, y es gratis. Se crea con Google en dos clics. El minado corre en nuestros
+         servidores sobre 22 millones de velas, así que necesitamos saber quién está
+         pidiendo cada búsqueda; sin eso no habría forma de repartir la máquina con
+         cordura.</p></details>
     <details><summary>¿Qué ve Botiquant de mi cuenta de Google?</summary>
       <p>Tu nombre, tu dirección de correo y tu foto. Nada más: no se piden permisos
          sobre tu correo, tu agenda ni tus archivos. Nunca vas a escribir tu contraseña
@@ -499,7 +512,9 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
   <h2>Probalo sobre tus propios datos</h2>
   <p class="sub">La única forma de saber si sirve es minar sobre el instrumento que
      operás, con los costos de tu broker.</p>
-  <div class="cta"><a class="btn lg" href="/app">Empezar a minar</a></div>
+  <div class="cta">
+    <a class="btn lg" href="/api/auth/google/start?next=/app">Entrar con Google</a>
+  </div>
 </div>
 
 </main>
@@ -545,18 +560,17 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
     est = await (await fetch("/api/auth/me", { credentials: "same-origin" })).json();
   } catch (e) { return; }
 
-  const login = document.querySelectorAll('[href="/api/auth/google/start"]');
+  const login = document.querySelectorAll('[href^="/api/auth/google/start"]');
   if (!est.configurado) {
-    login.forEach(a => { const c = a.closest(".card"); (c || a).style.display = "none"; });
+    // Instalación local sin login: no hay cuentas, así que los botones de
+    // entrar llevarían a un 503. Se reemplazan por la entrada directa.
+    login.forEach(a => { a.setAttribute("href", "/app"); a.textContent = "Abrir la app"; });
+    caja.innerHTML = '<a class="btn ghost" href="/app">Abrir la app</a>';
     return;
   }
 
   const u = est.usuario;
-  if (!u) {
-    caja.innerHTML = '<a class="btn ghost" href="/api/auth/google/start">Entrar</a>'
-                   + '<a class="btn" href="/app">Abrir la app</a>';
-    return;
-  }
+  if (!u) return;                       // el marcado de entrada ya dice "Entrar"
 
   // textContent y no innerHTML: el nombre viene de un tercero y podría traer
   // marcado. Es la diferencia entre mostrar un nombre y ejecutarlo.
@@ -584,8 +598,32 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
   app.className = "btn"; app.href = "/app"; app.textContent = "Abrir la app";
   caja.append(salir, app);
 
-  login.forEach(a => { a.textContent = "Ya entraste"; a.setAttribute("aria-disabled", "true");
-                       a.style.pointerEvents = "none"; a.style.opacity = ".55"; });
+  // Ya con sesión, "Entrar con Google" no tiene sentido: el mismo botón pasa a
+  // ser la puerta de entrada en vez de quedar apagado.
+  login.forEach(a => { a.setAttribute("href", "/app"); a.textContent = "Abrir la app"; });
+})();
+
+/* Por qué volviste a la portada. Sin esto, a quien lo rebotan por no tener
+   sesión ve la página de inicio otra vez y no entiende qué pasó. */
+(function aviso() {
+  const MOTIVOS = {
+    requerido: ["Entrá con tu cuenta para usar Botiquant.", false],
+    expirado:  ["El intento de entrar caducó. Probá de nuevo.", true],
+    error:     ["No se pudo completar el inicio de sesión. Probá de nuevo.", true],
+  };
+  const clave = new URLSearchParams(location.search).get("login");
+  const dato = MOTIVOS[clave];
+  if (!dato) return;
+
+  const barra = document.createElement("div");
+  barra.className = "aviso" + (dato[1] ? " malo" : "");
+  barra.setAttribute("role", "status");
+  barra.textContent = dato[0];
+  document.querySelector("header").after(barra);
+
+  // La razón ya se mostró; dejarla en la barra de direcciones hace que
+  // recargar o compartir el enlace repita un mensaje que ya no viene a cuento.
+  history.replaceState(null, "", location.pathname + location.hash);
 })();
 </script>
 </body>

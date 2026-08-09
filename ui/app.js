@@ -2060,22 +2060,24 @@ function googleMark() {
   return s;
 }
 
-/* El candado no puede ser un cartel que se va solo: el usuario tiene que
-   poder actuar. Devuelve true si el error era falta de cuenta. */
+/* Un 401 acá dentro ya no es "te falta cuenta": a /app no se entra sin sesión,
+   así que si el servidor la rechaza es porque venció o se cerró en otra
+   pestaña. Se dice eso, que es lo que de verdad pasó, y se ofrece volver a
+   entrar. Devuelve true si el error era de sesión. */
 function pedirCuenta(status) {
   if (status !== 401) return false;
   const fondo = document.createElement("div");
   fondo.className = "gate-back";
   fondo.innerHTML = `
     <div class="gate" role="dialog" aria-modal="true" aria-labelledby="gate-t">
-      <h3 id="gate-t">Creá tu cuenta para descargar</h3>
-      <p>Minar, backtestear y mirar resultados no necesitan cuenta y seguirán
-         sin necesitarla. Sólo pedimos una para llevarte el archivo.</p>
+      <h3 id="gate-t">Se cerró tu sesión</h3>
+      <p>Volvé a entrar para seguir. Lo que tengas guardado no se pierde: las
+         estrategias del databank y los instrumentos siguen donde estaban.</p>
       <p class="gate-fine">Google nos da tu nombre, tu correo y tu foto. Nada más:
          no pedimos permiso sobre tu correo ni tus archivos, y no vas a escribir
          ninguna contraseña acá.</p>
       <div class="gate-row">
-        <button class="btn ghost" data-x>Ahora no</button>
+        <button class="btn ghost" data-x>Cerrar</button>
         <a class="btn" href="/api/auth/google/start?next=/app"></a>
       </div>
     </div>`;

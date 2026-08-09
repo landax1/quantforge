@@ -2,10 +2,16 @@
 
 **The analytical power of StrategyQuant, redesigned for simplicity.**
 
-Botiquant is an offline quantitative strategy builder: compose trading strategies from
+Botiquant is a quantitative strategy builder: compose trading strategies from
 indicator blocks, generate and evolve them algorithmically, validate them with Monte Carlo
-and walk-forward analysis, and combine them into portfolios — with zero AI, zero cloud,
-zero external APIs. Every computation is deterministic Python.
+and walk-forward analysis, and combine them into portfolios — with zero AI and zero
+external APIs. Every computation is deterministic Python.
+
+It runs two ways from the same codebase. **Cloned and run locally** it needs no accounts
+and no network: that is the default and nothing below changes. **Served to other people**
+it grows a Google sign-in and requires an account — set the variables in `.env.example`
+and the gate turns itself on. Absent those variables there is no login at all, which is
+what keeps the local install exactly as simple as it was.
 
 ---
 

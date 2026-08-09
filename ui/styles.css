@@ -496,7 +496,26 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
   border-radius: var(--r-lg); box-shadow: var(--sh-1); overflow: hidden;
 }
 @media (max-width: 1180px) { .setup { position: static; max-height: none; } }
-.setup-scroll { overflow-y: auto; flex: 1; padding: 6px; }
+
+/* Este panel es pegajoso Y tiene scroll propio adentro de una página que
+   también scrollea. Esa combinación trae dos problemas distintos:
+
+   1. ENCADENAMIENTO. Al llegar al final del panel la rueda seguía moviendo la
+      página, así que el contenido se iba de abajo mientras uno creía estar
+      recorriendo la lista. `overscroll-behavior: contain` corta ahí.
+
+   2. REPINTADO SUCIO. Un elemento sticky que además recorta y contiene otro
+      scroller deja al navegador sin una frontera clara de invalidación: los
+      campos quedaban pintados en su posición vieja mientras las etiquetas ya
+      se habían movido, y las filas se veían cruzadas con valores de otra fila.
+      El DOM siempre estuvo bien —medido, la etiqueta y su campo nunca se
+      separaron— era sólo lo que se dibujaba. `contain: paint` le da esa
+      frontera: nada de acá adentro pinta fuera de esta caja. */
+.setup-scroll {
+  overflow-y: auto; flex: 1; padding: 6px;
+  overscroll-behavior: contain;
+  contain: paint;
+}
 
 .sect { border-bottom: 1px solid var(--border-soft); }
 .sect:last-of-type { border-bottom: none; }

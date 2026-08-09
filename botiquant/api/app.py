@@ -359,15 +359,46 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     def _exigir_para_descargar(request: Request) -> dict[str, Any] | None:
         """Sin login configurado —una instalación local— no se le pide cuenta a
-        nadie. Con login configurado, bajarse un archivo requiere estar dentro."""
+        nadie. Con login configurado, hay que estar dentro."""
         if not _auth_listo():
             return None
         u = usuario_actual(request)
         if u is None:
-            raise HTTPException(
-                401, "Creá tu cuenta para descargar la estrategia. "
-                     "Minar y ver resultados es libre.")
+            raise HTTPException(401, "Entrá con tu cuenta para descargar la estrategia.")
         return u
+
+    #: Lo único que se puede tocar sin cuenta. Es una lista de lo PERMITIDO y no
+    #: de lo prohibido a propósito: si mañana se agrega un endpoint y nadie se
+    #: acuerda de protegerlo, queda cerrado en vez de quedar abierto.
+    #: `/api/meta` entra porque la interfaz lo pide antes de saber quién sos, y
+    #: no dice nada privado; el resto son las piezas del propio login.
+    SIN_CUENTA = {
+        "/api/meta",
+        "/api/auth/me",
+        "/api/auth/google/start",
+        "/api/auth/google/callback",
+        "/api/auth/logout",
+    }
+
+    @app.middleware("http")
+    async def exigir_cuenta(request: Request, call_next):
+        """La aplicación entera pide cuenta.
+
+        Va como middleware y no como dependencia en cada ruta porque son más de
+        treinta: olvidarse de una sola dejaría un agujero, y acá el olvido falla
+        del lado seguro.
+
+        Proteger sólo la pantalla no serviría de nada: quien quiera saltearse el
+        registro no abre el navegador, llama a la API directamente. Por eso el
+        candado está en `/api/`, que es donde de verdad se hace el trabajo.
+        """
+        ruta = request.url.path
+        if (_auth_listo() and ruta.startswith("/api/") and ruta not in SIN_CUENTA
+                and usuario_actual(request) is None):
+            return JSONResponse(
+                {"detail": "Entrá con tu cuenta para usar Botiquant."},
+                status_code=401)
+        return await call_next(request)
 
     @app.get("/api/auth/me")
     def auth_me(request: Request) -> dict[str, Any]:
@@ -794,6 +825,15 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     # moment a file changes and cache it happily in between.
     _NO_CACHE = {"Cache-Control": "no-store, must-revalidate", "Pragma": "no-cache"}
 
+    def _html_de_la_app() -> HTMLResponse:
+        html = (UI_DIR / "index.html").read_text(encoding="utf-8")
+        for asset in ("app.js", "charts.js", "styles.css"):
+            path = UI_DIR / asset
+            if path.exists():
+                html = html.replace(f"/static/{asset}",
+                                    f"/static/{asset}?v={int(path.stat().st_mtime)}")
+        return HTMLResponse(html, headers=_NO_CACHE)
+
     @app.get("/", include_in_schema=False)
     def landing() -> HTMLResponse:
         """La portada explica el producto; la aplicación vive en /app.
@@ -804,18 +844,17 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         """
         portada = LANDING_DIR / "index.html"
         if not portada.exists():
-            return app_ui()
+            return _html_de_la_app()
         return HTMLResponse(portada.read_text(encoding="utf-8"), headers=_NO_CACHE)
 
     @app.get("/app", include_in_schema=False)
-    def app_ui() -> HTMLResponse:
-        html = (UI_DIR / "index.html").read_text(encoding="utf-8")
-        for asset in ("app.js", "charts.js", "styles.css"):
-            path = UI_DIR / asset
-            if path.exists():
-                html = html.replace(f"/static/{asset}",
-                                    f"/static/{asset}?v={int(path.stat().st_mtime)}")
-        return HTMLResponse(html, headers=_NO_CACHE)
+    def app_ui(request: Request) -> Response:
+        # Sin cuenta no se entra: se vuelve a la portada, que es donde está el
+        # botón. Servir la pantalla y que después fallara todo adentro sería
+        # dejar al usuario mirando una aplicación rota.
+        if _auth_listo() and usuario_actual(request) is None:
+            return RedirectResponse("/?login=requerido", status_code=303)
+        return _html_de_la_app()
 
     app.mount("/static", StaticFiles(directory=str(UI_DIR)), name="static")
 

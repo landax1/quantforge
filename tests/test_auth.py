@@ -102,29 +102,64 @@ def _spec() -> dict:
 
 
 def test_local_install_never_asks_for_an_account(sin_auth):
-    """Sin login configurado, la app se comporta como siempre."""
+    """Sin credenciales configuradas —una instalación local— no hay cuentas y
+    la app no le pide nada a nadie. Es lo que hace que seguir corriéndola en tu
+    propia máquina no cambie."""
     assert sin_auth.get("/api/auth/me").json() == {"configurado": False, "usuario": None}
     r = sin_auth.post("/api/export/mql5", json={"spec": _spec(), "name": "BQ_T"})
     assert r.status_code == 200
     assert "OnTick" in r.text
+    assert sin_auth.get("/app", follow_redirects=False).status_code == 200
+    assert sin_auth.get("/api/datasets").status_code == 200
 
 
-def test_downloads_require_an_account_when_login_is_on(con_auth):
-    r = con_auth.post("/api/export/mql5", json={"spec": _spec(), "name": "BQ_T"})
-    assert r.status_code == 401
-    assert "cuenta" in r.json()["detail"]
-    # y el de TradingView igual
-    assert con_auth.post("/api/export/pine",
-                         json={"spec": _spec(), "name": "BQ_T"}).status_code == 401
+@pytest.mark.parametrize("metodo,ruta,cuerpo", [
+    ("post", "/api/export/mql5", {"spec": _spec(), "name": "BQ_T"}),
+    ("post", "/api/export/pine", {"spec": _spec(), "name": "BQ_T"}),
+    ("post", "/api/backtest", {"dataset_id": "x", "spec": _spec()}),
+    ("post", "/api/mine", {"dataset_id": "x"}),
+    ("post", "/api/generate", {}),
+    ("post", "/api/optimize", {}),
+    ("post", "/api/walkforward", {}),
+    ("post", "/api/montecarlo", {}),
+    ("post", "/api/portfolio", {}),
+    ("get", "/api/datasets", None),
+    ("get", "/api/catalog", None),
+    ("get", "/api/strategies", None),
+    ("get", "/api/results", None),
+    ("post", "/api/strategies", {"name": "x", "spec": _spec()}),
+    ("post", "/api/datasets/sample", {"symbol": "T", "bars": 900}),
+])
+def test_nothing_works_without_an_account(con_auth, metodo, ruta, cuerpo):
+    """Toda la aplicación pide cuenta, no sólo la descarga.
+
+    Se recorre endpoint por endpoint porque proteger la pantalla no alcanza:
+    quien quiera saltearse el registro llama a la API directamente.
+    """
+    r = getattr(con_auth, metodo)(ruta, **({"json": cuerpo} if cuerpo is not None else {}))
+    assert r.status_code == 401, f"{ruta} respondió {r.status_code}"
 
 
-def test_mining_and_results_stay_free(con_auth):
-    """El candado va sólo en la descarga: probar la app no pide registro."""
-    con_auth.post("/api/datasets/sample", json={"symbol": "TEST", "bars": 900})
-    ds = con_auth.get("/api/datasets").json()[0]["id"]
-    r = con_auth.post("/api/backtest", json={"dataset_id": ds, "spec": _spec()})
-    assert r.status_code == 200
-    assert "metrics" in r.json()["result"]
+def test_the_login_itself_stays_reachable(con_auth):
+    """Si el candado tapara las piezas del propio login, nadie podría entrar
+    nunca: quedaría un cerrojo sin llave."""
+    assert con_auth.get("/api/auth/me").status_code == 200
+    assert con_auth.get("/api/meta").status_code == 200
+    assert con_auth.post("/api/auth/logout").status_code == 200
+    assert con_auth.get("/api/auth/google/start",
+                        follow_redirects=False).status_code == 307
+
+
+def test_the_app_screen_sends_you_back_when_logged_out(con_auth):
+    r = con_auth.get("/app", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/?login=requerido"
+
+
+def test_the_landing_stays_public(con_auth):
+    """La portada es lo que explica el producto: si pidiera cuenta, nadie
+    llegaría nunca a crearse una."""
+    assert con_auth.get("/").status_code == 200
 
 
 def test_a_forged_cookie_does_not_open_the_door(con_auth):
@@ -133,13 +168,20 @@ def test_a_forged_cookie_does_not_open_the_door(con_auth):
     assert r.status_code == 401
 
 
-def test_a_real_session_can_download(con_auth, tmp_path):
-    """Con una sesión válida de un usuario que existe, la descarga sale."""
+def test_a_real_session_can_use_the_app(con_auth, tmp_path):
+    """Con una sesión válida de un usuario que existe, todo vuelve a andar.
+
+    El candado tiene que dejar pasar: un test que sólo comprueba que cierra
+    pasaría igual si la puerta estuviera tapiada.
+    """
     from botiquant.database.db import Database
 
     db = Database(tmp_path / "botiquant.sqlite")
     u = db.upsert_user("sub-google-1", "yo@example.com", "Yo")
     con_auth.cookies.set("bq_session", sign({"uid": u["id"]}, SECRET))
+
+    assert con_auth.get("/app", follow_redirects=False).status_code == 200
+    assert con_auth.get("/api/datasets").status_code == 200
     r = con_auth.post("/api/export/mql5", json={"spec": _spec(), "name": "BQ_T"})
     assert r.status_code == 200, r.text
     assert "OnTick" in r.text
