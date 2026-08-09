@@ -25,17 +25,19 @@ class DataStore:
         self._cache_max = 8
 
     # ------------------------------------------------------------------ CRUD
-    def add(self, name: str, df: pd.DataFrame, source: str = "upload") -> dict[str, Any]:
+    def add(self, name: str, df: pd.DataFrame, source: str = "upload",
+            user_id: str | None = None) -> dict[str, Any]:
         ds_id = self.db.insert_dataset(
             name=name, source=source, rows=len(df),
             start=str(df.index[0]), end=str(df.index[-1]),
             timeframe=infer_timeframe(df.index),
             last_close=float(df["close"].iloc[-1]) if len(df) else None,
+            user_id=user_id,
         )
         path = self._path(ds_id)
         df.to_csv(path, index_label="time", float_format="%.6f")
         self._cache_put(ds_id, df)
-        return self.db.get_dataset(ds_id)
+        return self.db.get_dataset(ds_id, user_id)
 
     def load(self, ds_id: str, timeframe: str | None = None) -> pd.DataFrame:
         df = self._cache.get(ds_id)
@@ -55,8 +57,16 @@ class DataStore:
             return cached
         return df
 
-    def delete(self, ds_id: str) -> None:
-        self.db.delete_dataset(ds_id)
+    def delete(self, ds_id: str, user_id: str | None = None) -> None:
+        # Se mira ANTES de borrar: si la fila no era suya, el DELETE no toca
+        # nada y el archivo del disco tiene que quedarse donde está. Borrarlo
+        # igual dejaría un instrumento compartido sin sus velas.
+        antes = self.db.list_datasets(user_id)
+        self.db.delete_dataset(ds_id, user_id)
+        if not any(d["id"] == ds_id for d in antes):
+            return
+        if any(d["id"] == ds_id for d in self.db.list_datasets(user_id)):
+            return                                  # seguía ahí: no era suya
         self._cache.pop(ds_id, None)
         for key in [k for k in self._cache if k.startswith(f"{ds_id}@")]:
             self._cache.pop(key, None)
@@ -64,8 +74,8 @@ class DataStore:
         if path.exists():
             path.unlink()
 
-    def list(self) -> list[dict[str, Any]]:
-        return self.db.list_datasets()
+    def list(self, user_id: str | None = None) -> list[dict[str, Any]]:
+        return self.db.list_datasets(user_id)
 
     # -------------------------------------------------------------- helpers
     def _path(self, ds_id: str) -> Path:

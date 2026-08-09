@@ -176,7 +176,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         return None
 
     @app.get("/api/datasets")
-    def list_datasets() -> list[dict[str, Any]]:
+    def list_datasets(request: Request) -> list[dict[str, Any]]:
         """Datasets plus the exit distances that make sense for each one.
 
         A stop is an absolute price distance, so the UI cannot carry a single
@@ -185,7 +185,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         can never propose a stop the market will not travel.
         """
         out = []
-        for d in store.list():
+        for d in store.list(duenio(request)):
             entry = _catalog_entry_for(d.get("name", ""))
             if entry and entry.get("stop_points"):
                 stop, target = entry["stop_points"], entry["target_points"]
@@ -197,31 +197,31 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         return out
 
     @app.post("/api/datasets/upload")
-    async def upload_dataset(file: UploadFile = File(...)) -> dict[str, Any]:
+    async def upload_dataset(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
         content = await file.read()
         try:
             df = parse_ohlcv_csv(content)
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         name = (file.filename or "upload.csv").rsplit(".", 1)[0]
-        return store.add(name, df, source="upload")
+        return store.add(name, df, source="upload", user_id=duenio(request))
 
     @app.post("/api/datasets/sample")
-    def create_sample(payload: dict[str, Any]) -> dict[str, Any]:
+    def create_sample(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
         symbol = str(payload.get("symbol", "DEMO"))[:20] or "DEMO"
         bars = int(min(max(int(payload.get("bars", 20_000)), 500), 200_000))
         tf = int(payload.get("timeframe_minutes", 60))
         df = generate_sample(symbol=symbol, bars=bars, timeframe_minutes=tf,
                              start_price=float(payload.get("start_price", 100.0)),
                              start=str(payload.get("start", "2021-01-01")))
-        return store.add(f"{symbol} (sample)", df, source="sample")
+        return store.add(f"{symbol} (sample)", df, source="sample", user_id=duenio(request))
 
     @app.get("/api/catalog")
-    def instrument_catalog() -> list[dict[str, Any]]:
+    def instrument_catalog(request: Request) -> list[dict[str, Any]]:
         """Popular instruments with their broker cost profile."""
         # only real market data counts as "ready" — a synthetic sample named
         # EURUSD must never be mistaken for downloaded history
-        owned = [d for d in store.list() if d["source"] != "sample"]
+        owned = [d for d in store.list(duenio(request)) if d["source"] != "sample"]
         out = []
         for entry in CATALOG:
             names = (entry["label"].lower(), entry["dukascopy"].lower())
@@ -298,28 +298,35 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     BORRABLE = {"upload"}
 
     @app.delete("/api/datasets/{ds_id}")
-    def delete_dataset(ds_id: str) -> dict[str, str]:
-        """En modo multiusuario, los datasets compartidos no se borran.
+    def delete_dataset(request: Request, ds_id: str) -> dict[str, str]:
+        """Los instrumentos compartidos no se borran.
 
         Sin esto, un clic en "Borrar" de cualquier usuario deja al resto sin
         el S&P 500 hasta que alguien lo reponga a mano: 4,6 millones de velas
         que hay que volver a descargar de Dukascopy.
         """
-        if MULTIUSER:
-            try:
-                fuente = db.get_dataset(ds_id).get("source", "")
-            except KeyError as exc:
-                raise HTTPException(404, str(exc)) from exc
-            if fuente not in BORRABLE:
-                raise HTTPException(
-                    403, "Este instrumento es compartido y no se puede borrar. "
-                         "Sólo podés borrar los CSV que subiste vos.")
-        store.delete(ds_id)
+        yo = duenio(request)
+        try:
+            fila = db.get_dataset(ds_id, yo)
+        except KeyError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        # Con cuentas activas, lo compartido queda con dueño vacío. Se responde
+        # 403 y no un "borrado" silencioso: el DELETE no habría tocado nada y el
+        # usuario se quedaría esperando que desapareciera de la lista.
+        if yo is not None and str(fila.get("user_id") or "") != yo:
+            raise HTTPException(
+                403, "Este instrumento es compartido y no se puede borrar. "
+                     "Sólo podés borrar los CSV que subiste vos.")
+        if MULTIUSER and fila.get("source", "") not in BORRABLE:
+            raise HTTPException(
+                403, "Este instrumento es compartido y no se puede borrar. "
+                     "Sólo podés borrar los CSV que subiste vos.")
+        store.delete(ds_id, yo)
         return {"status": "deleted"}
 
     # -------------------------------------------------------------- backtest
     @app.post("/api/backtest")
-    def backtest(payload: dict[str, Any]) -> dict[str, Any]:
+    def backtest(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
         df = _load_df(payload)
         spec = _spec(payload)
         # an explicit risk block overrides whatever the spec carries, so the
@@ -332,9 +339,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                                  for k, v in score_breakdown(result["metrics"]).items()}
         out: dict[str, Any] = {"result": result}
         if payload.get("save"):
-            ds = db.get_dataset(payload["dataset_id"])
+            yo = duenio(request)
+            ds = db.get_dataset(payload["dataset_id"], yo)
             rid = db.save_result(spec.name, ds["id"], ds["name"], result,
-                                 kind="backtest", strategy_id=payload.get("strategy_id"))
+                                 kind="backtest", strategy_id=payload.get("strategy_id"),
+                                 user_id=yo)
             out["result_id"] = rid
         return out
 
@@ -379,6 +388,18 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         "/api/auth/google/callback",
         "/api/auth/logout",
     }
+
+    def duenio(request: Request) -> str | None:
+        """De quién es lo que se está por leer o guardar.
+
+        `None` significa "sin dueños" y es la instalación local: ahí no hay
+        cuentas y todo es del que está sentado adelante, así que las consultas
+        salen sin filtrar y nada cambia respecto de antes.
+        """
+        if not _auth_listo():
+            return None
+        u = usuario_actual(request)
+        return str(u["id"]) if u else None
 
     @app.middleware("http")
     async def exigir_cuenta(request: Request, call_next):
@@ -454,6 +475,17 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
         u = db.upsert_user(perfil["sub"], perfil["email"], perfil["name"],
                            perfil["picture"])
+        # Lo guardado antes de que existieran las cuentas no tiene dueño y, con
+        # el filtro puesto, quedaría invisible para siempre.
+        #
+        # La condición es "hay UNA sola cuenta", no "es la primera vez que
+        # alguien entra". No es lo mismo: en esta misma máquina la cuenta ya
+        # existía desde antes de que el scoping existiera, así que un "primer
+        # login" no iba a repetirse nunca y las estrategias viejas se perdían
+        # de vista. Con una sola cuenta no hay ambigüedad posible sobre de
+        # quién es lo que había. Con dos ya no se adopta nada.
+        if db.count_users() == 1:
+            db.adoptar_huerfanos(u["id"])
         # el destino salió firmado; aun así se vuelve a filtrar por la lista
         # blanca, porque una firma vieja podría traer algo que ya no aceptamos
         destino = str(guardado.get("d", "/"))
@@ -653,10 +685,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     # ----------------------------------------------------------- monte carlo
     @app.post("/api/montecarlo")
-    def run_montecarlo(payload: dict[str, Any]) -> dict[str, Any]:
+    def run_montecarlo(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
         rid = payload.get("result_id")
         if rid:
-            row = db.get_result(rid)
+            row = db.get_result(rid, duenio(request))
             pnls = [t["pnl"] for t in row["payload"].get("trades", [])]
             initial = float(payload.get("initial_capital", 10_000.0))
         else:
@@ -674,12 +706,12 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     # ------------------------------------------------------------- portfolio
     @app.post("/api/portfolio")
-    def portfolio(payload: dict[str, Any]) -> dict[str, Any]:
+    def portfolio(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
         ids = payload.get("result_ids") or []
         components = []
         for rid in ids:
             try:
-                row = db.get_result(rid)
+                row = db.get_result(rid, duenio(request))
             except KeyError as exc:
                 raise HTTPException(404, str(exc)) from exc
             p = row["payload"]
@@ -697,11 +729,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     # ------------------------------------------------------------ strategies
     @app.get("/api/strategies")
-    def list_strategies() -> list[dict[str, Any]]:
-        return db.list_strategies()
+    def list_strategies(request: Request) -> list[dict[str, Any]]:
+        return db.list_strategies(duenio(request))
 
     @app.post("/api/strategies")
-    def save_strategy(payload: dict[str, Any]) -> dict[str, str]:
+    def save_strategy(request: Request, payload: dict[str, Any]) -> dict[str, str]:
         spec = _spec(payload)
         # el contexto viaja tal cual lo mandó la UI: sin instrumento, timeframe
         # y costos, una estrategia guardada no se puede volver a exportar
@@ -709,67 +741,73 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         if payload.get("dataset_id"):
             meta.setdefault("dataset_id", payload["dataset_id"])
             try:
-                meta.setdefault("dataset_name", db.get_dataset(payload["dataset_id"])["name"])
+                meta.setdefault("dataset_name",
+                                db.get_dataset(payload["dataset_id"], duenio(request))["name"])
             except KeyError:
                 pass
-        sid = db.save_strategy(str(payload.get("name") or spec.name), spec.to_dict(),
-                               strategy_id=payload.get("id"),
-                               notes=str(payload.get("notes", "")),
-                               meta=meta)
+        try:
+            sid = db.save_strategy(str(payload.get("name") or spec.name), spec.to_dict(),
+                                   strategy_id=payload.get("id"),
+                                   notes=str(payload.get("notes", "")),
+                                   meta=meta, user_id=duenio(request))
+        except KeyError as exc:
+            # Actualizar algo que no es tuyo devuelve 404 y no 403: un 403
+            # confirmaría que ese id existe y es de otro.
+            raise HTTPException(404, "Esa estrategia no existe.") from exc
         return {"id": sid}
 
     @app.delete("/api/strategies/{sid}")
-    def delete_strategy(sid: str) -> dict[str, str]:
-        db.delete_strategy(sid)
+    def delete_strategy(request: Request, sid: str) -> dict[str, str]:
+        db.delete_strategy(sid, duenio(request))
         return {"status": "deleted"}
 
     # --------------------------------------------------------------- results
     @app.get("/api/results")
-    def list_results() -> list[dict[str, Any]]:
-        return db.list_results()
+    def list_results(request: Request) -> list[dict[str, Any]]:
+        return db.list_results(user_id=duenio(request))
 
     @app.get("/api/results/{rid}")
-    def get_result(rid: str) -> dict[str, Any]:
+    def get_result(request: Request, rid: str) -> dict[str, Any]:
         try:
-            return db.get_result(rid)
+            return db.get_result(rid, duenio(request))
         except KeyError as exc:
             raise HTTPException(404, str(exc)) from exc
 
     @app.delete("/api/results/{rid}")
-    def delete_result(rid: str) -> dict[str, str]:
-        db.delete_result(rid)
+    def delete_result(request: Request, rid: str) -> dict[str, str]:
+        db.delete_result(rid, duenio(request))
         return {"status": "deleted"}
 
     # --------------------------------------------------------------- reports
-    def _result_or_404(rid: str) -> dict[str, Any]:
+    def _result_or_404(rid: str, request: Request) -> dict[str, Any]:
         try:
-            return db.get_result(rid)
+            return db.get_result(rid, duenio(request))
         except KeyError as exc:
             raise HTTPException(404, str(exc)) from exc
 
     @app.get("/api/results/{rid}/report.html")
-    def report_html(rid: str) -> HTMLResponse:
-        row = _result_or_404(rid)
+    def report_html(request: Request, rid: str) -> HTMLResponse:
+        row = _result_or_404(rid, request)
         return HTMLResponse(html_report(row["payload"], row["strategy_name"],
                                         row["dataset_name"]))
 
     @app.get("/api/results/{rid}/trades.csv")
-    def report_trades(rid: str) -> PlainTextResponse:
-        row = _result_or_404(rid)
+    def report_trades(request: Request, rid: str) -> PlainTextResponse:
+        row = _result_or_404(rid, request)
         return PlainTextResponse(trades_csv(row["payload"]), media_type="text/csv",
                                  headers={"Content-Disposition":
                                           f'attachment; filename="trades_{rid}.csv"'})
 
     @app.get("/api/results/{rid}/metrics.csv")
-    def report_metrics(rid: str) -> PlainTextResponse:
-        row = _result_or_404(rid)
+    def report_metrics(request: Request, rid: str) -> PlainTextResponse:
+        row = _result_or_404(rid, request)
         return PlainTextResponse(metrics_csv(row["payload"]), media_type="text/csv",
                                  headers={"Content-Disposition":
                                           f'attachment; filename="metrics_{rid}.csv"'})
 
     @app.get("/api/results/{rid}/report.xlsx")
-    def report_excel(rid: str) -> Response:
-        row = _result_or_404(rid)
+    def report_excel(request: Request, rid: str) -> Response:
+        row = _result_or_404(rid, request)
         data = excel_report(row["payload"], row["strategy_name"])
         return Response(
             data,
@@ -789,7 +827,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         ds_name = ""
         if payload.get("dataset_id"):
             try:
-                ds_name = db.get_dataset(payload["dataset_id"])["name"]
+                ds_name = db.get_dataset(payload["dataset_id"], duenio(request))["name"]
             except KeyError:
                 ds_name = ""
         code = export_mql5(spec, ea_name=name, symbol_hint=ds_name,
@@ -808,7 +846,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         ds_name = ""
         if payload.get("dataset_id"):
             try:
-                ds_name = db.get_dataset(payload["dataset_id"])["name"]
+                ds_name = db.get_dataset(payload["dataset_id"], duenio(request))["name"]
             except KeyError:
                 ds_name = ""
         code = export_pine(spec, name=name, symbol_hint=ds_name,
