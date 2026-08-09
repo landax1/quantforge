@@ -546,18 +546,41 @@ function fixInheritedScale() {
   return { name: ds.name.replace(/ M1.*/, ""), badCost: true, costPct };
 }
 
-/* lee todos los inputs [data-cfg] hacia S.cfg */
-function harvestCfg(root) {
+/* Lee todos los inputs [data-cfg] hacia S.cfg.
+
+   `normalizar` separa dos momentos que antes estaban mezclados: mientras se
+   escribe no se toca el campo, y recién al confirmarlo se acomoda.
+
+   Corregirlo en cada tecla hacía imposible editarlo. Al borrar el último
+   dígito el campo quedaba vacío y el código le devolvía el valor anterior en la
+   misma pulsación, así que siempre sobraba un dígito imborrable. Y aplicar el
+   piso tecla por tecla impedía escribir "10" en un criterio con mínimo 4: la
+   "1" se convertía en 4 antes de llegar a tipear el "0". */
+function harvestCfg(root, { normalizar = false } = {}) {
   $$("[data-cfg]", root).forEach(el => {
     const k = el.dataset.cfg;
     if (el.type !== "number") { S.cfg[k] = el.value; return; }
-    // un campo vacío daba 0, y el backend lo subía al mínimo (10 candidatas):
-    // la búsqueda terminaba al instante sin que nadie entendiera por qué
-    const n = parseFloat(el.value);
-    if (!Number.isFinite(n)) { el.value = S.cfg[k] ?? DEFAULT_CFG[k] ?? 0; return; }
-    // el mínimo de cada criterio manda (el max DD no admite menos de 4%)
     const cr = CRIT_BY_KEY[k];
-    S.cfg[k] = cr ? Math.max(n, cr.min) : n;
+    const n = parseFloat(el.value);
+
+    if (!Number.isFinite(n)) {
+      // vacío a mitad de la edición: se deja en paz y S.cfg conserva lo último
+      // válido, así nada corre con un campo en blanco
+      if (!normalizar) return;
+      // un campo vacío daba 0, y el backend lo subía al mínimo (10 candidatas):
+      // la búsqueda terminaba al instante sin que nadie entendiera por qué
+      el.value = S.cfg[k] ?? DEFAULT_CFG[k] ?? 0;
+      S.cfg[k] = parseFloat(el.value);
+      return;
+    }
+    // el mínimo de cada criterio manda (el max DD no admite menos de 4%), pero
+    // sólo al confirmar
+    if (cr && n < cr.min && normalizar) {
+      el.value = cr.min;
+      S.cfg[k] = cr.min;
+      return;
+    }
+    S.cfg[k] = n;
   });
   saveCfg();
 }
@@ -1274,7 +1297,12 @@ PAGES.mining = async (main) => {
     saveCfg();
     updateNotes();
   });
-  $$("[data-cfg]", main).forEach(el => el.oninput = () => { harvestCfg(main); updateNotes(); });
+  // dos momentos: `input` sigue lo que se escribe sin corregirlo, `change`
+  // —que salta al salir del campo o al confirmar— es donde se acomoda
+  $$("[data-cfg]", main).forEach(el => {
+    el.oninput = () => { harvestCfg(main); updateNotes(); };
+    el.onchange = () => { harvestCfg(main, { normalizar: true }); updateNotes(); };
+  });
 
   function updateNotes() {
     const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
@@ -1445,7 +1473,10 @@ PAGES.mining = async (main) => {
   };
 
   $("#m-run").onclick = async () => {
-    harvestCfg(main);
+    // se normaliza acá también: si alguien toca "Minar" con el cursor todavía
+    // dentro de un campo, el `change` nunca llegó a saltar y la corrida saldría
+    // con un valor a medio escribir o por debajo del piso
+    harvestCfg(main, { normalizar: true });
     const checked = (sel) => $$(`${sel} .blockitem input`, main)
       .filter(cb => cb.checked).map(cb => cb.dataset.tid);
     const drivers = checked("#m-drivers");
