@@ -894,6 +894,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             return RedirectResponse("/?login=requerido", status_code=303)
         return _html_de_la_app()
 
+    @app.get("/static/index.html", include_in_schema=False)
+    def shell_suelto() -> Response:
+        """La carcasa de la app también vive en /static, porque ahí se monta la
+        carpeta entera para servir el JS y el CSS. Entrando por ese camino se
+        saltea el control de /app.
+
+        No filtra nada —la API responde 401 igual— pero deja a alguien mirando
+        una pantalla que falla entera. Se manda a la puerta de siempre.
+        """
+        return RedirectResponse("/app", status_code=303)
+
+    # va DESPUÉS de la ruta: el mount toma todo lo que empiece con /static, así
+    # que declarado antes se quedaría también con index.html
     app.mount("/static", StaticFiles(directory=str(UI_DIR)), name="static")
 
     @app.exception_handler(Exception)

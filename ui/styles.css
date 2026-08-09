@@ -1031,6 +1031,22 @@ svg.spark { display: block; border-radius: 4px; }
 .score-badge.s-mid  { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
 .score-badge.s-low  { background: var(--neg-soft); color: var(--neg); border-color: var(--neg-line); }
 
+/* El score dentro de una tabla. `min-width` fijo es lo único que hace que la
+   columna quede a plomo: sin eso cada píldora mide lo que mida su número y,
+   alineadas a la derecha, las de tres dígitos sobresalen de las de dos.
+   40px y no 38 porque con 38 un score de 100 empujaba el ancho: el molde tiene
+   que entrarle al número más largo, no al habitual. */
+.score-cell {
+  display: inline-block; min-width: 40px; text-align: center;
+  padding: 2px 8px; border-radius: var(--r-sm);
+  font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+  border: 1px solid transparent; letter-spacing: -.01em;
+}
+.score-cell.s-top  { background: var(--pos-soft);    color: var(--pos);      border-color: var(--pos-line); }
+.score-cell.s-good { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-line); }
+.score-cell.s-mid  { background: var(--warn-soft);   color: var(--warn);     border-color: var(--warn-line); }
+.score-cell.s-low  { background: var(--neg-soft);    color: var(--neg);      border-color: var(--neg-line); }
+
 .score-bars { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; }
 .sb-row { display: grid; grid-template-columns: 1fr 90px 44px; align-items: center; gap: 9px; }
 .sb-label { font-size: 10.5px; color: var(--text-dim); white-space: nowrap;

@@ -264,3 +264,16 @@ def test_the_app_lives_under_slash_app(sin_auth):
     r = sin_auth.get("/app")
     assert r.status_code == 200
     assert "/static/app.js" in r.text
+
+
+def test_the_app_shell_has_only_one_door(con_auth):
+    """La carpeta ui/ se monta entera en /static para servir el JS y el CSS, así
+    que la carcasa de la app también quedaba servida ahí — sin pasar por el
+    control de /app. No filtra datos, pero deja a alguien mirando una pantalla
+    que va a fallar entera."""
+    r = con_auth.get("/static/index.html", follow_redirects=False)
+    assert r.status_code == 303
+    assert r.headers["location"] == "/app"
+    # el JS y el CSS tienen que seguir saliendo, o la app no carga
+    assert con_auth.get("/static/app.js").status_code == 200
+    assert con_auth.get("/static/styles.css").status_code == 200

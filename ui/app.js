@@ -338,6 +338,19 @@ function scoreBadge(v, size = "") {
     <b>${fmtNum(v ?? 0, 0)}</b><em>${t.label}</em></span>`;
 }
 
+/* En una tabla el badge con palabra no sirve: "Prometedora" mide el doble que
+   "Sólida", cada píldora sale de otro ancho y en una columna alineada a la
+   derecha ningún número queda a la par del de arriba. Además pesa mucho más
+   que las otras trece columnas, que son números pelados.
+
+   Acá va sólo el número, con ancho fijo para que la columna quede a plomo. El
+   color ya dice de qué lado está y la palabra queda en el tooltip, que es
+   donde no estorba. */
+function scoreCell(v) {
+  const t = scoreTier(+v || 0);
+  return `<span class="score-cell ${t.cls}" title="${t.label}">${fmtNum(v ?? 0, 0)}</span>`;
+}
+
 /* barras del desglose: se ve de dónde sale el puntaje y qué lo hunde */
 function scoreBars(parts) {
   const defs = S.meta?.score_parts || [];
@@ -562,9 +575,32 @@ async function navigate(page) {
   $$("#nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
   const main = $("#main");
   main.innerHTML = "";
-  await PAGES[page](main);
+  try {
+    await PAGES[page](main);
+  } catch (e) {
+    // Sin esto, cualquier fallo dejaba el <main> vacío para siempre: la página
+    // ya se había limpiado y nadie volvía a escribir nada. Se veía igual que
+    // una carga eterna, sin ningún mensaje ni forma de salir.
+    if (e && e.status === 401) { pedirCuenta(401); }
+    main.innerHTML = pageHead(TITULOS[page] || "Botiquant", "") + `
+      <div class="card"><div class="empty-state">
+        <div class="big">⚠</div>
+        <b>${e && e.status === 401 ? "Se cerró tu sesión" : "No se pudo cargar esta página"}</b>
+        <p class="mt">${esc(e && e.status === 401
+          ? "Volvé a entrar y seguimos donde estabas."
+          : (e && e.message) || "El servidor no respondió.")}</p>
+        <button class="btn mt" id="reintentar">Reintentar</button>
+      </div></div>`;
+    const b = $("#reintentar", main);
+    if (b) b.onclick = () => navigate(page);
+    return;
+  }
   main.scrollTop = 0;
 }
+
+const TITULOS = {
+  data: "Datos", mining: "Mining", saved: "Mis estrategias", results: "Resultados",
+};
 
 /* ============================================================ página DATOS */
 PAGES.data = async (main) => {
@@ -1616,7 +1652,7 @@ function renderMining(snap, finished) {
         const m = r.metrics;
         return `<tr class="clickable" data-row="${i}" style="animation-delay:${Math.min(i, 12) * 22}ms">
           <td><span class="rank">${i + 1}</span></td>
-          <td class="num">${scoreBadge(r.score)}</td>
+          <td class="num">${scoreCell(r.score)}</td>
           <td><span class="strat-name">${esc(r.name)}</span>
               <div class="strat-blocks">${esc(r.blocks || "")}</div>
               <div class="strat-genes">${esc(r.genes_label)}</div></td>
