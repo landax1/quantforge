@@ -830,6 +830,16 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13.5px; }
 .goal-presets button:disabled { opacity: .4; cursor: default; }
 
 /* ================================================ tarjeta de progreso === */
+/* Progreso, campeón e historial en contenedores separados, para redibujar sólo
+   el que cambió (ver renderMining). Mientras corre manda el progreso; al
+   terminar manda el ganador, y ese cambio de orden se hace con `order` en vez
+   de mover nodos: mover un nodo lo repinta igual que recrearlo, que es
+   justamente lo que se quiere evitar. */
+#m-live { display: flex; flex-direction: column; }
+#m-live.terminado #m-champ { order: -1; }
+/* los contenedores no pintan nada: el margen lo siguen poniendo las tarjetas */
+#m-live > div:empty { display: none; }
+
 .goalcard {
   display: grid; grid-template-columns: auto 1fr; gap: 26px; align-items: center;
   background: var(--card); border: 1px solid var(--border);

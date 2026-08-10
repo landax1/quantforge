@@ -1688,14 +1688,44 @@ function renderMining(snap, finished) {
     </div>
   </div>` : "";
 
-  // mientras corre manda el progreso; al terminar, manda el ganador
-  live.innerHTML = (finished ? champCardHtml + goalCard : goalCard + champCardHtml) +
-    (snap.best_history?.length > 1 ? `<div class="card">
-       <h2>Evolución del mejor fitness <span class="hint">cómo fue mejorando la búsqueda</span></h2>
-       <div class="chart-box short" id="m-hist"></div></div>` : "");
+  /* El minado refresca cada 400 ms. Rehacer todo el panel en cada vuelta hacía
+     titilar la pantalla: se destruían y volvían a parsear la tabla entera, los
+     SVG de las curvas y las barras del score, aunque no hubiera cambiado nada.
 
+     Ahora cada pieza vive en su propio contenedor y sólo se reescribe la que
+     de verdad cambió. El progreso cambia siempre —son segundos y contadores—
+     pero es lo más chico; el campeón y el databank cambian sólo cuando entra
+     una estrategia nueva, que es cada varios segundos.
+
+     El orden entre progreso y campeón se invierte al terminar. Se hace con CSS
+     y no moviendo nodos, porque mover un nodo lo repinta igual que recrearlo. */
+  const histHtml = snap.best_history?.length > 1 ? `<div class="card">
+       <h2>Evolución del mejor fitness <span class="hint">cómo fue mejorando la búsqueda</span></h2>
+       <div class="chart-box short" id="m-hist"></div></div>` : "";
+
+  if (!live.dataset.partido) {
+    live.innerHTML = `<div id="m-goal"></div><div id="m-champ"></div><div id="m-histbox"></div>`;
+    live.dataset.partido = "1";
+  }
+  live.classList.toggle("terminado", !!finished);
+  const pintar = (sel, html) => {
+    const el = $(sel, live);
+    // comparar la cadena cuesta microsegundos; volver a parsear y maquetar el
+    // HTML cuesta milisegundos y un parpadeo
+    if (!el || el.dataset.h === html) return false;
+    el.innerHTML = html;
+    el.dataset.h = html;
+    return true;
+  };
+  pintar("#m-goal", goalCard);
+  pintar("#m-champ", champCardHtml);
+  pintar("#m-histbox", histHtml);
+
+  // el gráfico se redibuja siempre que haya datos nuevos, pero el contenedor
+  // sólo se recrea cuando cambió: así el canvas no se pierde en cada vuelta
   if (snap.best_history?.length > 1) {
-    Charts.line($("#m-hist"), { series: [{ values: snap.best_history, fill: true }], height: 170 });
+    const caja = $("#m-hist");
+    if (caja) Charts.line(caja, { series: [{ values: snap.best_history, fill: true }], height: 170 });
   }
   const champCard = $("#champ-card");
   if (champCard) champCard.onclick = () => openInspector(champ);
@@ -1711,7 +1741,7 @@ function renderMining(snap, finished) {
         La columna <b>Fuera de muestra</b> es la que dice si la ventaja era real.</div>
     </div>` : "";
 
-  bankBox.innerHTML = `
+  const bankHtml = `
   <div class="card">
     ${splitNote}
     <h2>Databank <span class="hint">${bank.length} estrategias ordenadas por QF Score
@@ -1770,7 +1800,16 @@ function renderMining(snap, finished) {
          </div>`}
   </div>`;
 
-  $$("[data-row]", bankBox).forEach(tr => tr.onclick = () => openInspector(bank[+tr.dataset.row]));
+  /* Es lo más caro de la pantalla: una tabla de hasta cien filas, cada una con
+     su curva en SVG. Rehacerla cada 400 ms era el grueso del parpadeo, y encima
+     perdía el scroll de la tabla y la fila sobre la que estuviera el mouse.
+     Sólo cambia cuando entra una estrategia nueva. */
+  const cambio = bankBox.dataset.h !== bankHtml;
+  if (cambio) {
+    bankBox.innerHTML = bankHtml;
+    bankBox.dataset.h = bankHtml;
+    $$("[data-row]", bankBox).forEach(tr => tr.onclick = () => openInspector(bank[+tr.dataset.row]));
+  }
 
   /* Aplica una sugerencia y vuelve a minar.
 
