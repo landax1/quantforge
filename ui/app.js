@@ -1760,7 +1760,7 @@ function renderMining(snap, finished) {
                ${snap.diagnosis.suggestion.unreachable
                  ? `<button class="btn small mt" id="apply-target"
                       data-target="${snap.diagnosis.suggestion.realistic_target}">
-                      Fijar objetivo en ${snap.diagnosis.suggestion.realistic_target}% anual</button>`
+                      Fijar objetivo en ${snap.diagnosis.suggestion.realistic_target}% anual y volver a minar</button>`
                  : `<button class="btn small mt" id="apply-risk"
                       data-needed="${snap.diagnosis.suggestion.needed}">
                       Subir a ${snap.diagnosis.suggestion.needed}% y volver a minar</button>`}
@@ -1772,27 +1772,42 @@ function renderMining(snap, finished) {
 
   $$("[data-row]", bankBox).forEach(tr => tr.onclick = () => openInspector(bank[+tr.dataset.row]));
 
-  const applyRisk = $("#apply-risk", bankBox);
-  if (applyRisk) applyRisk.onclick = () => {
-    S.cfg.riskPct = +applyRisk.dataset.needed;
+  /* Aplica una sugerencia y vuelve a minar.
+
+     Antes sólo cambiaba el número y pedía apretar el botón. Dos cosas fallaban
+     con eso. El cartel dice "y volver a minar", así que no minar es incumplir
+     lo que promete el propio botón. Y como el resultado viejo seguía en S,
+     al re-dibujar la página volvía a aparecer el mismo fracaso con el mismo
+     cartel: se veía exactamente igual que antes de tocarlo, y parecía roto. */
+  const aplicarSugerencia = (cambiar, mensaje) => {
+    cambiar();
     saveCfg();
+    // el resultado viejo tiene que irse antes de re-dibujar, o la pantalla
+    // sigue mostrando la corrida que acabamos de dejar atrás
+    S.mineResult = null;
+    S.mineLive = null;
     navigate("mining").then(() => {
-      toast(`Riesgo ajustado a ${S.cfg.riskPct}% — dale a Iniciar mining`, "ok");
-      $("#m-run")?.scrollIntoView({ block: "center" });
+      toast(mensaje, "ok");
+      const run = $("#m-run");
+      if (run) { run.scrollIntoView({ block: "center" }); run.click(); }
     });
   };
+
+  const applyRisk = $("#apply-risk", bankBox);
+  // el mensaje sale del dato del botón y no de S.cfg: como es un argumento, se
+  // evalúa ANTES de aplicar el cambio y mostraría el valor viejo
+  if (applyRisk) applyRisk.onclick = () => aplicarSugerencia(
+    () => { S.cfg.riskPct = +applyRisk.dataset.needed; },
+    `Riesgo ${+applyRisk.dataset.needed}% — buscando de nuevo`);
 
   const applyTarget = $("#apply-target", bankBox);
   if (applyTarget) applyTarget.onclick = () => {
     const sug = snap.diagnosis.suggestion;
-    S.cfg.minCagr = +applyTarget.dataset.target;
-    S.cfg.critOn.minCagr = true;
-    S.cfg.riskPct = Math.round(sug.current * 4 * 10) / 10;
-    saveCfg();
-    navigate("mining").then(() => {
-      toast(`Objetivo ${S.cfg.minCagr}% con riesgo ${S.cfg.riskPct}% — dale a Iniciar mining`, "ok");
-      $("#m-run")?.scrollIntoView({ block: "center" });
-    });
+    aplicarSugerencia(() => {
+      S.cfg.minCagr = +applyTarget.dataset.target;
+      S.cfg.critOn.minCagr = true;
+      S.cfg.riskPct = Math.round(sug.current * 4 * 10) / 10;
+    }, `Objetivo ${+applyTarget.dataset.target}% anual — buscando de nuevo`);
   };
 }
 
