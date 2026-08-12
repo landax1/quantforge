@@ -274,21 +274,52 @@ body {
   text-transform: uppercase; color: var(--text-dim); margin-top: 3px;
 }
 
-#nav { display: flex; flex-direction: column; gap: 3px; flex: 1; }
+#nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
+/* Rótulo del grupo. Sin él la barra empieza en el vacío: tres botones sueltos
+   flotando bajo el logo. */
+.nav-rotulo {
+  font-size: 10px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-dim); padding: 0 12px; margin-bottom: 8px;
+}
 #nav button {
   position: relative;
   display: flex; align-items: center; gap: 11px;
   background: none; border: none; color: var(--text-2);
   font: inherit; font-weight: 500; font-size: 13px;
-  padding: 10px 12px; border-radius: var(--r);
+  /* más alto: tres ítems de 38px en una columna de 226px se veían perdidos */
+  padding: 9px 10px; border-radius: var(--r);
   cursor: pointer; text-align: left;
   transition: background .14s var(--ease), color .14s var(--ease);
 }
+
+/* EL ICONO COMO CHIP DE COLOR.
+   Antes era un trazo gris del mismo tono que el texto, así que la barra entera
+   era una columna de gris sobre gris. El chip le da a cada sección una
+   identidad que se reconoce de reojo, sin leer — es lo que hace que una barra
+   lateral se vea armada y no como una lista de enlaces.
+
+   El color es tinte de fondo y trazo oscuro, nunca al revés: un ícono de
+   color claro sobre blanco no llega al contraste que necesita un elemento
+   que hay que poder distinguir. */
+#nav button .ic {
+  width: 30px; height: 30px; flex-shrink: 0;
+  display: grid; place-items: center; border-radius: 9px;
+  background: var(--card-2); border: 1px solid var(--border);
+  transition: background .14s var(--ease), color .14s var(--ease),
+              border-color .14s var(--ease);
+}
+#nav button .ic svg { width: 16px; height: 16px; }
+#nav button[data-page="data"]   .ic { background: var(--n-blue-bg);   color: var(--n-blue-tx);   border-color: transparent; }
+#nav button[data-page="mining"] .ic { background: var(--n-indigo-bg); color: var(--n-indigo-tx); border-color: transparent; }
+#nav button[data-page="saved"]  .ic { background: var(--n-teal-bg);   color: var(--n-teal-tx);   border-color: transparent; }
+
 #nav button:hover { background: var(--card-2); color: var(--text); }
 /* Segundo momento: dónde estás parado. El acento como tinte y como texto
    dice "acá" sin necesidad de una barra ni un borde extra. */
 #nav button.active {
-  background: var(--accent-soft); color: var(--accent-2);
+  background: var(--card); color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--sh-1);
 }
 #nav button.active .ic { opacity: 1; }
 /* cuántas estrategias guardadas hay, sin tener que entrar a mirar */
@@ -997,17 +1028,25 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
 /* Tercer momento: el campeón. Es el resultado de toda la corrida, así que se
    permite el único fondo teñido de la app — un filo saturado a la izquierda y
    un tinte muy leve. Sin degradados de neón: el color entra por el borde. */
+/* LA TARJETA DEL CAMPEON.
+   Era un bloque de tinte lavanda con siete metricas, seis barras y un grafico
+   adentro. Un lavado de color sobre toda la superficie no jerarquiza nada: le
+   pone un fondo distinto a un muro de datos y sigue siendo un muro.
+
+   Ahora es blanca como el resto y lo que la destaca es el filo de color y la
+   sombra. El contenido manda; el color acompania. */
 .champ {
   position: relative; overflow: hidden;
-  background: var(--accent-soft);
-  border: 1px solid var(--accent-line);
+  background: var(--card);
+  border: 1px solid var(--border);
   border-left: 3px solid var(--accent);
+  box-shadow: var(--sh-2);
   border-radius: var(--r-lg); padding: 22px 24px; margin-bottom: 18px;
   display: grid; grid-template-columns: minmax(240px, 1fr) 1.7fr; gap: 26px;
   align-items: center; cursor: pointer;
   transition: border-color .16s var(--ease), background .16s var(--ease);
 }
-.champ:hover { border-color: var(--accent); background: var(--card-hover); }
+.champ:hover { box-shadow: var(--sh-3); }
 @media (max-width: 1000px) { .champ { grid-template-columns: 1fr; } }
 .champ-tag {
   display: inline-flex; align-items: center; gap: 6px;
@@ -1028,11 +1067,24 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
 }
 .champ:hover .champ-cta { color: var(--accent-2); }
 .champ-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); gap: 14px 18px; }
-.champ-metrics > div { text-align: left; }
+/* Cada metrica en su casillero. Sueltas sobre el fondo se leian como una
+   grilla de texto donde todo pesa igual; el casillero las separa y deja ver
+   de un vistazo cuantas son. */
+.champ-metrics > div {
+  text-align: left; background: var(--bg-soft);
+  border: 1px solid var(--border-soft); border-radius: var(--r);
+  padding: 10px 12px;
+}
 .champ-metrics span { display: block; color: var(--text-dim); font-size: 10px; font-weight: 500;
                       margin-bottom: 4px; }
-.champ-metrics b { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums;
-                   letter-spacing: -.02em; }
+.champ-metrics b { font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums;
+                   letter-spacing: -.025em; }
+/* El rendimiento anual es LA cifra: si todas pesan igual, el ojo no sabe por
+   donde empezar y hay que leer las siete. */
+.champ-metrics > div:first-child {
+  grid-column: span 2; background: var(--accent-soft); border-color: var(--accent-line);
+}
+.champ-metrics > div:first-child b { font-size: 30px; letter-spacing: -.03em; }
 
 /* ================================================ tarjetas instrumento == */
 .inst-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(256px, 1fr)); gap: 16px; }
