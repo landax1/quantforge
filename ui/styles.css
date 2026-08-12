@@ -11,6 +11,26 @@
    nuevo, se agrega el token en los dos temas y no un hex suelto.
    ========================================================================= */
 
+/* LA TIPOGRAFÍA, DE VERDAD
+   Inter estuvo declarada desde el principio pero nunca se cargó: no había
+   @font-face ni archivo. Medido comparando anchos de texto, "Inter" daba el
+   mismo ancho que una fuente inexistente — o sea que toda la interfaz se
+   diseñó con sus métricas y se dibujaba con la fuente por defecto de Windows.
+   Es lo que más hace que algo se vea sin diseñar, y ninguna paleta lo tapa.
+
+   Va empaquetada y no traída de un CDN: la aplicación de escritorio funciona
+   sin conexión, y una fuente que a veces carga y a veces no es peor que
+   ninguna. Son 47 KB, un archivo variable que cubre todos los pesos.
+
+   `swap` para que el texto sea legible mientras carga, en vez de un momento
+   en blanco. */
+@font-face {
+  font-family: "Inter";
+  src: url("/static/fuentes/inter-var.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+
 /* ESCALA TIPOGRÁFICA
    Once pasos: 9 10 11 12 13 14 16 18 20 24 30.
 
@@ -97,10 +117,13 @@
   --date-icon: invert(.65);
 
   /* ---- forma y profundidad ---- */
-  --r-sm: 7px;
+  /* Radios más generosos. En las referencias las tarjetas son claramente
+     redondeadas: 13px se lee como "esquina apenas limada" y termina pareciendo
+     un rectángulo con un defecto, en vez de una decisión. */
+  --r-sm: 6px;
   --r:    10px;
-  --r-lg: 13px;
-  --r-xl: 16px;
+  --r-lg: 14px;
+  --r-xl: 20px;
   --radius: var(--r-lg);           /* compat con reglas viejas */
   --sh-1: 0 1px 2px rgba(0,0,0,.28);
   --sh-2: 0 4px 16px rgba(0,0,0,.3);
@@ -124,14 +147,20 @@
    (el verde del tema oscuro sobre blanco queda en ~2:1 de contraste), y las
    sombras pasan a ser muy tenues porque sobre claro se leen como suciedad.  */
 :root[data-theme="light"] {
-  --bg:            #ffffff;
-  --bg-soft:       #f6f7f9;
+  /* La tarjeta es BLANCA y el fondo tiene un tinte frío apenas perceptible.
+     Al revés —fondo blanco puro y tarjeta grisada— las tarjetas parecen
+     hundidas y apagadas, que es como se veía antes. El contenido tiene que ser
+     lo más claro de la pantalla. */
+  --bg:            #f4f6fa;
+  --bg-soft:       #eef1f7;
   --card:          #ffffff;
-  --card-2:        #f7f8fa;
-  --card-hover:    #f0f2f6;
-  --border:        #e2e5ec;
-  --border-soft:   #eef0f4;
-  --border-strong: #ccd2dd;
+  --card-2:        #f7f9fc;
+  --card-hover:    #f1f4fa;
+  /* El borde acompaña a la sombra, no la reemplaza: con un borde marcado cada
+     tarjeta queda recortada como una caja y la pantalla se llena de líneas. */
+  --border:        #e6eaf2;
+  --border-soft:   #eff2f8;
+  --border-strong: #cfd6e4;
   --grid:          #eef0f4;
 
   --text:      #16191f;
@@ -180,9 +209,12 @@
   --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M5 9l7 7 7-7'/%3E%3C/svg%3E");
   --date-icon: none;
 
-  --sh-1: 0 1px 2px rgba(16,24,40,.05);
-  --sh-2: 0 4px 14px rgba(16,24,40,.07);
-  --sh-3: 0 18px 48px rgba(16,24,40,.14);
+  /* Dos capas: una sombra corta que apoya el borde y una larga y difusa que
+     da la altura. Con una sola capa la tarjeta se ve pegada o flotando de
+     más, nunca apoyada. */
+  --sh-1: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.06);
+  --sh-2: 0 2px 4px rgba(16,24,40,.04), 0 8px 24px rgba(16,24,40,.08);
+  --sh-3: 0 8px 16px rgba(16,24,40,.06), 0 24px 64px rgba(16,24,40,.16);
   --ring: 0 0 0 3px rgba(83,72,232,.18);
 
   color-scheme: light;
@@ -393,8 +425,11 @@ main { flex: 1; overflow-y: auto; padding: 30px 34px 90px; scroll-behavior: smoo
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
-  padding: 20px 22px;
-  margin-bottom: 18px;
+  /* Más aire. 20px hacía que el contenido tocara los bordes y es la razón
+     principal por la que una pantalla densa se ve apretada: no sobran datos,
+     falta margen. */
+  padding: 24px 26px;
+  margin-bottom: 20px;
   box-shadow: var(--sh-1);
 }
 .card h2 {

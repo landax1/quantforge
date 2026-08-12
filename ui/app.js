@@ -2363,7 +2363,11 @@ function applyTheme(theme, redraw) {
 function initTheme() {
   let saved = null;
   try { saved = localStorage.getItem("qf.theme"); } catch (e) { /* noop */ }
-  applyTheme(saved === "light" ? "light" : "dark", false);
+  // Claro por defecto. El oscuro sigue estando entero y a un clic, pero una
+  // herramienta de análisis se mira de día y durante horas: sobre fondo claro
+  // las tablas densas y las curvas se leen mejor, y es lo que hace casi todo
+  // el software de este tipo. El que lo prefiera oscuro lo cambia y se guarda.
+  applyTheme(saved === "dark" ? "dark" : "light", false);
   const btn = $("#theme-btn");
   if (btn) btn.onclick = () => {
     const now = document.documentElement.getAttribute("data-theme");
