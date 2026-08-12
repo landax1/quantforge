@@ -300,6 +300,11 @@ def mine(
             "eta_s": _eta_s(),
             "best_history": best_history,
             "databank": bank if final else bank[:50],
+            # El tramo EXACTO sobre el que se midieron las métricas del
+            # databank. Va con hora y no recortado a la fecha: al reabrir una
+            # estrategia guardada hay que reproducir el mismo backtest, y
+            # redondear al día mueve el corte unas velas y con él los números.
+            "measured_range": {"from": str(df.index[0]), "to": str(df.index[-1])},
             "split": None if df_oos is None else {
                 "is_from": str(df.index[0])[:10], "is_to": str(df.index[-1])[:10],
                 "oos_from": str(df_oos.index[0])[:10], "oos_to": str(df_oos.index[-1])[:10],

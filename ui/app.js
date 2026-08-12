@@ -14,6 +14,8 @@ const S = {
   sel: JSON.parse(localStorage.getItem("qf.sel") || "{}"),   // {dataset_id, timeframe}
   cfg: JSON.parse(localStorage.getItem("qf.cfg") || "null"), // config de mining
   mineJobId: null,
+  //: orden elegido en el databank. null = el del minero (QF Score)
+  bankSort: null,
   mineLive: null,
   mineResult: null,
   mining: false,
@@ -187,8 +189,15 @@ function toast(msg, kind = "") {
 }
 
 const fmtPct = (v) => `${v > 0 ? "+" : ""}${(+v).toFixed(2)}%`;
+/* Todo el formateo va en es-AR y no en el idioma del navegador. Con
+   `undefined` la app mezclaba criterios: los enteros salían "35.500" y el
+   dinero "35,500" en la misma pantalla según dónde estuviera cada usuario.
+   La aplicación está en español; los números también.
+
+   Sin abreviar a "k" ni a "M": son cifras de dinero y redondear $35.500 a
+   "$35k" esconde justo el detalle que se está mirando. */
 const fmtMoney = (v) => (v < 0 ? "-$" : "$") +
-  Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 });
+  Math.abs(+v || 0).toLocaleString("es-AR", { maximumFractionDigits: 0 });
 const fmtNum = (v, d = 2) => (+v).toFixed(d);
 const fmtInt = (v) => (+v || 0).toLocaleString("es-AR");
 
@@ -932,8 +941,16 @@ async function openSaved(s) {
     stop_mult: t.stop_mult, oos: t.oos, oos_ratio: t.oos_ratio,
     fitness: 0, spark: [],
   };
+  /* El tramo tiene que ser el mismo con el que se midió, o el backtest corre
+     sobre toda la historia y devuelve otra estrategia distinta con el mismo
+     nombre. Las guardadas antes de que esto se registrara no lo tienen: se
+     avisa en vez de mostrar números que no coinciden con la fila. */
+  const r = t.measured_range;
   openInspector(row, {
     dataset_id: t.dataset_id, timeframe: t.timeframe || "1h",
+    date_from: r ? r.from : undefined,
+    date_to: r ? r.to : undefined,
+    sinRango: !r,
     settings: { spread: t.spread, slippage: t.slippage,
                 commission_pct: t.commission, initial_capital: t.capital },
   });
@@ -1591,12 +1608,82 @@ function oosCell(r) {
     <b>${fmtNum(q, 2)}×</b><em>${etiqueta}</em></span>`;
 }
 
+/* Columnas ordenables del databank.
+
+   El minero entrega el databank ordenado por QF Score, que es su criterio de
+   robustez. Pero mirar la misma lista por rendimiento, por caída máxima o por
+   cantidad de operaciones responde preguntas distintas, y hasta ahora había que
+   leer cien filas a ojo.
+
+   El orden vive en S y no en el nodo: la tabla se rehace sola cada vez que
+   entra una estrategia nueva, así que cualquier estado guardado en el DOM se
+   perdería a los pocos segundos. */
+const ORDENABLES = {
+  score:  (r) => r.score,
+  oos:    (r) => r.oos_ratio,
+  stop:   (r) => r.stop_mult,
+  cagr:   (r) => r.metrics.cagr_pct,
+  net:    (r) => r.metrics.net_profit_pct,
+  pf:     (r) => r.metrics.profit_factor,
+  sharpe: (r) => r.metrics.sharpe,
+  dd:     (r) => r.metrics.max_drawdown_pct,
+  months: (r) => r.metrics.months_positive_pct,
+  top:    (r) => r.metrics.top_trade_share_pct,
+  expo:   (r) => r.metrics.exposure_pct,
+  win:    (r) => r.metrics.win_rate_pct,
+  trades: (r) => r.metrics.trades,
+};
+//: en estas, menos es mejor: el primer clic tiene que mostrar las mejores
+const MENOS_ES_MEJOR = new Set(["dd", "top"]);
+
+function ordenarBank(bank) {
+  const s = S.bankSort;
+  if (!s || !s.key || !ORDENABLES[s.key]) return bank;
+  const leer = ORDENABLES[s.key];
+  // copia: ordenar el array del snapshot alteraría el estado del minado
+  return [...bank].sort((a, b) => {
+    const va = leer(a), vb = leer(b);
+    // los sin dato van siempre al fondo, se ordene como se ordene: si no,
+    // pedir "las mejores por fuera de muestra" arrancaría con las que no tienen
+    const na = va == null || Number.isNaN(va), nb = vb == null || Number.isNaN(vb);
+    if (na || nb) return na && nb ? 0 : (na ? 1 : -1);
+    return (va - vb) * s.dir;
+  });
+}
+
+function cablearOrden(raiz) {
+  $$("[data-sort]", raiz).forEach(th => th.onclick = () => {
+    const key = th.dataset.sort;
+    const s = S.bankSort || {};
+    if (s.key === key) {
+      // tercer clic: vuelve al orden del minero, que es el que él recomienda
+      S.bankSort = s.dir === (MENOS_ES_MEJOR.has(key) ? 1 : -1)
+        ? { key, dir: -s.dir } : { key: null, dir: -1 };
+    } else {
+      S.bankSort = { key, dir: MENOS_ES_MEJOR.has(key) ? 1 : -1 };
+    }
+    if (S.mineResult || S.mineLive) {
+      renderMining(S.mineResult || S.mineLive, !!S.mineResult);
+    }
+  });
+}
+
 /* ------------------------------------------------------- render resultados */
 function renderMining(snap, finished) {
   const live = $("#m-live"), bankBox = $("#m-bank");
   if (!live || !snap) return;
-  const bank = snap.databank || [];
-  const champ = bank[0];
+  const bank = ordenarBank(snap.databank || []);
+  // el campeón es el mejor por QF Score, no el primero de la vista: reordenar
+  // la tabla no cambia cuál estrategia recomienda el minero
+  const champ = (snap.databank || [])[0];
+
+  const s = S.bankSort || {};
+  const th = (key, label, ayuda) => {
+    const activa = s.key === key;
+    const flecha = activa ? (s.dir === -1 ? "▾" : "▴") : "";
+    return `<th class="num orden ${activa ? "activa" : ""}" data-sort="${key}"
+      title="${esc(ayuda)}${activa ? "" : " · clic para ordenar"}">${label}<i>${flecha}</i></th>`;
+  };
 
   const goal = snap.target_keep || null;
   const kept = goal ? Math.min(bank.length, goal) : bank.length;
@@ -1747,13 +1834,19 @@ function renderMining(snap, finished) {
     <h2>Databank <span class="hint">${bank.length} estrategias ordenadas por QF Score
       (robustez, no rentabilidad) · clic en cualquiera para analizarla a fondo</span></h2>
     ${bank.length ? `<div class="databank-wrap"><table>
-      <thead><tr><th>#</th><th class="num">Score</th><th>Estrategia</th><th>Curva</th>
-        ${snap.split ? `<th class="num" title="Profit factor fuera de muestra dividido por el de adentro. Cerca de 1 la ventaja se sostuvo; cerca de 0 la estrategia sólo describía el pasado.">Fuera<br>de muestra</th>` : ""}
-        <th class="num">Stop</th><th class="num">Anual</th><th class="num">Total</th>
-        <th class="num">PF</th><th class="num">Sharpe</th><th class="num">Max DD</th>
-        <th class="num">Meses +</th><th class="num">Mejor op.</th>
-        <th class="num">Expo.</th><th class="num">Win %</th>
-        <th class="num">Trades</th></tr></thead>
+      <thead><tr><th>#</th>${th("score", "Score", "Puntaje propio de robustez: qué tan repetible parece la estrategia, no cuánto rindió.")}<th>Estrategia</th><th>Curva</th>
+        ${snap.split ? th("oos", "Fuera<br>de muestra", "Profit factor fuera de muestra dividido por el de adentro. Cerca de 1 la ventaja se sostuvo; cerca de 0 la estrategia sólo describía el pasado.") : ""}
+        ${th("stop", "Stop", "Distancia del stop loss, medida en múltiplos de ATR (la volatilidad típica del instrumento).")}
+        ${th("cagr", "Anual", "Rendimiento ANUALIZADO: cuánto rindió por año, en promedio compuesto. Es el que sirve para comparar estrategias que corrieron distinta cantidad de tiempo.")}
+        ${th("net", "Total", "Rendimiento ACUMULADO de todo el período. Diez años al 10% anual dan más de 150% total: por eso este número siempre parece más grande que el anual.")}
+        ${th("pf", "PF", "Profit factor: cuántos dólares ganó por cada dólar que perdió. Debajo de 1 la estrategia pierde plata.")}
+        ${th("sharpe", "Sharpe", "Rendimiento en relación a cuánto oscila la curva. Más alto = el mismo retorno con menos sobresaltos.")}
+        ${th("dd", "Max DD", "Máxima caída: lo peor que llegó a bajar la cuenta desde un pico hasta el fondo. Es lo que hay que poder aguantar sin cerrar todo.")}
+        ${th("months", "Meses +", "Porcentaje de meses cerrados en ganancia. Alto significa que gana seguido, no de un solo golpe.")}
+        ${th("top", "Mejor op.", "Cuánto de la ganancia total vino de una sola operación. Si es muy alto, el resultado depende de un golpe de suerte.")}
+        ${th("expo", "Expo.", "Porcentaje del tiempo con una posición abierta.")}
+        ${th("win", "Win %", "Porcentaje de operaciones ganadoras. Solo se lee junto al riesgo/beneficio: con 1:3, un 35% ya es rentable.")}
+        ${th("trades", "Trades", "Cantidad de operaciones. Pocas operaciones hacen que cualquier métrica sea poco confiable.")}</tr></thead>
       <tbody>${bank.map((r, i) => {
         const m = r.metrics;
         return `<tr class="clickable" data-row="${i}" style="animation-delay:${Math.min(i, 12) * 22}ms">
@@ -1806,9 +1899,22 @@ function renderMining(snap, finished) {
      Sólo cambia cuando entra una estrategia nueva. */
   const cambio = bankBox.dataset.h !== bankHtml;
   if (cambio) {
+    /* Cada estrategia nueva rehace la tabla, y con ella se perdía el
+       desplazamiento: si estabas mirando las columnas de la derecha, volvías
+       al principio cada pocos segundos. Se guarda antes y se repone después,
+       sobre el nodo NUEVO — el viejo ya no existe cuando termina el reemplazo. */
+    const scroll = $(".databank-wrap", bankBox);
+    const x = scroll ? scroll.scrollLeft : 0;
+    const y = scroll ? scroll.scrollTop : 0;
+
     bankBox.innerHTML = bankHtml;
     bankBox.dataset.h = bankHtml;
+
+    const nuevo = $(".databank-wrap", bankBox);
+    if (nuevo && (x || y)) { nuevo.scrollLeft = x; nuevo.scrollTop = y; }
+
     $$("[data-row]", bankBox).forEach(tr => tr.onclick = () => openInspector(bank[+tr.dataset.row]));
+    cablearOrden(bankBox);
   }
 
   /* Aplica una sugerencia y vuelve a minar.
@@ -1884,6 +1990,9 @@ async function openInspector(row, ctx) {
     // que muestra el databank
     const { result } = ctx ? await api.post("/api/backtest", {
       dataset_id: ctx.dataset_id, timeframe: ctx.timeframe,
+      // el mismo tramo que se midió al guardarla; sin esto corría sobre toda
+      // la historia y devolvía otra estrategia con el mismo nombre
+      ...(ctx.date_from ? { date_from: ctx.date_from, date_to: ctx.date_to } : {}),
       spec: row.spec, settings: ctx.settings,
     }) : await api.post("/api/backtest", {
       dataset_id: S.sel.dataset_id, timeframe: S.sel.timeframe || "1h",
@@ -1896,7 +2005,7 @@ async function openInspector(row, ctx) {
         commission_pct: cfg.commission, initial_capital: cfg.capital,
       },
     });
-    renderInspector($("#insp-body", host), row, result);
+    renderInspector($("#insp-body", host), row, result, ctx);
   } catch (e) {
     $("#insp-body", host).innerHTML =
       `<div class="empty-state neg">No se pudo recalcular: ${esc(e.message)}</div>`;
@@ -1914,8 +2023,18 @@ const INSPECT_METRICS = [
   ["expectancy_r", "Expectancy (R)", "n"], ["final_equity", "Capital final", "money"],
 ];
 
-function renderInspector(box, row, res) {
+function renderInspector(box, row, res, ctx) {
   const m = res.metrics;
+  /* Las guardadas antes de que se registrara el tramo no se pueden reproducir:
+     el backtest corre sobre toda la historia y da otros números que los de la
+     fila. Decirlo es lo único honesto — callarlo deja al usuario comparando
+     dos cosas distintas sin saberlo. */
+  const avisoRango = ctx && ctx.sinRango ? `
+    <div class="banner warn" style="margin-bottom:16px"><span class="b-ic">⚠</span><div>
+      <b>Esta estrategia se guardó sin registrar el período.</b> Lo que ves acá se
+      calculó sobre <b>toda la historia</b> del instrumento, así que puede no coincidir
+      con las métricas de la lista, que salieron del tramo que minaste.
+      Volvé a minarla y guardala de nuevo para que queden atadas.</div></div>` : "";
   const metricCards = INSPECT_METRICS.map(([k, label, kind]) => {
     const v = m[k];
     let txt = fmtNum(v), cls = "";
@@ -1936,7 +2055,7 @@ function renderInspector(box, row, res) {
   const trades = (res.trades || []).slice(-120).reverse();
   const monthly = res.monthly_returns || [];
 
-  box.innerHTML = `
+  box.innerHTML = avisoRango + `
   <section>
     <h3>QF Score <span style="text-transform:none;font-weight:400">— qué tan repetible parece,
       no cuánto rindió</span></h3>
@@ -2030,6 +2149,17 @@ function renderInspector(box, row, res) {
           score: row.score ?? null,
           oos: row.oos || null, oos_ratio: row.oos_ratio ?? null,
           metrics: m,
+          /* EL TRAMO MEDIDO. Sin esto, reabrir la estrategia corría el
+             backtest sobre toda la historia en vez del período que se minó, y
+             los números no se parecían en nada a los guardados: con riesgo
+             agresivo sobre veinte años, hasta un -100%.
+
+             Sale del propio minero y no de la pantalla: si el usuario cambia
+             el calendario después de minar, lo que hay que reproducir sigue
+             siendo el tramo de la corrida, no el que esté elegido ahora. Y
+             cuando hubo división in/out, es el tramo de adentro — que es
+             sobre el que se midieron estas métricas. */
+          measured_range: (S.mineResult || S.mineLive || {}).measured_range || null,
           saved_at: new Date().toISOString(),
         },
       });

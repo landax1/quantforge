@@ -28,7 +28,7 @@ from botiquant.analysis.montecarlo import monte_carlo
 from botiquant.analysis.walkforward import walk_forward
 from botiquant.backtesting.engine import run_backtest
 from botiquant.backtesting.metrics import SCORE_PARTS, bq_score, score_breakdown
-from botiquant.core.jobs import JobManager
+from botiquant.core.jobs import DemasiadoTrabajo, JobManager
 from botiquant.core.models import (
     OPERATORS, PRICE_FIELDS, BacktestSettings, RiskConfig, StrategySpec, TimeFilter,
 )
@@ -60,6 +60,19 @@ WORK_DIR = ROOT / "workspace"
 MULTIUSER = os.environ.get("BQ_MULTIUSER", "").strip() not in ("", "0", "false")
 
 
+def _entero(nombre: str) -> int | None:
+    """Lee un entero del entorno. Devuelve None si no está o no sirve, para que
+    quien lo use aplique su propio default en vez de recibir un cero."""
+    crudo = os.environ.get(nombre, "").strip()
+    if not crudo:
+        return None
+    try:
+        valor = int(crudo)
+    except ValueError:
+        return None
+    return valor if valor > 0 else None
+
+
 def _base_de_datos(workdir: Path) -> Path:
     """Al renombrar QuantForge → Botiquant cambió el nombre del archivo. Si
     existe el viejo y todavía no el nuevo, se renombra: si no, el usuario
@@ -87,7 +100,14 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     db = Database(_base_de_datos(workdir))
     store = DataStore(workdir / "datasets", db)
-    jobs = JobManager()
+    # Los topes se configuran por entorno porque dependen de la máquina: en un
+    # servidor con más núcleos conviene subirlos, y en la propia no hace falta
+    # racionar nada. Sin variables, el default deja un núcleo libre para atender
+    # pedidos mientras se mina.
+    jobs = JobManager(
+        max_running=_entero("BQ_MAX_BUSQUEDAS"),
+        max_por_usuario=_entero("BQ_MAX_POR_USUARIO") or 1,
+    )
 
     app = FastAPI(title="Botiquant", version=__version__, docs_url="/api/docs")
 
@@ -540,7 +560,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 f"(sección Costos del broker) antes de minar.")
 
     @app.post("/api/mine")
-    def start_mine(payload: dict[str, Any]) -> dict[str, str]:
+    def start_mine(request: Request, payload: dict[str, Any]) -> dict[str, str]:
         df = _load_df(payload)
         risk = _risk(payload)
         settings = _settings(payload)
@@ -594,10 +614,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             )
             out["range"] = used_range
             return out
-        return {"job_id": jobs.submit_streaming("mine", work)}
+        return {"job_id": jobs.submit_streaming("mine", work, duenio(request))}
 
     @app.post("/api/generate")
-    def start_generate(payload: dict[str, Any]) -> dict[str, str]:
+    def start_generate(request: Request, payload: dict[str, Any]) -> dict[str, str]:
         df = _load_df(payload)
         risk = _risk(payload)
         settings = _settings(payload)
@@ -615,10 +635,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 top_n=int(payload.get("top_n", 20)),
                 progress=progress,
             )
-        return {"job_id": jobs.submit("generate", work)}
+        return {"job_id": jobs.submit("generate", work, duenio(request))}
 
     @app.post("/api/evolve")
-    def start_evolve(payload: dict[str, Any]) -> dict[str, str]:
+    def start_evolve(request: Request, payload: dict[str, Any]) -> dict[str, str]:
         df = _load_df(payload)
         risk = _risk(payload)
         settings = _settings(payload)
@@ -640,7 +660,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 seed=int(payload.get("seed", 42)),
                 progress=progress,
             )
-        return {"job_id": jobs.submit("evolve", work)}
+        return {"job_id": jobs.submit("evolve", work, duenio(request))}
 
     @app.post("/api/optimize/dimensions")
     def optimize_dimensions(payload: dict[str, Any]) -> dict[str, Any]:
@@ -648,7 +668,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         return {"dimensions": [d.to_dict() for d in discover_dimensions(spec)]}
 
     @app.post("/api/optimize")
-    def start_optimize(payload: dict[str, Any]) -> dict[str, str]:
+    def start_optimize(request: Request, payload: dict[str, Any]) -> dict[str, str]:
         df = _load_df(payload)
         spec = _spec(payload)
         settings = _settings(payload)
@@ -662,10 +682,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 seed=int(payload.get("seed", 42)),
                 progress=progress,
             )
-        return {"job_id": jobs.submit("optimize", work)}
+        return {"job_id": jobs.submit("optimize", work, duenio(request))}
 
     @app.post("/api/walkforward")
-    def start_walkforward(payload: dict[str, Any]) -> dict[str, str]:
+    def start_walkforward(request: Request, payload: dict[str, Any]) -> dict[str, str]:
         df = _load_df(payload)
         spec = _spec(payload)
         settings = _settings(payload)
@@ -681,7 +701,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 seed=int(payload.get("seed", 42)),
                 progress=progress,
             )
-        return {"job_id": jobs.submit("walkforward", work)}
+        return {"job_id": jobs.submit("walkforward", work, duenio(request))}
 
     # ----------------------------------------------------------- monte carlo
     @app.post("/api/montecarlo")
@@ -908,6 +928,13 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     # va DESPUÉS de la ruta: el mount toma todo lo que empiece con /static, así
     # que declarado antes se quedaría también con index.html
     app.mount("/static", StaticFiles(directory=str(UI_DIR)), name="static")
+
+    @app.exception_handler(DemasiadoTrabajo)
+    async def sin_cupo(request, exc):
+        """429 y no 500: quedarse sin cupo es una respuesta normal del servidor,
+        no una falla. La interfaz muestra el texto tal cual, así que tiene que
+        decir qué pasó y qué hacer."""
+        return JSONResponse(status_code=429, content={"detail": str(exc)})
 
     @app.exception_handler(Exception)
     async def unhandled(request, exc):  # pragma: no cover

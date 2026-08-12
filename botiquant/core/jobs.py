@@ -6,6 +6,7 @@ background thread; the UI polls ``/api/jobs/{id}`` and renders a progress bar.
 
 from __future__ import annotations
 
+import os
 import threading
 import traceback
 import uuid
@@ -24,6 +25,7 @@ class Job:
     error: str = ""
     partial: Any = None              # streaming snapshot while running
     cancelled: bool = False
+    owner: str | None = None         # de quién es, para el cupo por persona
 
     def to_dict(self, include_result: bool = True) -> dict[str, Any]:
         d: dict[str, Any] = {
@@ -58,16 +60,55 @@ class JobHandle:
         return self._job.cancelled
 
 
+class DemasiadoTrabajo(Exception):
+    """No hay lugar para arrancar otra búsqueda ahora mismo."""
+
+
 class JobManager:
-    def __init__(self, max_jobs: int = 50) -> None:
+    """Corre trabajos largos en hilos, con un tope de cuántos a la vez.
+
+    El tope no es un detalle de rendimiento. Minar es trabajo de procesador
+    puro: una búsqueda ocupa un núcleo durante minutos. Sin límite, cada clic
+    en "Minar" arrancaba un hilo más, así que un puñado de personas —o una sola
+    impaciente apretando el botón— dejaban el servidor a paso de hombre para
+    todos, incluidas las suyas propias.
+
+    Se reparte en dos niveles. El global protege la máquina y se deja un núcleo
+    libre para atender pedidos, o el servidor deja de responder mientras mina.
+    El de por persona evita que alguien acapare la cola: sin él, uno solo podría
+    llenar todos los lugares y el resto no entraría nunca.
+    """
+
+    def __init__(self, max_jobs: int = 50, max_running: int | None = None,
+                 max_por_usuario: int = 1) -> None:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         self._max_jobs = max_jobs
+        self._max_running = max_running or max(1, (os.cpu_count() or 2) - 1)
+        self._max_por_usuario = max_por_usuario
 
-    def submit(self, kind: str, fn: Callable[[Callable[[float, str], None]], Any]) -> str:
+    # ------------------------------------------------------------------ cupos
+    def _corriendo(self, dueno: str | None = None) -> int:
+        return sum(1 for j in self._jobs.values()
+                   if j.status == "running" and (dueno is None or j.owner == dueno))
+
+    def _tomar_lugar(self, dueno: str | None) -> None:
+        """Levanta DemasiadoTrabajo si no hay lugar. Se llama con el lock puesto."""
+        if self._corriendo() >= self._max_running:
+            raise DemasiadoTrabajo(
+                "El servidor está minando al máximo de su capacidad. "
+                "Probá de nuevo en un minuto.")
+        if dueno is not None and self._corriendo(dueno) >= self._max_por_usuario:
+            raise DemasiadoTrabajo(
+                "Ya tenés una búsqueda corriendo. Esperá a que termine "
+                "o frenala antes de empezar otra.")
+
+    def submit(self, kind: str, fn: Callable[[Callable[[float, str], None]], Any],
+               dueno: str | None = None) -> str:
         """Run ``fn(progress)`` in a thread; ``progress(frac, msg)`` updates status."""
-        job = Job(id=uuid.uuid4().hex[:10], kind=kind)
+        job = Job(id=uuid.uuid4().hex[:10], kind=kind, owner=dueno)
         with self._lock:
+            self._tomar_lugar(dueno)
             self._jobs[job.id] = job
             self._trim()
 
@@ -89,12 +130,13 @@ class JobManager:
         threading.Thread(target=runner, daemon=True).start()
         return job.id
 
-    def submit_streaming(self, kind: str,
-                         fn: Callable[[JobHandle], Any]) -> str:
+    def submit_streaming(self, kind: str, fn: Callable[[JobHandle], Any],
+                         dueno: str | None = None) -> str:
         """Run ``fn(handle)`` in a thread; the handle streams partial snapshots
         and exposes a cooperative ``cancelled`` flag."""
-        job = Job(id=uuid.uuid4().hex[:10], kind=kind)
+        job = Job(id=uuid.uuid4().hex[:10], kind=kind, owner=dueno)
         with self._lock:
+            self._tomar_lugar(dueno)
             self._jobs[job.id] = job
             self._trim()
         handle = JobHandle(job)

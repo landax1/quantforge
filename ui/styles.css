@@ -994,6 +994,14 @@ table tbody tr { transition: background .1s; }
 table tbody tr:hover td { background: var(--card-hover); }
 table tbody tr.clickable { cursor: pointer; }
 .scroll-x { overflow-x: auto; }
+/* Cabeceras ordenables. La flecha ocupa lugar siempre —aunque esté vacía— para
+   que la columna no se mueva un par de píxeles al activarse. */
+th.orden { cursor: pointer; user-select: none; transition: color .12s; }
+th.orden:hover { color: var(--text); }
+th.orden i { font-style: normal; display: inline-block; width: 10px; text-align: left;
+             font-size: 9px; opacity: .9; }
+th.orden.activa { color: var(--accent-2); }
+
 .databank-wrap {
   max-height: 640px; overflow-y: auto;
   border: 1px solid var(--border-soft); border-radius: var(--r);
