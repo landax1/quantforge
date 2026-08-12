@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tu cuenta — Botiquant</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚡</text></svg>">
+<style>
+:root{
+  --bg:#07080c; --card:#11141d; --card-2:#161a25;
+  --border:#222839; --border-soft:#1a1f2c; --border-strong:#2f3750;
+  --text:#e9ecf7; --text-2:#a6aec7; --text-dim:#828ba6;
+  --accent:#635bff; --accent-2:#9d97ff;
+  --accent-soft:rgba(99,91,255,.10); --accent-line:rgba(99,91,255,.28);
+  --pos:#43c88a; --warn:#d9a441;
+  --r:10px; --r-lg:13px;
+  --font:"Inter","Segoe UI Variable","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:ui-monospace,"Cascadia Code",Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:16px;line-height:1.6}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:760px;margin:0 auto;padding:0 24px}
+header{border-bottom:1px solid var(--border-soft)}
+.nav{display:flex;align-items:center;gap:14px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px}
+.brand-mark{width:30px;height:30px;display:grid;place-items:center;border-radius:8px;
+  background:var(--card-2);border:1px solid var(--border);color:var(--accent-2)}
+.brand-mark svg{width:17px;height:17px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:38px;
+  padding:0 18px;border-radius:var(--r);border:1px solid transparent;background:var(--accent);
+  color:#fff;font:inherit;font-size:14px;font-weight:550;cursor:pointer}
+.btn:hover{background:#7570ff}
+.btn.ghost{background:var(--card-2);color:var(--text-2);border-color:var(--border)}
+.btn.ghost:hover{color:var(--text);border-color:var(--border-strong)}
+.btn.lg{height:48px;padding:0 26px;font-size:15px}
+.btn[disabled],.btn.off{opacity:.55;pointer-events:none}
+main{padding:44px 0 80px}
+h1{font-size:30px;letter-spacing:-.03em;margin-bottom:6px}
+.lede{color:var(--text-2);margin-bottom:30px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);
+  padding:24px;margin-bottom:18px}
+.card h2{font-size:17px;margin-bottom:6px;letter-spacing:-.015em}
+.card p{color:var(--text-2);font-size:14.5px}
+.chip{display:inline-flex;align-items:center;gap:9px;background:var(--card-2);
+  border:1px solid var(--border);border-radius:999px;padding:5px 14px 5px 5px;font-size:14px}
+.chip img{width:26px;height:26px;border-radius:50%;display:block}
+.plan{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;padding:3px 10px;border-radius:999px;
+  background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent-2)}
+.lic{font-family:var(--mono);font-size:11.5px;line-height:1.55;color:var(--text-dim);
+  background:#0c0e15;border:1px solid var(--border-soft);border-radius:var(--r);
+  padding:12px 14px;margin-top:14px;word-break:break-all;max-height:112px;overflow:auto}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:16px}
+.aviso{background:rgba(217,164,65,.10);border:1px solid rgba(217,164,65,.32);
+  border-radius:var(--r);padding:12px 15px;font-size:14px;color:var(--text-2);margin-top:14px}
+.aviso b{color:var(--warn)}
+.mini{color:var(--text-dim);font-size:12.5px;margin-top:10px}
+footer{border-top:1px solid var(--border-soft);padding:28px 0;color:var(--text-dim);font-size:13px}
+</style>
+</head>
+<body>
+
+<header><div class="wrap nav">
+  <a class="brand" href="/">
+    <span class="brand-mark"><svg viewBox="0 0 24 24" fill="none"><path d="M13 2 4.5 13.2h6L9.5 22 19.5 10.5h-6.2L13 2Z" fill="currentColor"/></svg></span>
+    Botiquant
+  </a>
+  <div style="margin-left:auto" id="quien"></div>
+</div></header>
+
+<main class="wrap" id="main">
+  <div class="card"><p>Cargando tu cuenta…</p></div>
+</main>
+
+<footer><div class="wrap">
+  Botiquant es una herramienta de análisis. No es asesoramiento financiero.
+  Operar CFDs implica un riesgo alto de perder tu capital.
+</div></footer>
+
+<script>
+/* Página de cuenta: quién sos, tu licencia y la descarga.
+   Es lo único que el servidor hace por vos — el trabajo pesado corre después
+   en tu computadora. */
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g,
+  c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const kb = (n) => n >= 1e6 ? (n/1e6).toFixed(0) + " MB" : (n/1e3).toFixed(0) + " kB";
+
+(async function cuenta() {
+  const main = document.getElementById("main");
+  const quien = document.getElementById("quien");
+
+  let sesion, descarga;
+  try {
+    [sesion, descarga] = await Promise.all([
+      fetch("/api/auth/me", { credentials: "same-origin" }).then(r => r.json()),
+      fetch("/api/descarga").then(r => r.json()),
+    ]);
+  } catch (e) {
+    main.innerHTML = `<div class="card"><h2>No se pudo conectar</h2>
+      <p>Recargá la página en un momento.</p></div>`;
+    return;
+  }
+
+  /* Sin login configurado esta página no tiene sentido: no hay cuentas que
+     mostrar. Se dice, en vez de dejar una pantalla a medias. */
+  if (!sesion.configurado) {
+    main.innerHTML = `<h1>Tu cuenta</h1>
+      <p class="lede">Este servidor está corriendo sin sistema de cuentas.</p>
+      <div class="card"><h2>Nada que mostrar acá</h2>
+        <p>Las cuentas y las licencias sólo existen en botiquant.com. Si estás
+           corriendo Botiquant en tu propia máquina, no las necesitás.</p>
+        <div class="row"><a class="btn ghost" href="/">Volver al inicio</a></div></div>`;
+    return;
+  }
+
+  const u = sesion.usuario;
+  if (!u) {
+    main.innerHTML = `<h1>Entrá para descargar</h1>
+      <p class="lede">La cuenta es gratis y sirve para dos cosas: bajar la aplicación
+        y llevarte tu licencia.</p>
+      <div class="card">
+        <h2>Continuar con Google</h2>
+        <p>No vas a escribir ninguna contraseña acá. Google nos da tu nombre, tu correo
+           y tu foto; nada más.</p>
+        <div class="row">
+          <a class="btn lg" href="/api/auth/google/start?next=/cuenta">Continuar con Google</a>
+          <a class="btn ghost" href="/">Volver</a>
+        </div>
+      </div>`;
+    return;
+  }
+
+  quien.innerHTML = `<span class="chip">${u.picture
+    ? `<img src="${esc(u.picture)}" alt="" referrerpolicy="no-referrer">` : ""}
+    <span>${esc(u.name || u.email)}</span></span>`;
+
+  const botonDescarga = descarga.disponible
+    ? `<a class="btn lg" href="/descargar">Descargar para Windows · ${kb(descarga.bytes)}</a>`
+    : `<span class="btn lg off">Todavía no publicada</span>`;
+
+  const notaDescarga = descarga.disponible
+    ? `<p class="mini">Windows 10 y 11. No hace falta instalar Python.</p>`
+    /* Un botón que devuelve 404 hace creer que el producto está roto. Que
+       todavía no salió es una situación distinta y hay que decirla. */
+    : `<div class="aviso"><b>Todavía no está publicada.</b> La aplicación de
+         escritorio está en preparación. Tu cuenta ya quedó creada: cuando salga,
+         la bajás desde acá.</div>`;
+
+  main.innerHTML = `
+    <h1>Tu cuenta</h1>
+    <p class="lede">${esc(u.email)}</p>
+
+    <div class="card">
+      <h2>Botiquant Desktop <span class="plan">${esc(descarga.version)}</span></h2>
+      <p>El minado y el backtesting corren en tu computadora: no hay cola, ni cuota,
+         ni nadie más compitiendo por la máquina. Tus datos y tus estrategias no
+         salen de tu disco.</p>
+      <div class="row">${botonDescarga}</div>
+      ${notaDescarga}
+    </div>
+
+    <div class="card">
+      <h2>Tu licencia</h2>
+      <p>La aplicación la verifica sola, sin conexión. No necesitás estar online
+         para backtestear ni para minar.</p>
+      <div id="lic-caja"><p class="mini">Generando…</p></div>
+    </div>
+
+    <div class="row">
+      <button class="btn ghost" id="salir">Cerrar sesión</button>
+      <a class="btn ghost" href="/">Volver al inicio</a>
+    </div>`;
+
+  document.getElementById("salir").onclick = async () => {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    location.href = "/";
+  };
+
+  const caja = document.getElementById("lic-caja");
+  try {
+    const r = await fetch("/api/licencia", { credentials: "same-origin" });
+    if (!r.ok) throw new Error((await r.json()).detail || r.status);
+    const lic = await r.json();
+    caja.innerHTML = `
+      <div class="row" style="margin-top:4px">
+        <span class="plan">${esc(lic.plan)}</span>
+        <span class="mini" style="margin:0">${lic.expira
+          ? `vence en ${lic.dias_restantes} días` : "sin vencimiento"}</span>
+      </div>
+      <div class="lic">${esc(lic.token)}</div>
+      <div class="row">
+        <button class="btn ghost" id="copiar">Copiar</button>
+        <a class="btn ghost" href="/api/licencia?descargar=1" download="botiquant.licencia">Bajar archivo</a>
+      </div>
+      <p class="mini">La aplicación la pide una sola vez, la primera que abrís.</p>`;
+    document.getElementById("copiar").onclick = async (ev) => {
+      try {
+        await navigator.clipboard.writeText(lic.token);
+        ev.target.textContent = "Copiada";
+      } catch (e) { ev.target.textContent = "No se pudo copiar"; }
+    };
+  } catch (e) {
+    caja.innerHTML = `<div class="aviso">No se pudo generar la licencia: ${esc(e.message)}</div>`;
+  }
+})();
+</script>
+</body>
+</html>

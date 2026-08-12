@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hmac
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,7 @@ from botiquant.data.loader import parse_ohlcv_csv
 from botiquant.data.sample import generate_sample
 from botiquant.data.store import DataStore
 from botiquant.database.db import Database
+from botiquant.licencia import firmar
 from botiquant.generator.generator import generate_strategies
 from botiquant.generator.templates import template_catalog
 from botiquant.genetic.evolution import evolve
@@ -407,6 +409,9 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         "/api/auth/google/start",
         "/api/auth/google/callback",
         "/api/auth/logout",
+        # la portada lo consulta antes de que nadie inicie sesión, para saber si
+        # el botón dice "Descargar" o "Muy pronto". No revela nada privado.
+        "/api/descarga",
     }
 
     def duenio(request: Request) -> str | None:
@@ -876,6 +881,79 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                                  headers={"Content-Disposition":
                                           f'attachment; filename="{name.replace(" ", "_")}.pine"'})
 
+    # ------------------------------------------------------- descarga y cuenta
+    #: Dónde queda el instalador que produce el empaquetado. No está en el
+    #: repositorio: son cientos de megabytes que no tienen por qué versionarse.
+    BUILD_DIR = ROOT / "dist"
+    INSTALADOR = "BotiquantSetup.exe"
+
+    def _instalador() -> Path | None:
+        """El instalador, si ya se generó.
+
+        La página consulta esto en vez de asumir que existe. Ofrecer una
+        descarga que devuelve 404 es peor que decir que todavía no está: el
+        usuario cree que el producto está roto en vez de que aún no salió.
+        """
+        ruta = BUILD_DIR / INSTALADOR
+        return ruta if ruta.is_file() else None
+
+    @app.get("/api/descarga")
+    def estado_descarga() -> dict[str, Any]:
+        ruta = _instalador()
+        return {
+            "disponible": ruta is not None,
+            "archivo": INSTALADOR,
+            "bytes": ruta.stat().st_size if ruta else 0,
+            "version": __version__,
+        }
+
+    #: Días que dura una licencia antes de refrescarse. No es una traba: la
+    #: aplicación funciona sin conexión todo ese tiempo. Es lo que permite que
+    #: dar de baja un plan tenga efecto alguna vez, sin obligar a consultar al
+    #: servidor en cada backtest.
+    LICENCIA_DIAS = _entero("BQ_LICENCIA_DIAS") or 90
+
+    @app.get("/api/licencia")
+    def emitir_licencia(request: Request, descargar: int = 0) -> Response:
+        """Emite la licencia del usuario, firmada.
+
+        Se emite acá y no en el escritorio porque la clave privada vive sólo en
+        el servidor: la aplicación lleva la pública y puede verificar, nunca
+        fabricar.
+        """
+        u = usuario_actual(request)
+        if u is None:
+            raise HTTPException(401, "Entrá con tu cuenta para obtener tu licencia.")
+        privada = os.environ.get("BQ_LICENCIA_PRIVADA", "").strip()
+        if not privada:
+            raise HTTPException(
+                503, "Este servidor todavía no tiene configurada la firma de licencias.")
+
+        expira = int(time.time()) + LICENCIA_DIAS * 86400
+        token = firmar({"user_id": str(u["id"]), "email": str(u["email"]),
+                        "plan": str(u.get("plan") or "free"), "expira": expira}, privada)
+        if descargar:
+            return PlainTextResponse(
+                token, media_type="text/plain",
+                headers={"Content-Disposition": 'attachment; filename="botiquant.licencia"'})
+        return JSONResponse({
+            "token": token, "plan": str(u.get("plan") or "free"),
+            "expira": expira,
+            "dias_restantes": LICENCIA_DIAS,
+        })
+
+    @app.get("/descargar", include_in_schema=False)
+    def descargar(request: Request) -> Response:
+        """Baja el instalador. Pide cuenta: es el momento en que se entrega
+        algo, y es donde el registro se justifica."""
+        _exigir_para_descargar(request)
+        ruta = _instalador()
+        if ruta is None:
+            raise HTTPException(
+                503, "La aplicación de escritorio todavía no está publicada.")
+        return FileResponse(ruta, filename=INSTALADOR,
+                            media_type="application/octet-stream")
+
     # ------------------------------------------------------------------- UI
     # The UI is edited in place and served locally, so a cached copy is always
     # wrong and never a win — a stale app.js silently shows an older Botiquant.
@@ -904,6 +982,15 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         if not portada.exists():
             return _html_de_la_app()
         return HTMLResponse(portada.read_text(encoding="utf-8"), headers=_NO_CACHE)
+
+    @app.get("/cuenta", include_in_schema=False)
+    def pagina_cuenta() -> Response:
+        """Quién sos, tu licencia y la descarga. Es lo único que el servidor
+        hace por el usuario: el trabajo pesado corre después en su máquina."""
+        pagina = LANDING_DIR / "cuenta.html"
+        if not pagina.exists():
+            return RedirectResponse("/", status_code=303)
+        return HTMLResponse(pagina.read_text(encoding="utf-8"), headers=_NO_CACHE)
 
     @app.get("/app", include_in_schema=False)
     def app_ui(request: Request) -> Response:

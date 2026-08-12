@@ -85,6 +85,14 @@ h3{font-size:17px;font-weight:650;letter-spacing:-.015em;margin-bottom:8px}
 .card .ic{width:36px;height:36px;display:grid;place-items:center;border-radius:9px;background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent-2);margin-bottom:16px}
 .card .ic svg{width:18px;height:18px}
 
+/* pasos numerados en tarjeta: el número entra en el flujo y no flotando
+   encima, así el texto largo no se le mete debajo */
+.step-card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-lg);padding:24px}
+.step-card .n{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;
+  background:var(--accent-soft);border:1px solid var(--accent-line);color:var(--accent-2);
+  font-size:13px;font-weight:700;margin-bottom:14px}
+.step-card p{color:var(--text-2);font-size:14.5px}
+
 .step{position:relative;padding-left:52px}
 .step .n{position:absolute;left:0;top:0;width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:var(--card-2);border:1px solid var(--border);font-size:13px;font-weight:700;color:var(--accent-2)}
 .step p{color:var(--text-2);font-size:14.5px}
@@ -162,7 +170,7 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
     </nav>
     <!-- lo llena el script del pie: "Entrar" si no hay sesión, el nombre si la hay -->
     <div id="cuenta" class="cuenta">
-      <a class="btn ghost" href="/api/auth/google/start?next=/app">Entrar</a>
+      <a class="btn ghost" data-descargar href="/cuenta">Descargar</a>
     </div>
   </div>
 </header>
@@ -170,7 +178,7 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
 <main id="top">
 
 <div class="wrap hero">
-  <div class="eyebrow"><span class="dot"></span> En el navegador · sin instalar nada</div>
+  <div class="eyebrow"><span class="dot"></span> Corre en tu máquina · sin cola ni límite de uso</div>
   <h1>Buscá estrategias que tu broker <em>pueda ejecutar</em></h1>
   <p class="sub">
     Botiquant prueba millones de combinaciones de reglas sobre años de velas reales
@@ -178,12 +186,13 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
     TradingView con las mismas reglas que se backtestearon.
   </p>
   <div class="cta">
-    <a class="btn lg" id="cta-entrar" href="/api/auth/google/start?next=/app">Entrar con Google</a>
+    <a class="btn lg" data-descargar href="/cuenta">Descargar para Windows</a>
     <a class="btn lg ghost" href="#como">Ver cómo funciona</a>
   </div>
   <p class="cta-note">
-    Gratis. Creás la cuenta con Google en dos clics y no hay nada que instalar:
-    los datos de mercado ya están cargados del lado del servidor.
+    Gratis. Creás la cuenta con Google y descargás la aplicación: el minado usa
+    tu procesador, así que no hay cola, ni cuota, ni nadie más compitiendo por la
+    máquina.
   </p>
 
   <div class="shot">
@@ -451,20 +460,24 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
   <div class="wrap">
     <div class="sec-head">
       <div class="sec-eyebrow">Empezar</div>
-      <h2>Creás la cuenta y ya estás minando</h2>
-      <p>Los 22 millones de velas ya están cargadas del lado del servidor, así que no
-         descargás datos, no instalás nada y no configurás nada antes de empezar.</p>
+      <h2>Tres pasos y estás minando</h2>
+      <p>La aplicación corre en tu computadora. Eso no es una limitación: es lo que
+         hace que no haya cola, ni cuota de uso, ni un servidor repartiendo turnos
+         entre todos los que estén buscando al mismo tiempo.</p>
     </div>
     <div class="grid g3">
-      <div class="card"><h3>La cuenta</h3><p>Con Google, en dos clics. Gratis y sin
-        tarjeta. No vas a escribir ninguna contraseña acá: la validación la hace
-        Google.</p>
-        <a class="btn" style="margin-top:16px" href="/api/auth/google/start?next=/app">Entrar con Google</a></div>
-      <div class="card"><h3>Minar</h3><p>Elegís instrumento, marcás qué bloques puede
-        usar el buscador y arrancás. Sin límite de corridas.</p></div>
-      <div class="card"><h3>Tus estrategias</h3><p>Las que guardás sobreviven a las
-        corridas siguientes, así que podés volver a exportarlas a MetaTrader o
-        TradingView sin repetir la búsqueda.</p></div>
+      <div class="step-card"><span class="n">1</span><h3>Creá tu cuenta</h3>
+        <p>Con Google, en dos clics. Gratis y sin tarjeta. No vas a escribir ninguna
+        contraseña acá: la validación la hace Google.</p></div>
+      <div class="step-card"><span class="n">2</span><h3>Descargá e instalá</h3>
+        <p>Un archivo para Windows 10 y 11. No hace falta instalar Python ni nada
+        más: viene todo adentro.</p></div>
+      <div class="step-card"><span class="n">3</span><h3>Traé tus datos</h3>
+        <p>Descargás los instrumentos que te interesen desde la propia aplicación,
+        o importás tu CSV de MetaTrader, TradingView o Binance.</p></div>
+    </div>
+    <div class="cta" style="justify-content:flex-start;margin-top:28px">
+      <a class="btn lg" data-descargar href="/cuenta">Descargar para Windows</a>
     </div>
   </div>
 </section>
@@ -484,19 +497,27 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
       <p>No. Elegís bloques de una lista con casillas y ajustás dos números de riesgo.
          El código de MetaTrader o TradingView lo genera la aplicación.</p></details>
     <details><summary>¿De dónde salen los datos?</summary>
-      <p>De Dukascopy, con velas de un minuto desde 2005 según el instrumento. Ya están
-         cargados: SP500, EURUSD, XAUUSD y BTCUSD suman unos 22 millones de velas. No
-         los descargás vos. También podés subir tu propio CSV de MetaTrader,
-         TradingView o Binance.</p></details>
+      <p>De Dukascopy, con velas de un minuto desde 2005 según el instrumento. Los
+         descargás desde la aplicación con un clic y quedan en tu disco: SP500, EURUSD,
+         XAUUSD y BTCUSD suman unos 22 millones de velas. También podés importar tu
+         propio CSV de MetaTrader, TradingView o Binance.</p></details>
     <details><summary>¿Puedo usar mi propio broker y mis costos?</summary>
       <p>Sí, y deberías. El spread, el slippage y la comisión se configuran a mano,
          y la aplicación te muestra cuánto suma eso por operación en unidades de precio
          y en porcentaje del precio actual.</p></details>
     <details><summary>¿Hace falta cuenta?</summary>
-      <p>Sí, y es gratis. Se crea con Google en dos clics. El minado corre en nuestros
-         servidores sobre 22 millones de velas, así que necesitamos saber quién está
-         pidiendo cada búsqueda; sin eso no habría forma de repartir la máquina con
-         cordura.</p></details>
+      <p>Sí, y es gratis. Se crea con Google en dos clics y sirve para dos cosas:
+         descargar la aplicación y llevarte tu licencia. Después de eso la aplicación
+         funciona sola — no necesita conexión para backtestear ni para minar.</p></details>
+    <details><summary>¿Necesito estar conectado para usarla?</summary>
+      <p>No. La licencia se verifica en tu propia máquina, sin consultar a ningún
+         servidor. Sólo hace falta internet para descargar datos de mercado nuevos o
+         para actualizar la aplicación.</p></details>
+    <details><summary>¿Por qué es una aplicación y no una web?</summary>
+      <p>Porque buscar estrategias consume procesador de verdad: una corrida seria
+         puede ocupar un núcleo durante minutos. En una web todos compartirían la misma
+         máquina y habría cola, cuotas y límites de uso. En tu computadora no hay nada
+         de eso, y tus datos no salen de ahí.</p></details>
     <details><summary>¿Qué ve Botiquant de mi cuenta de Google?</summary>
       <p>Tu nombre, tu dirección de correo y tu foto. Nada más: no se piden permisos
          sobre tu correo, tu agenda ni tus archivos. Nunca vas a escribir tu contraseña
@@ -513,7 +534,7 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
   <p class="sub">La única forma de saber si sirve es minar sobre el instrumento que
      operás, con los costos de tu broker.</p>
   <div class="cta">
-    <a class="btn lg" href="/api/auth/google/start?next=/app">Entrar con Google</a>
+    <a class="btn lg" data-descargar href="/cuenta">Descargar para Windows</a>
   </div>
 </div>
 
@@ -555,22 +576,37 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
    útil a la app: un error de red no puede dejar la página sin salida. */
 (async function cuenta() {
   const caja = document.getElementById("cuenta");
-  let est;
-  try {
-    est = await (await fetch("/api/auth/me", { credentials: "same-origin" })).json();
-  } catch (e) { return; }
+  const ctas = document.querySelectorAll("[data-descargar]");
 
-  const login = document.querySelectorAll('[href^="/api/auth/google/start"]');
+  let est, dl;
+  try {
+    [est, dl] = await Promise.all([
+      fetch("/api/auth/me", { credentials: "same-origin" }).then(r => r.json()),
+      fetch("/api/descarga").then(r => r.json()),
+    ]);
+  } catch (e) { return; }   // sin red se deja el marcado, que ya lleva a /cuenta
+
+  /* Un botón que promete una descarga y devuelve 404 hace creer que el
+     producto está roto. Que todavía no se publicó es otra cosa, y se dice. */
+  if (!dl.disponible) {
+    ctas.forEach(a => {
+      a.textContent = "Avisame cuando salga";
+      a.setAttribute("href", "/cuenta");
+    });
+  }
+
   if (!est.configurado) {
-    // Instalación local sin login: no hay cuentas, así que los botones de
-    // entrar llevarían a un 503. Se reemplazan por la entrada directa.
-    login.forEach(a => { a.setAttribute("href", "/app"); a.textContent = "Abrir la app"; });
+    // Servidor sin sistema de cuentas: no hay descarga ni licencia que ofrecer.
     caja.innerHTML = '<a class="btn ghost" href="/app">Abrir la app</a>';
+    ctas.forEach(a => { a.setAttribute("href", "/app"); a.textContent = "Abrir la app"; });
     return;
   }
 
   const u = est.usuario;
-  if (!u) return;                       // el marcado de entrada ya dice "Entrar"
+  if (!u) {
+    caja.innerHTML = '<a class="btn ghost" href="/cuenta">Entrar</a>';
+    return;
+  }
 
   // textContent y no innerHTML: el nombre viene de un tercero y podría traer
   // marcado. Es la diferencia entre mostrar un nombre y ejecutarlo.
@@ -585,22 +621,11 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
   nom.textContent = u.name || u.email;
   chip.appendChild(nom);
 
-  caja.replaceChildren(chip);
-  // Salir es POST a propósito: si fuera un GET, cualquier sitio podría
-  // desloguearte con una imagen apuntada a esa dirección.
-  const salir = document.createElement("button");
-  salir.className = "btn ghost"; salir.textContent = "Salir";
-  salir.onclick = async () => {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
-    location.reload();
-  };
-  const app = document.createElement("a");
-  app.className = "btn"; app.href = "/app"; app.textContent = "Abrir la app";
-  caja.append(salir, app);
-
-  // Ya con sesión, "Entrar con Google" no tiene sentido: el mismo botón pasa a
-  // ser la puerta de entrada en vez de quedar apagado.
-  login.forEach(a => { a.setAttribute("href", "/app"); a.textContent = "Abrir la app"; });
+  const irCuenta = document.createElement("a");
+  irCuenta.className = "btn ghost";
+  irCuenta.href = "/cuenta";
+  irCuenta.textContent = "Mi cuenta";
+  caja.replaceChildren(chip, irCuenta);
 })();
 
 /* Por qué volviste a la portada. Sin esto, a quien lo rebotan por no tener
