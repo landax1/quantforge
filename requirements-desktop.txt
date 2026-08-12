@@ -1,0 +1,12 @@
+# Lo que necesita SÓLO la aplicación de escritorio, además de requirements.txt.
+#
+# Va aparte a propósito. El servidor web no abre ventanas, y meter esto en el
+# requirements común lo obligaría a instalar una biblioteca de interfaz gráfica
+# en una máquina sin pantalla. La separación es la misma que la del producto:
+# la web sirve páginas, el escritorio hace el trabajo pesado.
+
+-r requirements.txt
+
+# Ventana nativa. Usa WebView2, que ya viene con Windows 10 y 11, así que suma
+# ~2 MB en vez de los ~150 MB que costaría empaquetar un navegador propio.
+pywebview>=6.0
