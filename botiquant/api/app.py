@@ -50,11 +50,15 @@ from botiquant.portfolio.portfolio import build_portfolio
 from botiquant.reports.mql5 import export_mql5
 from botiquant.reports.pine import export_pine
 from botiquant.reports.report import excel_report, html_report, metrics_csv, trades_csv
+from botiquant.rutas import carpeta_de_trabajo, raiz_recursos
 
-ROOT = Path(__file__).resolve().parent.parent.parent
+#: Los recursos vienen con el programa; el workspace es del usuario y tiene que
+#: sobrevivir a cerrar la aplicación. Empaquetados son carpetas distintas —ver
+#: botiquant/rutas.py—, y confundirlas borraba la base en cada cierre.
+ROOT = raiz_recursos()
 UI_DIR = ROOT / "ui"
 LANDING_DIR = ROOT / "landing"
-WORK_DIR = ROOT / "workspace"
+WORK_DIR = carpeta_de_trabajo()
 
 #: En una máquina propia el usuario ya puede leer sus archivos, así que la
 #: importación por ruta es una comodidad. Servido a terceros, ese mismo
@@ -884,8 +888,12 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     # ------------------------------------------------------- descarga y cuenta
     #: Dónde queda el instalador que produce el empaquetado. No está en el
     #: repositorio: son cientos de megabytes que no tienen por qué versionarse.
-    BUILD_DIR = ROOT / "dist"
-    INSTALADOR = "BotiquantSetup.exe"
+    #: El empaquetado vive junto al proyecto y no dentro de él: son ~100 MB
+    #: regenerables que no tienen por qué versionarse ni viajar en el .exe.
+    BUILD_DIR = Path(__file__).resolve().parent.parent.parent / "dist"
+    #: Un ZIP y no un instalador todavía. Se descomprime y se ejecuta; cuando
+    #: haya un instalador de verdad cambia sólo este nombre.
+    INSTALADOR = "Botiquant-Windows.zip"
 
     def _instalador() -> Path | None:
         """El instalador, si ya se generó.
