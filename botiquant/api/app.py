@@ -163,6 +163,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             df = store.load(ds_id, payload.get("timeframe") or None)
         except (FileNotFoundError, KeyError) as exc:
             raise HTTPException(404, str(exc)) from exc
+        except ValueError as exc:
+            # pedir un timeframe más fino que el del dataset: 400 y no 500,
+            # porque es una elección corregible y el texto explica cómo
+            raise HTTPException(400, str(exc)) from exc
         return _slice_dates(df, payload)
 
     def _spec(payload: dict[str, Any]) -> StrategySpec:

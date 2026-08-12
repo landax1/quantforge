@@ -291,6 +291,15 @@ def mine(
             "rejected": tested - passed,
             "kept": len(bank),
             "accept": accept,
+            # Por qué se cae lo que se cae, en cuentas y con el nombre que ve
+            # el usuario. Mientras el databank está vacío es lo único que
+            # distingue una búsqueda trabajando de una colgada, y dice qué
+            # filtro aflojar: un rechazo por pocas operaciones se arregla
+            # distinto que uno por profit factor.
+            "rechazos": {
+                **({"pocas operaciones": too_few_trades} if too_few_trades else {}),
+                **{_CRIT_BY_KEY[k][2]: n for k, n in blocked_by.items() if n},
+            },
             # el mínimo de operaciones se pasa aparte de `accept`, pero para
             # quien mira los resultados es un filtro más: sin él, la pantalla no
             # puede decir la vara completa que se aplicó

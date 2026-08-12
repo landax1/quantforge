@@ -171,3 +171,52 @@ def test_duplicate_minutes_are_removed(monkeypatch):
 
     assert len(df) == 1
     assert not df.index.duplicated().any()
+
+
+# ------------------------------------------- pedir un timeframe mas fino
+def test_asking_for_a_finer_timeframe_is_refused():
+    """Agrupar velas sólo funciona hacia arriba. Pedir 15 minutos sobre velas
+    horarias devolvía las MISMAS velas horarias con la etiqueta equivocada: la
+    estrategia se buscaba en H1, se exportaba como M15 y en MetaTrader corría
+    sobre un gráfico donde nunca se probó."""
+    import pandas as pd
+
+    from botiquant.data.loader import resample_ohlcv
+
+    idx = pd.date_range("2020-01-01", periods=48, freq="1h")
+    h1 = pd.DataFrame({"open": 100.0, "high": 101.0, "low": 99.0,
+                       "close": 100.5, "volume": 10.0}, index=idx)
+
+    # los que la interfaz realmente ofrece; "1m" no está en la lista y da otro
+    # error, también correcto, pero por un motivo distinto
+    for fino in ("5m", "15m", "30m"):
+        with pytest.raises(ValueError, match="No se puede"):
+            resample_ohlcv(h1, fino)
+
+
+def test_grouping_upwards_still_works():
+    """El caso normal no puede quedar bloqueado por la validación."""
+    import pandas as pd
+
+    from botiquant.data.loader import resample_ohlcv
+
+    idx = pd.date_range("2020-01-01", periods=48, freq="1h")
+    h1 = pd.DataFrame({"open": 100.0, "high": 101.0, "low": 99.0,
+                       "close": 100.5, "volume": 10.0}, index=idx)
+
+    assert len(resample_ohlcv(h1, "4h")) == 12
+    assert len(resample_ohlcv(h1, "1d")) == 2
+    assert len(resample_ohlcv(h1, "1h")) == 48
+
+
+def test_m1_data_can_still_be_asked_for_anything():
+    import pandas as pd
+
+    from botiquant.data.loader import resample_ohlcv
+
+    idx = pd.date_range("2020-01-01", periods=60 * 8, freq="1min")
+    m1 = pd.DataFrame({"open": 100.0, "high": 101.0, "low": 99.0,
+                       "close": 100.5, "volume": 10.0}, index=idx)
+
+    assert len(resample_ohlcv(m1, "15m")) == 32
+    assert len(resample_ohlcv(m1, "1h")) == 8

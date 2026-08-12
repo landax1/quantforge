@@ -1672,6 +1672,48 @@ function ordenarBank(bank) {
   });
 }
 
+/* Qué se ve mientras el databank todavía está vacío y la búsqueda corre.
+
+   Antes acá no había nada: la tabla salía vacía y lo único que se movía era un
+   contador arriba. Una búsqueda que puede tardar minutos sin aceptar ninguna
+   candidata parecía colgada, y la reacción natural es apretar Iniciar de nuevo.
+
+   Lo que se muestra no es decoración: son las candidatas REALES que se están
+   probando y por qué criterio se cayeron. Un rechazo por operaciones
+   insuficientes se arregla distinto que uno por profit factor, y ver cuál
+   domina es lo que dice qué filtro aflojar. */
+function buscandoHtml(snap) {
+  const probadas = snap.tested || 0;
+  const fallos = snap.rechazos || {};
+  const barras = Object.entries(fallos)
+    .sort((a, b) => b[1] - a[1]).slice(0, 4);
+  const tope = barras.length ? barras[0][1] : 1;
+
+  return `<div class="buscando">
+    <div class="buscando-top">
+      <span class="pulso"><i></i><i></i><i></i></span>
+      <div>
+        <b class="contador" data-valor="${probadas}">${fmtInt(probadas)}</b>
+        <span>candidatas probadas${snap.passed
+          ? ` · <b class="pos">${fmtInt(snap.passed)}</b> aceptadas` : ""}</span>
+      </div>
+    </div>
+    ${barras.length ? `
+      <div class="buscando-motivos">
+        <span class="bm-tit">Por qué se caen</span>
+        ${barras.map(([etiqueta, n]) => `
+          <div class="bm-fila">
+            <span class="bm-lab">${esc(etiqueta)}</span>
+            <span class="bm-track"><i style="width:${(n / tope * 100).toFixed(0)}%"></i></span>
+            <span class="bm-n">${fmtInt(n)}</span>
+          </div>`).join("")}
+      </div>`
+      : `<p class="bm-tit" style="margin-top:16px">Preparando indicadores…</p>`}
+    <p class="buscando-pie">Las que pasen la vara van apareciendo acá. Podés
+      dejarlo corriendo y volver.</p>
+  </div>`;
+}
+
 function cablearOrden(raiz) {
   $$("[data-sort]", raiz).forEach(th => th.onclick = () => {
     const key = th.dataset.sort;
@@ -1891,6 +1933,7 @@ function renderMining(snap, finished) {
           <td class="num">${m.trades}</td>
         </tr>`;
       }).join("")}</tbody></table></div>`
+      : !finished ? buscandoHtml(snap)
       : `<div class="empty-state">
            <div class="big">ðŸ”</div>
            <b>${fmtInt(snap.tested)} probadas, ninguna pasó los filtros.</b>

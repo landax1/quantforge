@@ -121,11 +121,35 @@ _RESAMPLE_MAP = {"5m": "5min", "15m": "15min", "30m": "30min",
                  "1h": "1h", "4h": "4h", "1d": "1D", "1w": "1W"}
 
 
+#: Cuántos segundos dura cada timeframe, para poder comparar el pedido contra
+#: lo que el dataset realmente tiene.
+_SEGUNDOS = {"1m": 60, "5m": 300, "15m": 900, "30m": 1800,
+             "1h": 3600, "4h": 14400, "1d": 86400, "1w": 604800}
+
+
 def resample_ohlcv(df: pd.DataFrame, timeframe: str) -> pd.DataFrame:
-    """Resample to a higher timeframe ('5m','15m','30m','1h','4h','1d','1w')."""
+    """Resample to a higher timeframe ('5m','15m','30m','1h','4h','1d','1w').
+
+    Agrupar sólo funciona hacia arriba. Pedir 15 minutos sobre velas de una
+    hora no da 15 minutos: los huecos se descartan y vuelven las MISMAS velas
+    de una hora, con la etiqueta equivocada. Eso es peor que fallar — la
+    estrategia se busca sobre velas horarias, se exporta como M15, y en
+    MetaTrader corre sobre un gráfico de 15 minutos con reglas que nunca se
+    probaron ahí.
+    """
     rule = _RESAMPLE_MAP.get(timeframe)
     if rule is None:
         raise ValueError(f"Unsupported timeframe: {timeframe}")
+
+    pedido = _SEGUNDOS.get(timeframe)
+    nativo = _SEGUNDOS.get(infer_timeframe(df.index))
+    if pedido and nativo and pedido < nativo:
+        raise ValueError(
+            f"Este instrumento tiene velas de {infer_timeframe(df.index)} y estás "
+            f"pidiendo {timeframe}. No se puede: agrupar velas sólo funciona hacia "
+            f"timeframes más grandes. Descargá el histórico de 1 minuto desde Datos "
+            f"para minar por debajo de {infer_timeframe(df.index)}.")
+
     out = df.resample(rule).agg(
         open=("open", "first"), high=("high", "max"),
         low=("low", "min"), close=("close", "last"), volume=("volume", "sum"),
