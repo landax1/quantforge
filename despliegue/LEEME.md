@@ -12,6 +12,18 @@ archivo. Eso corre en el VPS más barato que exista.
 La cuenta de tráfico: el ZIP son ~54 MB. Mil descargas son 54 GB, y cualquier
 VPS incluye entre 1 y 8 TB por mes. Diez mil descargas siguen entrando.
 
+## El camino corto
+
+En el servidor recién creado, un solo comando:
+
+    curl -fsSL https://raw.githubusercontent.com/landax1/quantforge/main/despliegue/instalar.sh       | sudo bash -s botiquant.com tu@correo.com
+
+Instala todo, saca el certificado y deja el servicio listo. Al final imprime
+las dos cosas que hay que completar a mano: las credenciales de Google y las
+claves de licencia. Se puede volver a correr sin romper nada.
+
+Abajo está el mismo procedimiento paso a paso, por si algo falla.
+
 ## Pasos
 
 **1. Un VPS.** El más chico alcanza (1 vCPU, 1–2 GB). Hostinger, donde ya está
@@ -39,6 +51,7 @@ ventanas, no tiene sentido instalarle una biblioteca de interfaz gráfica.
 
 **4. El `.env` del servidor.** NO es el de desarrollo. Cambian tres cosas:
 
+    BQ_SOLO_WEB=1
     BQ_MULTIUSER=1
     OAUTH_REDIRECT_URI=https://botiquant.com/api/auth/google/callback
     SESSION_SECRET=<uno nuevo, generado en el servidor>

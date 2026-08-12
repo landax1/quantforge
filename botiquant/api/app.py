@@ -66,6 +66,23 @@ WORK_DIR = carpeta_de_trabajo()
 #: endpoint lee cualquier archivo del servidor: se apaga con BQ_MULTIUSER=1.
 MULTIUSER = os.environ.get("BQ_MULTIUSER", "").strip() not in ("", "0", "false")
 
+#: El servidor público sirve portada, cuentas, licencias y descarga. Nada más.
+#:
+#: Sin esto, el mismo proceso sigue exponiendo /app y los endpoints de cálculo:
+#: cualquiera con cuenta entra a botiquant.com/app y mina EN EL SERVIDOR, que es
+#: exactamente lo que el modelo de escritorio existe para evitar. No es una
+#: cuestión de orden — es la diferencia entre un VPS de cinco dólares y una
+#: factura que crece con cada usuario.
+SOLO_WEB = os.environ.get("BQ_SOLO_WEB", "").strip() not in ("", "0", "false")
+
+#: Lo que deja de existir cuando el servidor es sólo la web. Se comparan por
+#: prefijo porque varios llevan parámetros en la ruta.
+CALCULO = (
+    "/api/mine", "/api/backtest", "/api/generate", "/api/evolve",
+    "/api/optimize", "/api/walkforward", "/api/montecarlo", "/api/portfolio",
+    "/api/jobs", "/api/export",
+)
+
 
 def _entero(nombre: str) -> int | None:
     """Lee un entero del entorno. Devuelve None si no está o no sirve, para que
@@ -452,6 +469,14 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         candado está en `/api/`, que es donde de verdad se hace el trabajo.
         """
         ruta = request.url.path
+        # En el servidor público estos endpoints no existen. Se corta antes de
+        # mirar la sesión: tener cuenta no habilita a minar acá, ni siquiera a
+        # la del dueño. Lo que se hace en la web es registrarse y descargar.
+        if SOLO_WEB and ruta.startswith(CALCULO):
+            return JSONResponse(
+                {"detail": "El minado y el backtesting corren en la aplicación de "
+                           "escritorio. Descargala desde tu cuenta."},
+                status_code=404)
         if (_auth_listo() and ruta.startswith("/api/") and ruta not in SIN_CUENTA
                 and usuario_actual(request) is None):
             return JSONResponse(
@@ -1011,6 +1036,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     @app.get("/app", include_in_schema=False)
     def app_ui(request: Request) -> Response:
+        # La aplicación no se usa en la web. Se manda a la cuenta, que es donde
+        # está la descarga, en vez de a una pantalla que no va a poder hacer nada.
+        if SOLO_WEB:
+            return RedirectResponse("/cuenta", status_code=303)
         # Sin cuenta no se entra: se vuelve a la portada, que es donde está el
         # botón. Servir la pantalla y que después fallara todo adentro sería
         # dejar al usuario mirando una aplicación rota.
