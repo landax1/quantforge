@@ -1078,8 +1078,14 @@ PAGES.mining = async (main) => {
             <div class="blocklist-actions" data-for="m-filters">
               <button data-all="1">Todos</button><button data-all="0">Ninguno</button></div>
             <div id="m-filters">${blockList("filter")}</div>
-            <label class="fld mt"><span>Máx. filtros por estrategia</span>
+            <!-- El nombre viejo, "Máx. filtros por estrategia", describía el
+                 código y no lo que hace: nadie sabía a qué filtros se refería
+                 ni por qué había un número ahí suelto. -->
+            <label class="fld mt"><span>Cuántos de estos puede combinar cada estrategia
+                <span class="hint">marcás varios arriba; cada candidata usa como
+                  mucho esta cantidad a la vez</span></span>
               <input type="number" data-cfg="maxFilters" value="${c.maxFilters}" min="0" max="4"></label>
+            <p class="help-note" id="m-filtnote"></p>
           </div>
         </details>
 
@@ -1445,6 +1451,21 @@ PAGES.mining = async (main) => {
     const drv = $$("#m-drivers .blockitem input", main).filter(x => x.checked).length;
     const flt = $$("#m-filters .blockitem input", main).filter(x => x.checked).length;
     set("sum-blocks", `${drv} disparadores · ${flt} filtros · hasta ${S.cfg.maxFilters} por estrategia`);
+
+    // qué significa el número, con los valores que el usuario tiene puestos
+    const fn = $("#m-filtnote");
+    if (fn) {
+      const n = +S.cfg.maxFilters;
+      fn.innerHTML = !flt
+        ? `Sin filtros marcados, cada estrategia es sólo su disparador de entrada.`
+        : n === 0
+          ? `En <b>0</b>, los filtros marcados no se usan: cada estrategia entra sólo
+             con su disparador.`
+          : `Marcaste <b>${flt} filtros</b>. Cada candidata elige al azar
+             <b>entre 0 y ${n}</b> de ellos y los exige a la vez. Más filtros por
+             estrategia hace reglas más específicas —y más fáciles de ajustar al
+             pasado sin que sirvan después.`;
+    }
 
     set("sum-risk", `${S.cfg.sizing === "lots" ? `${S.cfg.lots} lotes fijos` : `${S.cfg.riskPct}% por operación`}` +
       ` · relación 1:${S.cfg.rr} · stop por volatilidad`);
