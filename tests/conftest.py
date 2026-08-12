@@ -1,6 +1,14 @@
 """Shared fixtures."""
 
+
 from __future__ import annotations
+
+import os
+
+# Los tests parten de un workspace vacío a propósito: comprueban qué pasa al
+# agregar el PRIMER instrumento. Con los cuatro que trae el paquete ya puestos,
+# media docena de tests mediría algo distinto de lo que dice medir.
+os.environ["BQ_SIN_SEMILLA"] = "1"
 
 import pytest
 

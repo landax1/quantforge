@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import math
 import re
-import shutil
-import subprocess
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
 from botiquant.data.loader import parse_ohlcv_csv
+from botiquant.data.dukascopy import descargar as descargar_dukascopy
 
 # Server-time offset applied to Dukascopy UTC data so mined session rules match
 # what an MT5 EA sees on a GMT+3 broker (New York + 7).
@@ -112,55 +111,34 @@ def to_server_time(df: pd.DataFrame) -> pd.DataFrame:
 def download(key: str, workdir: Path, date_from: str | None = None,
              date_to: str | None = None,
              progress=None) -> pd.DataFrame:
-    """Fetch M1 history for a catalogue instrument via ``npx dukascopy-node``.
+    """Trae el histórico M1 de un instrumento del catálogo desde Dukascopy.
 
-    Requires node/npx on PATH and a network connection — the only part of
-    Botiquant that is not offline, and only when the user asks for it.
+    Antes esto invocaba `npx dukascopy-node`. Funcionaba en una máquina de
+    desarrollo y fallaba en la de cualquier usuario: el .exe no lleva Node y
+    casi nadie lo tiene instalado, así que la aplicación se descargaba vacía y
+    su único modo de conseguir datos daba un error sobre `npx`.
+
+    Ahora se baja en Python. Lo único que sigue necesitando es conexión, y sólo
+    cuando el usuario la pide.
     """
     entry = BY_KEY.get(key)
     if entry is None:
         raise ValueError(f"Instrumento desconocido: {key}")
-    npx = shutil.which("npx") or shutil.which("npx.cmd")
-    if npx is None:
-        raise RuntimeError("npx (Node.js) no está instalado — hace falta para descargar de Dukascopy")
-
-    out_dir = Path(workdir) / "downloads"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    before = {p.name for p in out_dir.glob("*.csv")}
-
-    cmd = [npx, "dukascopy-node", "-i", entry["dukascopy"],
-           "-from", date_from or entry["from"], "-to", date_to or _today(),
-           "-t", "m1", "-f", "csv", "-v", "true", "-dir", str(out_dir)]
-    if progress:
-        progress(0.05, f"Descargando {entry['label']} desde Dukascopy…")
-
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, encoding="utf-8", errors="replace")
-    last_pct = 0.0
-    for line in proc.stdout or []:
-        m = re.search(r"(\d+)%", line)
-        if m and progress:
-            pct = min(int(m.group(1)) / 100.0 * 0.8, 0.8)
-            if pct > last_pct:
-                last_pct = pct
-                progress(0.05 + pct, f"Descargando {entry['label']}… {m.group(1)}%")
-    proc.wait()
-    if proc.returncode != 0:
-        raise RuntimeError(f"La descarga falló (código {proc.returncode})")
-
-    new = [p for p in out_dir.glob("*.csv") if p.name not in before]
-    if not new:
-        raise RuntimeError("La descarga no produjo ningún archivo")
-    csv_path = max(new, key=lambda p: p.stat().st_mtime)
 
     if progress:
-        progress(0.88, "Parseando velas…")
-    df = parse_ohlcv_csv(csv_path.read_bytes())
+        progress(0.02, f"Conectando con Dukascopy para {entry['label']}…")
+
+    def avance(frac: float, msg: str) -> None:
+        if progress:
+            progress(0.02 + frac * 0.88, f"{entry['label']} · {msg}")
+
+    df = descargar_dukascopy(entry["dukascopy"],
+                             date_from or entry["from"],
+                             date_to or _today(),
+                             progreso=avance)
     if progress:
         progress(0.95, "Convirtiendo a hora del servidor…")
-    df = to_server_time(df)
-    csv_path.unlink(missing_ok=True)
-    return df
+    return to_server_time(df)
 
 
 def _today() -> str:

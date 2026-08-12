@@ -37,6 +37,7 @@ from botiquant.data.catalog import BY_KEY, CATALOG, default_stop_points
 from botiquant.data.catalog import download as catalog_download
 from botiquant.data.loader import parse_ohlcv_csv
 from botiquant.data.sample import generate_sample
+from botiquant.data.semilla import sembrar
 from botiquant.data.store import DataStore
 from botiquant.database.db import Database
 from botiquant.licencia import firmar
@@ -106,6 +107,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     db = Database(_base_de_datos(workdir))
     store = DataStore(workdir / "datasets", db)
+    # Primer arranque: se cargan los instrumentos que vienen con el programa.
+    # Una aplicación de backtesting que abre sin un solo instrumento no se
+    # puede ni probar. Sólo si el workspace está vacío — ver semilla.sembrar.
+    sembrar(store, len(db.list_datasets(None)))
     # Los topes se configuran por entorno porque dependen de la máquina: en un
     # servidor con más núcleos conviene subirlos, y en la propia no hace falta
     # racionar nada. Sin variables, el default deja un núcleo libre para atender

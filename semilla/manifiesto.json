@@ -1,0 +1,34 @@
+[
+  {
+    "archivo": "eurusd_h1.csv",
+    "nombre": "EURUSD H1 (Dukascopy)",
+    "source": "semilla",
+    "velas": 134262,
+    "desde": "2005-01-03",
+    "hasta": "2026-08-05"
+  },
+  {
+    "archivo": "xauusd_h1.csv",
+    "nombre": "XAUUSD H1 (Dukascopy)",
+    "source": "semilla",
+    "velas": 93787,
+    "desde": "2010-01-01",
+    "hasta": "2026-08-05"
+  },
+  {
+    "archivo": "btcusd_h1.csv",
+    "nombre": "BTCUSD H1 (Dukascopy)",
+    "source": "semilla",
+    "velas": 66460,
+    "desde": "2017-05-10",
+    "hasta": "2026-08-05"
+  },
+  {
+    "archivo": "sp500_h1.csv",
+    "nombre": "SP500 H1 (Dukascopy)",
+    "source": "semilla",
+    "velas": 78310,
+    "desde": "2013-01-01",
+    "hasta": "2026-08-05"
+  }
+]

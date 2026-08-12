@@ -17,6 +17,7 @@ from PyInstaller.utils.hooks import collect_submodules
 RECURSOS = [
     ("ui", "ui"),                 # la aplicación
     ("landing", "landing"),       # portada y página de cuenta
+    ("semilla", "semilla"),       # instrumentos H1 para no abrir vacío
 ]
 
 # Lo que se carga por nombre y el análisis estático no puede ver.
