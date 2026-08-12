@@ -1,0 +1,39 @@
+# Servicio de systemd para botiquant.com
+#
+# Copiar a /etc/systemd/system/botiquant.service y:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now botiquant
+#
+# El servidor sólo sirve la portada, las cuentas, las licencias y la descarga.
+# El minado ya no corre acá: por eso alcanza con la máquina más chica.
+
+[Unit]
+Description=Botiquant web
+After=network.target
+
+[Service]
+Type=simple
+User=botiquant
+WorkingDirectory=/opt/botiquant
+EnvironmentFile=/opt/botiquant/.env
+
+# Un solo worker: el estado de sesiones OAuth y los trabajos viven en memoria
+# del proceso. Con dos, media petición cae en el que no tiene el `state` y el
+# login falla una vez de cada dos sin patrón aparente.
+ExecStart=/opt/botiquant/.venv/bin/uvicorn botiquant.api.app:app \
+    --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers \
+    --forwarded-allow-ips=127.0.0.1
+
+Restart=always
+RestartSec=3
+
+# Endurecimiento básico: si alguna vez entran por la aplicación, que no puedan
+# escribir fuera de su propia carpeta.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/botiquant/workspace
+
+[Install]
+WantedBy=multi-user.target

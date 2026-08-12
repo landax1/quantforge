@@ -1709,9 +1709,27 @@ function buscandoHtml(snap) {
           </div>`).join("")}
       </div>`
       : `<p class="bm-tit" style="margin-top:16px">Preparando indicadores…</p>`}
+    ${consejo(snap)}
     <p class="buscando-pie">Las que pasen la vara van apareciendo acá. Podés
       dejarlo corriendo y volver.</p>
   </div>`;
+}
+
+/* Qué tocar para que empiece a entrar algo.
+
+   El minero ya lo calcula: sabe cuántas candidatas fallaron por un solo filtro
+   y hasta dónde llegó la mejor de ésas. Eso es una recomendación concreta —
+   "aflojá esto hasta acá y entran doce"— y hasta ahora sólo aparecía cuando la
+   búsqueda terminaba sin nada, que es tarde: el usuario ya esperó los minutos
+   completos. Mostrarlo mientras corre le permite frenar y corregir.
+
+   Se muestra recién con una muestra suficiente. Con veinte candidatas el filtro
+   que más descarta todavía es ruido, y recomendar sobre ruido manda a aflojar
+   el que no era. */
+function consejo(snap) {
+  const d = snap.diagnosis || {};
+  if (!d.text || (snap.tested || 0) < 60) return "";
+  return `<div class="consejo"><span class="c-ic">💡</span><div>${d.text}</div></div>`;
 }
 
 function cablearOrden(raiz) {
