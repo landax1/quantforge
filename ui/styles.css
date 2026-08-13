@@ -1139,10 +1139,13 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
 .champ-metrics b { font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums;
                    letter-spacing: -.025em; }
 /* El rendimiento anual es LA cifra: si todas pesan igual, el ojo no sabe por
-   donde empezar y hay que leer las siete. */
-.champ-metrics > div:first-child {
-  grid-column: span 2; background: var(--accent-soft); border-color: var(--accent-line);
-}
+   donde empezar y hay que leer las siete.
+
+   La jerarquia la da el TAMANIO, no un fondo de color. Tintar el casillero de
+   rosa embarraba la cifra —el coral de marca peleando contra el verde de la
+   ganancia— y ademas repartia el acento en un bloque grande, que es
+   exactamente donde deja de funcionar como acento. */
+.champ-metrics > div:first-child { grid-column: span 2; }
 .champ-metrics > div:first-child b { font-size: 30px; letter-spacing: -.03em; }
 
 /* ================================================ tarjetas instrumento == */
@@ -1231,13 +1234,27 @@ th.orden.activa { color: var(--accent-2); }
 .oos-tag.bad  b { color: var(--neg); }
 .oos-tag.none { font-size: 10px; color: var(--text-dim); }
 
-.rank {
-  display: inline-block; min-width: 20px; text-align: right;
-  font-size: 12px; font-weight: 500; color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
+/* LA TABLA COMO EN EL DISENIO.
+   Todo lo que es numero va en monoespaciada: las cifras quedan en columna y se
+   comparan de arriba abajo sin leerlas una por una, que es exactamente para lo
+   que existe una tabla. En proporcional cada digito mide distinto y la columna
+   se desalinea sola. */
+.databank-wrap table td.num,
+.databank-wrap table .rank,
+.databank-wrap table .strat-name {
+  font-family: var(--mono); font-variant-numeric: tabular-nums;
 }
-
-.strat-name { font-weight: 600; font-variant-numeric: tabular-nums; }
+.databank-wrap table th {
+  background: var(--card-2);
+  font-family: var(--mono); font-size: 11px; font-weight: 400;
+  letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim);
+}
+.rank-cell { width: 34px; }
+.rank {
+  display: inline-block; text-align: right;
+  font-size: 12px; font-weight: 400; color: var(--text-dim);
+}
+.strat-name { font-weight: 500; font-size: 13px; color: var(--text); }
 .strat-blocks { font-size: 12px; color: var(--text); margin-top: 1px; }
 .strat-genes { font-size: 10px; color: var(--text-dim); font-family: var(--mono); margin-top: 3px; }
 .spark-cell { width: 124px; padding: 6px 10px !important; }
@@ -1285,6 +1302,24 @@ svg.spark { display: block; border-radius: 4px; }
 .score-cell.s-good { background: var(--accent-soft); color: var(--accent-2); border-color: var(--accent-line); }
 .score-cell.s-mid  { background: var(--warn-soft);   color: var(--warn);     border-color: var(--warn-line); }
 .score-cell.s-low  { background: var(--neg-soft);    color: var(--neg);      border-color: var(--neg-line); }
+
+/* Dentro de la tabla el score va plano y en coral, sin pildora ni color por
+   tramo. En una columna de cien filas, cuatro colores de fondo convierten el
+   ranking en un semaforo y tapan lo unico que importa ahi: el orden. El tramo
+   —Solida, Dudosa— sigue estando donde se lo lee de a una, en la tarjeta del
+   campeon y en el inspector.
+
+   Va despues de las reglas de tramo a proposito: tienen la misma especificidad
+   y gana la ultima. */
+.databank-wrap .score-cell,
+.databank-wrap .score-cell.s-top,
+.databank-wrap .score-cell.s-good,
+.databank-wrap .score-cell.s-mid,
+.databank-wrap .score-cell.s-low {
+  background: none; border: none; color: var(--accent);
+  font-family: var(--mono); font-weight: 400; font-size: 13px;
+  padding: 0; min-width: 0;
+}
 
 .score-bars { display: flex; flex-direction: column; gap: 5px; margin-top: 14px; }
 .sb-row { display: grid; grid-template-columns: 1fr 90px 44px; align-items: center; gap: 9px; }

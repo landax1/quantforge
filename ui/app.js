@@ -1984,40 +1984,38 @@ function renderMining(snap, finished) {
     <h2>Databank <span class="hint">${bank.length} estrategias ordenadas por QF Score
       (robustez, no rentabilidad) · clic en cualquiera para analizarla a fondo</span></h2>
     ${bank.length ? `<div class="databank-wrap"><table>
-      <thead><tr><th>#</th>${th("score", "Score", "Puntaje propio de robustez: qué tan repetible parece la estrategia, no cuánto rindió.")}<th>Estrategia</th><th>Curva</th>
-        ${snap.split ? th("oos", "Fuera<br>de muestra", "Profit factor fuera de muestra dividido por el de adentro. Cerca de 1 la ventaja se sostuvo; cerca de 0 la estrategia sólo describía el pasado.") : ""}
-        ${th("stop", "Stop", "Distancia del stop loss, medida en múltiplos de ATR (la volatilidad típica del instrumento).")}
+      <!-- OCHO COLUMNAS, NO DIECISEIS.
+           La tabla tenia dieciseis y por eso necesitaba scroll horizontal: para
+           ver el drawdown habia que arrastrar, y comparar dos estrategias
+           obligaba a ir y volver. Estas ocho son las que se miran para decidir
+           si una candidata merece abrirse; las otras siguen enteras en el
+           inspector, a un clic de distancia. Una tabla que entra en pantalla se
+           compara de un vistazo; una que no, se lee de a pedazos. -->
+      <thead><tr>
+        <th>#</th>
+        <th>Estrategia</th>
+        <th>Capital</th>
+        ${th("score", "Score", "Puntaje propio de robustez: qué tan repetible parece la estrategia, no cuánto rindió.")}
         ${th("cagr", "Anual", "Rendimiento ANUALIZADO: cuánto rindió por año, en promedio compuesto. Es el que sirve para comparar estrategias que corrieron distinta cantidad de tiempo.")}
-        ${th("net", "Total", "Rendimiento ACUMULADO de todo el período. Diez años al 10% anual dan más de 150% total: por eso este número siempre parece más grande que el anual.")}
         ${th("pf", "PF", "Profit factor: cuántos dólares ganó por cada dólar que perdió. Debajo de 1 la estrategia pierde plata.")}
-        ${th("sharpe", "Sharpe", "Rendimiento en relación a cuánto oscila la curva. Más alto = el mismo retorno con menos sobresaltos.")}
-        ${th("dd", "Max DD", "Máxima caída: lo peor que llegó a bajar la cuenta desde un pico hasta el fondo. Es lo que hay que poder aguantar sin cerrar todo.")}
+        ${th("dd", "Máx. DD", "Máxima caída: lo peor que llegó a bajar la cuenta desde un pico hasta el fondo. Es lo que hay que poder aguantar sin cerrar todo.")}
+        ${th("trades", "Ops.", "Cantidad de operaciones. Pocas operaciones hacen que cualquier métrica sea poco confiable.")}
         ${th("months", "Meses +", "Porcentaje de meses cerrados en ganancia. Alto significa que gana seguido, no de un solo golpe.")}
-        ${th("top", "Mejor op.", "Cuánto de la ganancia total vino de una sola operación. Si es muy alto, el resultado depende de un golpe de suerte.")}
-        ${th("expo", "Expo.", "Porcentaje del tiempo con una posición abierta.")}
-        ${th("win", "Win %", "Porcentaje de operaciones ganadoras. Solo se lee junto al riesgo/beneficio: con 1:3, un 35% ya es rentable.")}
-        ${th("trades", "Trades", "Cantidad de operaciones. Pocas operaciones hacen que cualquier métrica sea poco confiable.")}</tr></thead>
+        ${snap.split ? th("oos", "Fuera<br>de muestra", "Profit factor fuera de muestra dividido por el de adentro. Cerca de 1 la ventaja se sostuvo; cerca de 0 la estrategia sólo describía el pasado.") : ""}
+      </tr></thead>
       <tbody>${bank.map((r, i) => {
         const m = r.metrics;
-        return `<tr class="clickable" data-row="${i}" style="animation-delay:${Math.min(i, 12) * 22}ms">
-          <td><span class="rank">${i + 1}</span></td>
-          <td class="num">${scoreCell(r.score)}</td>
-          <td><span class="strat-name">${esc(r.name)}</span>
-              <div class="strat-blocks">${esc(r.blocks || "")}</div>
-              <div class="strat-genes">${esc(r.genes_label)}</div></td>
+        return `<tr class="clickable" data-row="${i}">
+          <td class="rank-cell"><span class="rank">${String(i + 1).padStart(2, "0")}</span></td>
+          <td><span class="strat-name">${esc(r.name)}</span></td>
           <td class="spark-cell">${Charts.sparkSvg(r.spark)}</td>
-          ${snap.split ? `<td class="num">${oosCell(r)}</td>` : ""}
-          <td class="num muted">${r.stop_mult != null ? `${fmtNum(r.stop_mult, 2)}×` : "—"}</td>
+          <td class="num">${scoreCell(r.score)}</td>
           <td class="num ${m.cagr_pct >= 0 ? "pos" : "neg"}"><b>${fmtPct(m.cagr_pct)}</b></td>
-          <td class="num ${m.net_profit_pct >= 0 ? "pos" : "neg"}">${fmtPct(m.net_profit_pct)}</td>
           <td class="num">${fmtNum(m.profit_factor)}</td>
-          <td class="num">${fmtNum(m.sharpe)}</td>
           <td class="num neg">${fmtNum(m.max_drawdown_pct, 1)}%</td>
+          <td class="num">${fmtInt(m.trades)}</td>
           <td class="num">${fmtNum(m.months_positive_pct ?? 0, 0)}%</td>
-          <td class="num ${(m.top_trade_share_pct ?? 0) > 35 ? "neg" : "muted"}">${fmtNum(m.top_trade_share_pct ?? 0, 0)}%</td>
-          <td class="num muted">${fmtNum(m.exposure_pct ?? 0, 1)}%</td>
-          <td class="num">${fmtNum(m.win_rate_pct, 1)}%</td>
-          <td class="num">${m.trades}</td>
+          ${snap.split ? `<td class="num">${oosCell(r)}</td>` : ""}
         </tr>`;
       }).join("")}</tbody></table></div>`
       : !finished ? buscandoHtml(snap)
