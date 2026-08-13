@@ -934,6 +934,43 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
 
 @media (prefers-reduced-motion: reduce) { .pulso i { animation: none; opacity: .8; } }
 
+/* ================================================================ iconos =
+   Un solo lugar decide el tamaño. Los emoji que había antes se dimensionaban
+   con font-size y cada uno caía distinto porque el sistema los dibujaba a su
+   manera; estos son SVG y ocupan exactamente lo que se les dice. */
+.ico    { width: 16px; height: 16px; flex: none; vertical-align: -3px; }
+.ico-sm { width: 12px; height: 12px; flex: none; vertical-align: -1px; }
+/* el de los estados vacíos: grande y tenue, ilustración y no señal */
+.ico-xl { width: 40px; height: 40px; stroke-width: 1.2; color: var(--border-strong); }
+.b-ic .ico, .c-ic .ico { width: 15px; height: 15px; vertical-align: -2px; }
+
+/* ============================================ corrida activa en la barra =
+   El pie de la barra lateral estaba vacío y ese vacío se leía como pantalla
+   sin terminar. Lo que va acá no es relleno: es lo único que uno quiere saber
+   cuando se fue a otra sección — si la búsqueda sigue y cómo va. */
+.corrida {
+  margin-top: auto; border-top: 1px solid var(--border-soft);
+  padding: 16px 8px 12px;
+}
+.corrida-rot {
+  font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--text-dim); margin-bottom: 10px;
+}
+.corrida-cifra {
+  font-family: var(--mono); font-size: 24px; font-weight: 400;
+  font-variant-numeric: tabular-nums; line-height: 1.15; color: var(--text);
+}
+.corrida-cifra u { text-decoration: none; color: var(--text-dim); font-size: 14px; }
+.corrida-pie { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.corrida-barra {
+  height: 3px; border-radius: 99px; background: var(--card-2);
+  overflow: hidden; margin-top: 10px;
+}
+.corrida-barra i {
+  display: block; height: 100%; background: var(--accent);
+  transition: width .5s var(--ease);
+}
+
 /* ==================================================== barra de corrida == */
 .runbar {
   position: sticky; top: -1px; z-index: 20;

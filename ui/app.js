@@ -363,6 +363,47 @@ function acceptPayload() {
    evidencia, ventaja por operación, estabilidad mes a mes y qué tan repartida
    está la ganancia. Un +300% hecho en 22 operaciones puntúa peor que un +40%
    repartido en 500. */
+/* ============================================================== iconos ==
+   Un set dibujado, no emoji.
+
+   Antes la interfaz usaba ⚠ ⛏ 💡 ✕ ★ y once glifos más. Un emoji no es un
+   ícono: lo dibuja el sistema operativo, así que cambia de forma, de peso y
+   hasta de color en cada máquina — en Windows salen a todo color, en otro lado
+   son un trazo plano. Nada de eso responde al tema, y ninguno comparte grosor
+   de línea con los demás. Es la diferencia más visible entre una interfaz
+   armada y una que junta símbolos donde hace falta algo.
+
+   Todos comparten caja de 24, trazo 1.7 y `currentColor`, así que heredan el
+   color de donde estén y se ven como una familia. */
+const TRAZO = 'fill="none" stroke="currentColor" stroke-width="1.7" ' +
+              'stroke-linecap="round" stroke-linejoin="round"';
+
+const ICONOS = {
+  alerta:   `<path d="M10.3 3.9 1.8 18.5A2 2 0 0 0 3.5 21.5h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4.5"/><path d="M12 17.5h.01"/>`,
+  bajar:    `<path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 21h16"/>`,
+  pico:     `<path d="M3 20.5 12.5 11"/><path d="M9 4.5c3-1.6 6.4-1.2 8.8 1.2s2.8 5.8 1.2 8.8l-4-4"/><path d="M9 4.5 15 10.5"/><path d="M19 14.5 13 8.5"/>`,
+  tilde:    `<path d="m4 12.5 5.2 5.2L20 6.9"/>`,
+  marcador: `<path d="M6 3.5h12a1 1 0 0 1 1 1v15.2a.6.6 0 0 1-.93.5L12 16.4l-6.07 3.8A.6.6 0 0 1 5 19.7V4.5a1 1 0 0 1 1-1Z"/>`,
+  base:     `<ellipse cx="12" cy="5.5" rx="7.5" ry="3"/><path d="M4.5 5.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/><path d="M4.5 11.5v6c0 1.7 3.4 3 7.5 3s7.5-1.3 7.5-3v-6"/>`,
+  cerrar:   `<path d="M6 6 18 18"/><path d="M18 6 6 18"/>`,
+  detener:  `<rect x="6" y="6" width="12" height="12" rx="2"/>`,
+  idea:     `<path d="M9 18h6"/><path d="M10 21.5h4"/><path d="M12 2.5a6.5 6.5 0 0 0-3.8 11.8c.5.4.8 1 .8 1.7h6c0-.7.3-1.3.8-1.7A6.5 6.5 0 0 0 12 2.5Z"/>`,
+  estrella: `<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.2-5.4-2.9-5.4 2.9 1-6.2L3.2 9.5l6.1-.9L12 3Z"/>`,
+  candado:  `<rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>`,
+  diana:    `<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5"/>`,
+  info:     `<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><path d="M12 7.6h.01"/>`,
+  sube:     `<path d="m6 14.5 6-6 6 6"/>`,
+  baja:     `<path d="m6 9.5 6 6 6-6"/>`,
+};
+
+/** Devuelve el SVG de un ícono. `cls` va al elemento para poder dimensionarlo
+ *  desde el CSS en vez de fijar un tamaño acá. */
+function icono(nombre, cls = "ico") {
+  const d = ICONOS[nombre];
+  if (!d) return "";
+  return `<svg class="${cls}" viewBox="0 0 24 24" ${TRAZO} aria-hidden="true">${d}</svg>`;
+}
+
 const SCORE_TIERS = [
   { min: 70, label: "Sólida",     cls: "s-top" },
   { min: 50, label: "Prometedora", cls: "s-good" },
@@ -526,7 +567,7 @@ function lockSetup(on) {
     const note = document.createElement("div");
     note.id = "lock-note";
     note.className = "lock-note";
-    note.innerHTML = `<span>🔒</span><div>Configuración congelada mientras busca.
+    note.innerHTML = `<span>${icono("candado")}</span><div>Configuración congelada mientras busca.
       Cambiar los criterios viendo los resultados sería elegirlos a medida del histórico.
       <b>Detené</b> para ajustar y volver a minar.</div>`;
     $(".setup-run", setup)?.prepend(note);
@@ -646,7 +687,7 @@ async function navigate(page) {
     if (e && e.status === 401) { pedirCuenta(401); }
     main.innerHTML = pageHead(TITULOS[page] || "Botiquant", "") + `
       <div class="card"><div class="empty-state">
-        <div class="big">⚠</div>
+        <div class="big">${icono("alerta","ico-xl")}</div>
         <b>${e && e.status === 401 ? "Se cerró tu sesión" : "No se pudo cargar esta página"}</b>
         <p class="mt">${esc(e && e.status === 401
           ? "Volvé a entrar y seguimos donde estabas."
@@ -681,13 +722,13 @@ PAGES.data = async (main) => {
       </div>
       <p>${esc(c.full_name)} · ${esc(c.note)}</p>
       ${ready
-        ? `<div class="inst-meta">✓ ${c.rows.toLocaleString()} velas M1<br>
+        ? `<div class="inst-meta">${icono("tilde")} ${c.rows.toLocaleString()} velas M1<br>
              ${esc(String(c.start).slice(0, 10))} → ${esc(String(c.end).slice(0, 10))}</div>
            <button class="btn ghost" data-mine="${c.dataset_id}" data-key="${c.key}">Minar este</button>`
         : `<div class="inst-meta">Historial M1 desde ${esc(c.from)}</div>
            ${S.meta?.multiuser
              ? `<span class="muted" style="font-size:11.5px">No disponible en este instrumento</span>`
-             : `<button class="btn" data-dl="${c.key}">↓ Descargar</button>`}`}
+             : `<button class="btn" data-dl="${c.key}">${icono("bajar")} Descargar</button>`}`}
     </div>`;
   }).join("") + `
     <button class="inst-card add-card" id="inst-add">
@@ -740,7 +781,7 @@ PAGES.data = async (main) => {
       <thead><tr><th>Nombre</th><th>Fuente</th><th class="num">Velas</th>
         <th>Desde</th><th>Hasta</th><th>TF</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div>`
-      : `<div class="empty-state"><div class="big">▤</div>
+      : `<div class="empty-state"><div class="big">${icono("base","ico-xl")}</div>
            <b>Todavía no hay datos</b>
            <p class="mt">Descargá un instrumento de la biblioteca de arriba, o importá tu propio CSV.</p>
          </div>`}
@@ -837,7 +878,7 @@ PAGES.saved = async (main) => {
     main.innerHTML = pageHead("Mis estrategias",
       "Las estrategias que guardes quedan acá, aunque vuelvas a minar con otros filtros.") +
       `<div class="card"><div class="empty-state">
-        <div class="big">◫</div>
+        <div class="big">${icono("marcador","ico-xl")}</div>
         <b>Todavía no guardaste ninguna</b>
         <p class="mt">Cuando el minado encuentre una que te sirva, abrila y tocá
           <b>Guardar estrategia</b>. Se guarda con su instrumento, su timeframe y sus costos,
@@ -867,8 +908,8 @@ PAGES.saved = async (main) => {
       <td class="num">${m.trades ?? "—"}</td>
       <td class="muted" style="white-space:nowrap">${esc(String(s.updated).slice(0, 10))}</td>
       <td class="num" style="white-space:nowrap">
-        <button class="btn ghost small" data-export="${esc(s.id)}">⬇ MQL5</button>
-        <button class="btn ghost small" data-del-strat="${esc(s.id)}" title="Borrar">✕</button>
+        <button class="btn ghost small" data-export="${esc(s.id)}">${icono("bajar")} MQL5</button>
+        <button class="btn ghost small" data-del-strat="${esc(s.id)}" title="Borrar">${icono("cerrar")}</button>
       </td>
     </tr>`;
   };
@@ -961,7 +1002,7 @@ PAGES.mining = async (main) => {
   await refreshDatasets();
   if (!S.datasets.length) {
     main.innerHTML = pageHead("Mining", "Buscá estrategias sobre datos reales.") +
-      `<div class="card"><div class="empty-state"><div class="big">⛏</div>
+      `<div class="card"><div class="empty-state"><div class="big">${icono("pico","ico-xl")}</div>
         <b>No hay con qué minar todavía</b>
         <p class="mt">Andá a <b>Datos</b> y descargá un instrumento — con un clic queda listo.</p>
         <button class="btn mt" id="go-data">Ir a Datos</button>
@@ -1204,8 +1245,8 @@ PAGES.mining = async (main) => {
             ${GOAL_PRESETS.map(g => `<button data-goal="${g}" class="${+c.goal === g ? "on" : ""}">${g}</button>`).join("")}
           </div>
         </div>
-        <button class="btn big" id="m-run">⛏ Iniciar mining</button>
-        <button class="btn ghost big" id="m-stop" style="display:none">■ Detener</button>
+        <button class="btn big" id="m-run">${icono("pico")} Iniciar mining</button>
+        <button class="btn ghost big" id="m-stop" style="display:none">${icono("detener")} Detener</button>
         ${progressHtml("m-prog")}
       </div>
     </aside>
@@ -1358,7 +1399,7 @@ PAGES.mining = async (main) => {
       // un costo así se come cualquier estrategia: todas dan -100%
       const bad = pct != null && pct > 1;
       if (bad) {
-        txt = `<b class="neg">⚠ Costo imposible: ${pct.toFixed(1)}% por operación.</b>
+        txt = `<b class="neg">${icono("alerta")} Costo imposible: ${pct.toFixed(1)}% por operación.</b>
           Parece el spread de otro instrumento — con esto ninguna estrategia puede ganar.
           <button class="linkbtn" id="fix-cost">Usar los de ${esc(ds.name.replace(/ M1.*/, ""))}</button>`;
       }
@@ -1391,7 +1432,7 @@ PAGES.mining = async (main) => {
     if (critAviso) {
       const activos = CRITERIA.filter(cr => S.cfg.critOn[cr.key]).length;
       critAviso.innerHTML = activos ? "" :
-        `<b class="neg">⚠ No hay ningún filtro de calidad tildado.</b> Con sólo
+        `<b class="neg">${icono("alerta")} No hay ningún filtro de calidad tildado.</b> Con sólo
          <b>${S.cfg.minTrades}+ operaciones</b> entra casi cualquier candidata: el
          databank se llena en segundos con estrategias que pierden plata. Los
          números de abajo no se aplican hasta que tildes su casilla.`;
@@ -1404,7 +1445,7 @@ PAGES.mining = async (main) => {
       } else {
         const rr = +S.cfg.rr, be = 100 / (1 + rr), pedido = +S.cfg.minWinRate;
         critHelp.innerHTML = pedido <= be
-          ? `<b class="neg">⚠ ${pedido}% de aciertos no alcanza para ganar plata</b> con
+          ? `<b class="neg">${icono("alerta")} ${pedido}% de aciertos no alcanza para ganar plata</b> con
              relación 1:${rr}: el punto de equilibrio está en <b>${be.toFixed(0)}%</b>.
              Por debajo de ahí, acertar más veces sigue dando pérdida.`
           : `Con relación 1:${rr} el equilibrio está en <b>${be.toFixed(0)}%</b>, así que
@@ -1587,7 +1628,7 @@ function renderIdle() {
   live.innerHTML = `
   <div class="idle-card">
     <div class="idle-ready">
-      <span class="idle-ic">⛏</span>
+      <span class="idle-ic">${icono("pico","ico-xl")}</span>
       <div>
         <h2>Listo para minar</h2>
         <p>Vas a buscar <b>${S.cfg.goal} estrategias</b> sobre
@@ -1733,7 +1774,7 @@ function buscandoHtml(snap) {
 function consejo(snap) {
   const d = snap.diagnosis || {};
   if (!d.text || (snap.tested || 0) < 60) return "";
-  return `<div class="consejo"><span class="c-ic">💡</span><div>${d.text}</div></div>`;
+  return `<div class="consejo"><span class="c-ic">${icono("idea")}</span><div>${d.text}</div></div>`;
 }
 
 function cablearOrden(raiz) {
@@ -1753,11 +1794,35 @@ function cablearOrden(raiz) {
   });
 }
 
+/* Lo que se ve de la corrida desde cualquier pantalla.
+
+   Se dibuja en la barra lateral, que está siempre presente: si el usuario se
+   fue a Datos mientras busca, esto es lo único que le dice que la búsqueda
+   sigue viva y cuánto le falta. Sin esto tenía que volver a Minado para
+   averiguarlo. */
+function pintarCorrida(snap, finished) {
+  const caja = $("#corrida");
+  if (!caja) return;
+  if (!snap || finished) { caja.hidden = true; caja.innerHTML = ""; return; }
+
+  const meta = snap.target_keep || null;
+  const hechas = Math.min((snap.databank || []).length, meta || Infinity);
+  const frac = meta ? Math.min(hechas / meta, 1) : 0;
+  caja.hidden = false;
+  caja.innerHTML = `
+    <div class="corrida-rot">Corrida activa</div>
+    <div class="corrida-cifra">${meta ? `${hechas}<u>/${meta}</u>` : fmtInt(snap.tested || 0)}</div>
+    <div class="corrida-pie">${meta ? "en el databank" : "probadas"} ·
+      ${fmtInt(snap.tested || 0)} probadas</div>
+    ${meta ? `<div class="corrida-barra"><i style="width:${(frac * 100).toFixed(1)}%"></i></div>` : ""}`;
+}
+
 /* ------------------------------------------------------- render resultados */
 function renderMining(snap, finished) {
   const live = $("#m-live"), bankBox = $("#m-bank");
   if (!live || !snap) return;
   const bank = ordenarBank(snap.databank || []);
+  pintarCorrida(snap, finished);
   // el campeón es el mejor por QF Score, no el primero de la vista: reordenar
   // la tabla no cambia cuál estrategia recomienda el minero
   const champ = (snap.databank || [])[0];
@@ -1765,7 +1830,7 @@ function renderMining(snap, finished) {
   const s = S.bankSort || {};
   const th = (key, label, ayuda) => {
     const activa = s.key === key;
-    const flecha = activa ? (s.dir === -1 ? "▾" : "▴") : "";
+    const flecha = activa ? (s.dir === -1 ? icono("baja","ico-sm") : icono("sube","ico-sm")) : "";
     return `<th class="num orden ${activa ? "activa" : ""}" data-sort="${key}"
       title="${esc(ayuda)}${activa ? "" : " · clic para ordenar"}">${label}<i>${flecha}</i></th>`;
   };
@@ -1780,17 +1845,17 @@ function renderMining(snap, finished) {
   // por qué terminó: el usuario no tiene que deducirlo de los números
   let banner = "";
   if (finished && snap.stopped) {
-    banner = `<div class="banner info"><span class="b-ic">■</span><div>
+    banner = `<div class="banner info"><span class="b-ic">${icono("detener")}</span><div>
       <b>Búsqueda detenida por vos.</b> ${bank.length === 1
         ? "La estrategia que ya había entrado al databank sigue"
         : `Las ${bank.length} estrategias que ya habían entrado al databank siguen`}
       acá abajo, lista${bank.length === 1 ? "" : "s"} para inspeccionar o exportar.</div></div>`;
   } else if (finished && snap.exhausted) {
-    banner = `<div class="banner"><span class="b-ic">◍</span><div>
+    banner = `<div class="banner"><span class="b-ic">${icono("info")}</span><div>
       <b>Se agotaron las combinaciones posibles</b> con los bloques que marcaste.
       Marcá más bloques en la sección 2 o subí el máximo de filtros para ampliar el espacio.</div></div>`;
   } else if (finished && snap.hit_cap) {
-    banner = `<div class="banner"><span class="b-ic">⚠</span><div>
+    banner = `<div class="banner"><span class="b-ic">${icono("alerta")}</span><div>
       <b>Se llegó al tope de seguridad de ${fmtInt(snap.target)} candidatas</b> con
       ${bank.length} de ${goal} estrategias. Tus filtros son muy exigentes para este mercado:
       destildá alguno en la sección 5, cambiá las salidas en la 3, o subí el tope en Avanzado
@@ -1798,9 +1863,9 @@ function renderMining(snap, finished) {
   } else if (!finished && !bank.length && snap.tested >= 20 && snap.diagnosis?.text) {
     // no esperar al final para explicar por qué no entra ninguna: el usuario
     // puede aflojar el filtro ahora mismo en vez de mirar un cero por minutos
-    banner = `<div class="banner"><span class="b-ic">◎</span><div>${snap.diagnosis.text}</div></div>`;
+    banner = `<div class="banner"><span class="b-ic">${icono("diana")}</span><div>${snap.diagnosis.text}</div></div>`;
   } else if (finished && goal && snap.reached_goal) {
-    banner = `<div class="banner ok"><span class="b-ic">✓</span><div>
+    banner = `<div class="banner ok"><span class="b-ic">${icono("tilde")}</span><div>
       <b>Objetivo cumplido.</b> ${goal} estrategias que cumplen todos los filtros, encontradas
       probando ${fmtInt(snap.tested)} candidatas en ${fmtDur(snap.elapsed_s)}.</div></div>`;
   }
@@ -1841,7 +1906,7 @@ function renderMining(snap, finished) {
 
   const champCardHtml = champ ? `<div class="champ" id="champ-card">
     <div>
-      <div class="champ-tag">${finished ? "★ Mejor QF Score" : "★ Mejor hasta ahora"}</div>
+      <div class="champ-tag">${finished ? `${icono("estrella")} Mejor QF Score` : `${icono("estrella")} Mejor hasta ahora`}</div>
       <h2>${esc(champ.name)} ${scoreBadge(champ.score, "big")}</h2>
       <div class="champ-blocks">${esc(champ.blocks || "")}</div>
       <div class="champ-genes">${esc(champ.genes_label)}</div>
@@ -1904,7 +1969,7 @@ function renderMining(snap, finished) {
 
   const splitNote = snap.split ? `
     <div class="banner info mt" style="margin-bottom:14px">
-      <span class="b-ic">◫</span><div>
+      <span class="b-ic">${icono("marcador")}</span><div>
         <b>Validado fuera de muestra.</b> La búsqueda usó
         ${esc(snap.split.is_from)} → ${esc(snap.split.is_to)}
         (${fmtInt(snap.split.is_bars)} velas) y cada estrategia se volvió a correr sobre
@@ -1957,15 +2022,15 @@ function renderMining(snap, finished) {
       }).join("")}</tbody></table></div>`
       : !finished ? buscandoHtml(snap)
       : `<div class="empty-state">
-           <div class="big">ðŸ”</div>
+           <div class="big">ðŸ”</div>
            <b>${fmtInt(snap.tested)} probadas, ninguna pasó los filtros.</b>
            ${snap.diagnosis?.text ? `<p class="mt">${snap.diagnosis.text}</p>` : ""}
            ${snap.diagnosis?.suggestion ? `
              <div class="suggestion mt">
-               <div class="sug-title">💡 Cómo llegar a ese objetivo</div>
+               <div class="sug-title">${icono("idea")} Cómo llegar a ese objetivo</div>
                <p>${snap.diagnosis.suggestion.text}</p>
                ${snap.diagnosis.suggestion.warning
-                 ? `<p class="sug-warn">⚠ ${esc(snap.diagnosis.suggestion.warning)}</p>` : ""}
+                 ? `<p class="sug-warn">${icono("alerta")} ${esc(snap.diagnosis.suggestion.warning)}</p>` : ""}
                ${snap.diagnosis.suggestion.unreachable
                  ? `<button class="btn small mt" id="apply-target"
                       data-target="${snap.diagnosis.suggestion.realistic_target}">
@@ -2056,7 +2121,7 @@ async function openInspector(row, ctx) {
         ? `<span class="badge">guardada</span>`
         : `<span class="badge">fitness ${fmtNum(row.fitness, 3)}</span>`}</h2>
         <p>${esc(row.blocks || "")} · <span style="font-family:ui-monospace">${esc(row.genes_label)}</span></p></div>
-      <button class="sheet-close">✕</button>
+      <button class="sheet-close">${icono("cerrar")}</button>
     </div>
     <div id="insp-body"><div class="empty-state"><span class="spinner"></span>
       Recalculando el backtest completo…</div></div>
@@ -2116,7 +2181,7 @@ function renderInspector(box, row, res, ctx) {
      fila. Decirlo es lo único honesto — callarlo deja al usuario comparando
      dos cosas distintas sin saberlo. */
   const avisoRango = ctx && ctx.sinRango ? `
-    <div class="banner warn" style="margin-bottom:16px"><span class="b-ic">⚠</span><div>
+    <div class="banner warn" style="margin-bottom:16px"><span class="b-ic">${icono("alerta")}</span><div>
       <b>Esta estrategia se guardó sin registrar el período.</b> Lo que ves acá se
       calculó sobre <b>toda la historia</b> del instrumento, así que puede no coincidir
       con las métricas de la lista, que salieron del tramo que minaste.
