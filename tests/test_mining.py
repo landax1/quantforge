@@ -153,7 +153,35 @@ def test_win_rate_is_an_acceptance_filter(df):
                      accept={"min_win_rate_pct": 100.0})
     assert imposible["passed"] == 0
     assert imposible["diagnosis"]["reason"] == "min_win_rate_pct"
-    assert "aciertos" in imposible["diagnosis"]["text"]
+    assert "win rate" in imposible["diagnosis"]["text"]
+
+
+def test_retorno_sobre_drawdown_filtra(df):
+    """Ret/DD: ganancia neta sobre la peor caída.
+
+    Es el filtro de calidad que más se usa en esta clase de herramienta porque
+    junta las dos mitades de la pregunta en un número que NO se mueve con el
+    riesgo por operación: subirlo agranda la ganancia y la caída por igual.
+    """
+    r = mine(df, DRIVERS, FILTERS, max_candidates=60, min_trades=5, seed=17,
+             accept={"min_ret_dd": 2.0})
+    assert r["passed"] + r["rejected"] == r["tested"]
+    for row in r["databank"]:
+        assert row["metrics"]["recovery_factor"] >= 2.0
+
+
+def test_operaciones_por_mes_filtra(df):
+    """Sobre el total no se puede pedir un mínimo que signifique lo mismo en
+    dos históricos de distinto largo: 200 operaciones son muchas en dos años
+    y pocas en veinte."""
+    r = mine(df, DRIVERS, FILTERS, max_candidates=60, min_trades=5, seed=19,
+             accept={"min_trades_month": 3.0})
+    for row in r["databank"]:
+        m = row["metrics"]
+        assert m["trades_per_month"] >= 3.0
+        # y es de verdad el total dividido por los meses, no otro número
+        assert m["trades_per_month"] == pytest.approx(
+            round(m["trades"] / m["months_total"], 2), abs=0.01)
 
 
 def test_mine_acceptance_filters(df):
@@ -176,7 +204,7 @@ def test_empty_databank_explains_itself(df):
     assert d["reason"] == "min_cagr_pct"
     assert d["limit"] == 999.0
     assert d["best_reached"] < 999.0, "debe informar el mejor valor alcanzado"
-    assert "rendimiento anual" in d["text"]
+    assert "retorno anual" in d["text"]
 
     # and with a reachable bar there is no complaint to make
     ok = mine(df, DRIVERS, FILTERS, max_candidates=40, min_trades=5, seed=11,

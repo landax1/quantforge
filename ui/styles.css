@@ -1360,6 +1360,22 @@ svg.spark { display: block; border-radius: 4px; }
 .score-detail .score-bars { margin-top: 0; }
 .score-detail .sb-row { grid-template-columns: 1fr 150px 48px; }
 
+/* La complejidad de las reglas se elige por nombre, no con un número: es una
+   decisión sobre cuánto dejar que la búsqueda se ajuste al pasado. */
+.complejidad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+.complejidad button {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 8px 10px; border-radius: var(--r-sm);
+  background: var(--card-2); border: 1px solid var(--border-soft);
+  cursor: pointer; text-align: left;
+  transition: background .14s var(--ease), border-color .14s var(--ease);
+}
+.complejidad button:hover { background: var(--card-hover); border-color: var(--border); }
+.complejidad button b { font-size: 11.5px; font-weight: 640; color: var(--text); }
+.complejidad button em { font-style: normal; font-size: 9.5px; color: var(--text-dim); }
+.complejidad button.on { background: var(--accent-soft); border-color: var(--accent-line); }
+.complejidad button.on b { color: var(--accent-2); }
+
 /* ============================================================ databank ==
    Las corridas son la unidad de navegación del banco: cada una es un
    experimento con su instrumento, su temporalidad y su vara. Se listan como
@@ -1405,10 +1421,13 @@ svg.spark { display: block; border-radius: 4px; }
   color: var(--text-2); word-break: break-all;
 }
 .guardado .g-ruta b { display: inline; font-family: var(--sans); font-size: 11px; }
+.guardado .g-ruta a { color: var(--accent-2); text-decoration: none; border-bottom: 1px solid var(--accent-line); }
+.guardado .g-ruta a:hover { border-bottom-color: var(--accent-2); }
 .guardado .g-destino {
   display: flex; align-items: center; gap: 8px; margin-top: 9px;
-  font-size: 11px; color: var(--text-dim);
+  font-size: 11px; color: var(--text-dim); flex-wrap: wrap;
 }
+.guardado .g-destino[hidden] { display: none; }
 .guardado .g-destino select { font-size: 11px; padding: 4px 26px 4px 9px; }
 .guardado .g-acciones {
   display: flex; align-items: center; gap: 14px; flex: none; margin-left: auto;

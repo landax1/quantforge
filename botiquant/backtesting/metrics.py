@@ -117,6 +117,11 @@ def compute_metrics(eq: pd.Series, trades: list[Trade], initial: float) -> dict[
         "years": round(years, 2),
         "months_positive_pct": round(months_positive, 2),
         "months_total": months_total,
+        # Cuántas veces opera al mes. Es el mismo dato que `trades` pero
+        # comparable: 200 operaciones son muchas en dos años y pocas en veinte,
+        # y sobre el total no se puede pedir un mínimo que signifique lo mismo
+        # en dos históricos de distinto largo.
+        "trades_per_month": round(len(trades) / months_total, 2) if months_total else 0.0,
         "worst_month_pct": round(worst_month, 2),
         "top_trade_share_pct": round(min(top_trade_share, 100.0), 2),
     }

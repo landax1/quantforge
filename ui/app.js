@@ -58,7 +58,7 @@ const DEFAULT_CFG = {
   spread: 0.36, slippage: 0.1, commission: 0, capital: 10000,
   minPf: 1.10, minSharpe: 0.30, maxDd: 25, minNet: 20, minWinRate: 50,
   maxFilters: 2, direction: "long", minTrades: 30,
-  minCagr: 5, minExposure: 5,
+  minCagr: 5, minExposure: 5, minRetDd: 3, minTradesMonth: 4,
   // ningún filtro opcional activo de arranque: primero mostrale que encuentra
   // estrategias, después que suba la vara con lo que le importa
   critOn: {},
@@ -94,6 +94,25 @@ if (_saved && _saved.goal == null) {
 
 const GOAL_PRESETS = [10, 25, 50, 100];
 
+/* Cuántos filtros de contexto puede apilar una estrategia a la vez.
+
+   Es la palanca más grande que hay sobre el sobreajuste, y por eso va con
+   nombres y no como un número del 0 al 4. Cada condición que se agrega le
+   permite a la búsqueda describir mejor el pasado exacto de este histórico:
+   con cuatro condiciones encadenadas siempre aparece algo que se ve
+   espectacular hacia atrás, porque hay tantas combinaciones que alguna tenía
+   que dar. Lo que no aparece es que funcione después. */
+const COMPLEJIDAD = [
+  { n: 0, nombre: "Mínima",
+    ayuda: "Sólo el disparador de entrada. Es lo más difícil de sobreajustar y lo más honesto como punto de partida: si acá no encontrás nada, el problema no son los filtros." },
+  { n: 1, nombre: "Baja",
+    ayuda: "El disparador más una condición de contexto." },
+  { n: 2, nombre: "Media",
+    ayuda: "Hasta dos condiciones a la vez. Es el equilibrio recomendado entre encontrar algo y no inventarlo." },
+  { n: 3, nombre: "Alta",
+    ayuda: "Hasta tres. Encuentra backtests mucho más lindos y bastante menos repetibles: validá fuera de muestra antes de creerles." },
+];
+
 /* Símbolo por familia de mercado. Con cuatro tarjetas idénticas salvo el
    texto, el icono es lo que permite encontrar la que buscás de un vistazo.
    Van dibujados a mano y no con logos de marca: un CFD de Bitcoin no es
@@ -120,16 +139,28 @@ const INST_FAMILIA = {
    operaciones: exigir Sharpe/DD/exposición por defecto rechazaba el 90% de las
    candidatas y la búsqueda volvía vacía sin que se entendiera por qué. Se
    activan de a uno, y sólo cuentan los que estén tildados. */
+/* Los nombres son los que se usan en la mesa, no traducciones.
+   "Aciertos" y "caída máxima" son español correcto y aun así hacen dudar: el
+   que opera lee win rate y drawdown, los ve así en MetaTrader, en TradingView
+   y en cualquier informe. Traducir un término técnico no lo aclara, lo vuelve
+   irreconocible. */
 const CRITERIA = [
-  { key: "minPf",       label: "Profit factor ≥",       step: 0.05, min: 0, def: 1.10, unit: "" },
-  { key: "minWinRate",  label: "Aciertos ≥",            step: 1,    min: 0, def: 50,   unit: "%" },
-  { key: "minNet",      label: "Ganancia total ≥",      step: 5,    min: 0, def: 20,   unit: "%" },
-  { key: "minCagr",     label: "Rendimiento anual ≥",   step: 1,    min: 0, def: 5,    unit: "%" },
-  // el motor mide el drawdown sobre la curva real: pedir menos de 4% deja
-  // fuera hasta a las estrategias buenas, así que ese es el piso del campo
-  { key: "maxDd",       label: "Caída máxima ≤",        step: 1,    min: 4, def: 25,   unit: "%" },
-  { key: "minSharpe",   label: "Sharpe ≥",              step: 0.1,  min: 0, def: 0.30, unit: "" },
-  { key: "minExposure", label: "Tiempo en mercado ≥",   step: 1,    min: 0, def: 5,    unit: "%" },
+  { key: "minPf",       label: "Profit factor ≥",       step: 0.05, min: 0, def: 1.10, unit: "",
+    ayuda: "Cuántos dólares ganó por cada dólar que perdió. Por debajo de 1 la estrategia pierde plata." },
+  { key: "minRetDd",    label: "Retorno / drawdown ≥",  step: 0.5,  min: 0, def: 3,    unit: "",
+    ayuda: "Ganancia neta dividida por la peor caída. Junta las dos mitades de la pregunta —cuánto ganó y cuánto hubo que aguantar— y no se mueve si cambiás el riesgo por operación. Es el filtro de calidad más usado." },
+  { key: "maxDd",       label: "Drawdown máximo ≤",     step: 1,    min: 4, def: 25,   unit: "%",
+    ayuda: "Lo peor que llegó a bajar la cuenta desde un pico hasta el fondo. Es lo que hay que poder aguantar sin cerrar todo." },
+  { key: "minWinRate",  label: "Win rate ≥",            step: 1,    min: 0, def: 50,   unit: "%",
+    ayuda: "Porcentaje de operaciones ganadoras. Ojo: con una relación riesgo/beneficio de 1:2, un 40% ya es rentable — un win rate alto no es lo mismo que ganar más." },
+  { key: "minTradesMonth", label: "Operaciones por mes ≥", step: 1, min: 0, def: 4,    unit: "",
+    ayuda: "Cuántas veces opera al mes. Es el total de operaciones pero comparable: 200 son muchas en dos años y pocas en veinte." },
+  { key: "minCagr",     label: "Retorno anual (CAGR) ≥", step: 1,   min: 0, def: 5,    unit: "%",
+    ayuda: "Cuánto rindió por año, en promedio compuesto. Escala con el riesgo por operación." },
+  { key: "minSharpe",   label: "Sharpe ≥",              step: 0.1,  min: 0, def: 0.30, unit: "",
+    ayuda: "Retorno por unidad de volatilidad. Premia la curva pareja y castiga la que da saltos." },
+  { key: "minExposure", label: "Tiempo en mercado ≥",   step: 1,    min: 0, def: 5,    unit: "%",
+    ayuda: "Qué porcentaje del tiempo estuvo con una posición abierta. Muy bajo significa que opera poquísimo y la muestra vale poco." },
 ];
 const CRIT_BY_KEY = Object.fromEntries(CRITERIA.map(c => [c.key, c]));
 
@@ -318,8 +349,13 @@ function riskPayload() {
    ignora por completo. */
 const CRIT_FIELD = {
   minPf: "min_pf", minSharpe: "min_sharpe", maxDd: "max_dd_pct",
-  minNet: "min_net_pct", minCagr: "min_cagr_pct", minExposure: "min_exposure_pct",
-  minWinRate: "min_win_rate_pct",
+  minCagr: "min_cagr_pct", minExposure: "min_exposure_pct",
+  minWinRate: "min_win_rate_pct", minRetDd: "min_ret_dd",
+  minTradesMonth: "min_trades_month",
+  //: "Ganancia total" ya no se ofrece —el total depende de cuántos años tenga
+  //: el histórico, así que el mismo número exige cosas distintas según el
+  //: instrumento— pero la clave queda para leer las corridas ya archivadas.
+  minNet: "min_net_pct",
 };
 /* Qué se exigió DE VERDAD en esta corrida.
 
@@ -947,16 +983,15 @@ async function openSaved(s) {
    se muestra siempre con su origen, y por eso la vista de todas juntas avisa
    qué columnas se pueden comparar entre corridas y cuáles no. */
 
-//: qué exigió cada corrida, con el nombre que ve el usuario. Las claves son
-//: las del backend; el orden es el mismo de la pantalla de Mining.
+/* Qué exigió cada corrida, con el nombre que ve el usuario.
+
+   Sale de la misma tabla que arma la pantalla de Mining y no de una copia: dos
+   listas de los mismos filtros terminan diciendo cosas distintas del mismo
+   número en cuanto se renombra uno. Al final va el que ya no se ofrece, para
+   que las corridas viejas sigan pudiendo contar qué se les pidió. */
 const VARA = [
-  ["min_pf", "Profit factor ≥", ""],
-  ["min_win_rate_pct", "Aciertos ≥", "%"],
+  ...CRITERIA.map(cr => [CRIT_FIELD[cr.key], cr.label, cr.unit]),
   ["min_net_pct", "Ganancia total ≥", "%"],
-  ["min_cagr_pct", "Rendimiento anual ≥", "%"],
-  ["max_dd_pct", "Caída máxima ≤", "%"],
-  ["min_sharpe", "Sharpe ≥", ""],
-  ["min_exposure_pct", "Tiempo en mercado ≥", "%"],
 ];
 
 /* Las columnas que dependen del tamaño de posición. Un riesgo del 3% por
@@ -1051,18 +1086,35 @@ PAGES.banco = async (main) => {
     return;
   }
 
+  main.innerHTML = `<div id="banco-cabecera"></div>
+    <div id="banco-corridas"></div><div id="banco-tabla"></div>`;
+
+  pintarCabecera();
+  pintarCorridas();
+  pintarBanco();
+};
+
+/* La cuenta de arriba vive en su propio contenedor porque cambia.
+
+   Estaba escrita de una sola vez al abrir la pantalla, así que borrar tres
+   estrategias dejaba el título diciendo veinte con diecisiete en la tabla.
+   Un número que se contradice con lo que está justo debajo hace dudar de los
+   dos, y de paso del borrado que uno acaba de hacer. */
+function pintarCabecera() {
+  const host = $("#banco-cabecera");
+  if (!host) return;
+  const b = S.banco;
   const lleno = b.tope ? b.total / b.tope : 0;
-  main.innerHTML = pageHead("Databank",
+  host.innerHTML = pageHead("Databank",
     `${fmtInt(b.total)} estrategia${b.total === 1 ? "" : "s"} de
      ${b.corridas.length} corrida${b.corridas.length === 1 ? "" : "s"}.`,
     `<div class="ph-pill ${lleno > 0.85 ? "alerta" : ""}">
        <b>${fmtInt(b.total)}</b><u>/${fmtInt(b.tope)}</u>
-       <em>${lleno > 0.85 ? "casi lleno" : "capacidad"}</em></div>`) +
-    `<div id="banco-corridas"></div><div id="banco-tabla"></div>`;
-
-  pintarCorridas();
-  pintarBanco();
-};
+       <em>${lleno > 0.85 ? "casi lleno" : "capacidad"}</em></div>`);
+  // y el de la barra lateral, que es el mismo dato en otro lado
+  const nav = $("#banco-count");
+  if (nav) nav.textContent = b.total || "";
+}
 
 /* Las corridas como una lista, no como pestañas: son hasta cuarenta y cada
    una necesita decir su instrumento, su temporalidad, su riesgo y su vara.
@@ -1135,6 +1187,7 @@ function pintarCorridas() {
       S.banco.corrida = "";
       S.banco.sel.clear();
       await cargarBanco();
+      pintarCabecera();
       pintarCorridas();
       pintarBanco();
       toast("Corrida borrada", "ok");
@@ -1307,6 +1360,7 @@ function cablearBanco(host) {
       await api.post("/api/banco/borrar", { ids });
       b.sel.clear();
       await cargarBanco();
+      pintarCabecera();
       pintarCorridas();
       pintarBanco();
       toast(`${ids.length} fuera del banco`, "ok");
@@ -1432,7 +1486,11 @@ PAGES.mining = async (main) => {
 
   const critRow = (cr) => {
     const on = !!S.cfg.critOn[cr.key];
-    return `<div class="critrow ${on ? "on" : ""}" data-crit="${cr.key}">
+    // la explicación va en el título de la fila entera: son términos de mesa
+    // —profit factor, drawdown, win rate— y quien recién empieza necesita
+    // poder preguntar qué son sin salir de la pantalla
+    return `<div class="critrow ${on ? "on" : ""}" data-crit="${cr.key}"
+      title="${esc(cr.ayuda || "")}">
       <label class="crit-check"><input type="checkbox" data-crit-on="${cr.key}" ${on ? "checked" : ""}>
         <span class="crit-label">${esc(cr.label)}</span></label>
       <input class="crit-val" type="number" data-cfg="${cr.key}" value="${S.cfg[cr.key] ?? cr.def}"
@@ -1509,13 +1567,24 @@ PAGES.mining = async (main) => {
             <div class="blocklist-actions" data-for="m-filters">
               <button data-all="1">Todos</button><button data-all="0">Ninguno</button></div>
             <div id="m-filters">${blockList("filter")}</div>
-            <!-- El nombre viejo, "Máx. filtros por estrategia", describía el
-                 código y no lo que hace: nadie sabía a qué filtros se refería
-                 ni por qué había un número ahí suelto. -->
-            <label class="fld mt"><span>Cuántos de estos puede combinar cada estrategia
-                <span class="hint">marcás varios arriba; cada candidata usa como
-                  mucho esta cantidad a la vez</span></span>
-              <input type="number" data-cfg="maxFilters" value="${c.maxFilters}" min="0" max="4"></label>
+            <!-- Este número pasó por dos nombres malos: "Máx. filtros por
+                 estrategia" describía el código, y "cuántos de estos puede
+                 combinar" no decía de qué estaba hablando ni por qué importa.
+
+                 Lo que gradúa es la COMPLEJIDAD de las reglas, que es la
+                 palanca más grande que hay sobre el sobreajuste: cuantas más
+                 condiciones puede apilar una estrategia, más fácil le resulta
+                 describir el pasado exacto y menos le queda para el futuro.
+                 Como eso es una decisión y no un número, va con nombres. -->
+            <div class="fld mt"><span>Complejidad de las reglas
+                <span class="hint">cuántos filtros de contexto puede exigir
+                  una estrategia al mismo tiempo</span></span></div>
+            <div class="complejidad" id="m-complejidad">
+              ${COMPLEJIDAD.map(c2 => `<button data-filtros="${c2.n}"
+                class="${+c.maxFilters === c2.n ? "on" : ""}" title="${esc(c2.ayuda)}">
+                <b>${esc(c2.nombre)}</b><em>${c2.n === 0 ? "sólo el disparador"
+                  : c2.n === 1 ? "1 condición" : `hasta ${c2.n}`}</em></button>`).join("")}
+            </div>
             <p class="help-note" id="m-filtnote"></p>
           </div>
         </details>
@@ -1883,7 +1952,9 @@ PAGES.mining = async (main) => {
 
     const drv = $$("#m-drivers .blockitem input", main).filter(x => x.checked).length;
     const flt = $$("#m-filters .blockitem input", main).filter(x => x.checked).length;
-    set("sum-blocks", `${drv} disparadores · ${flt} filtros · hasta ${S.cfg.maxFilters} por estrategia`);
+    const compl = COMPLEJIDAD.find(c => c.n === +S.cfg.maxFilters);
+    set("sum-blocks", `${drv} disparadores · ${flt} filtros · complejidad ${
+      (compl ? compl.nombre : S.cfg.maxFilters).toString().toLowerCase()}`);
 
     // qué significa el número, con los valores que el usuario tiene puestos
     const fn = $("#m-filtnote");
@@ -1892,8 +1963,8 @@ PAGES.mining = async (main) => {
       fn.innerHTML = !flt
         ? `Sin filtros marcados, cada estrategia es sólo su disparador de entrada.`
         : n === 0
-          ? `En <b>0</b>, los filtros marcados no se usan: cada estrategia entra sólo
-             con su disparador.`
+          ? `En <b>mínima</b>, los filtros marcados no se usan: cada estrategia entra
+             sólo con su disparador.`
           : `Marcaste <b>${flt} filtros</b>. Cada candidata elige al azar
              <b>entre 0 y ${n}</b> de ellos y los exige a la vez. Más filtros por
              estrategia hace reglas más específicas —y más fáciles de ajustar al
@@ -1925,6 +1996,14 @@ PAGES.mining = async (main) => {
   goalInput.oninput = () => { if (goalInput.value !== "") setGoal(goalInput.value, false); };
   goalInput.onblur = () => setGoal(S.cfg.goal, true);   // un campo vacío vuelve al valor real
   $$("#m-goal-presets button", main).forEach(b => b.onclick = () => setGoal(b.dataset.goal, true));
+
+  $$("#m-complejidad button", main).forEach(b => b.onclick = () => {
+    S.cfg.maxFilters = +b.dataset.filtros;
+    $$("#m-complejidad button", main).forEach(o =>
+      o.classList.toggle("on", +o.dataset.filtros === S.cfg.maxFilters));
+    saveCfg();
+    updateNotes();
+  });
 
   updateNotes();
   if (fixed) {
@@ -2799,14 +2878,16 @@ function renderInspector(box, row, res, ctx) {
       <div class="g-txt">
         <b>${esc(r.archivo)}</b>
         <span class="g-ruta">${r.terminal
-          ? `Robots de <b>${esc(r.terminal)}</b> · ya aparece en el Navegador`
+          ? `Robots de <b>${esc(r.terminal)}</b> · ya aparece en el Navegador${
+              opciones ? ` · <a href="#" id="insp-cambiar">cambiar</a>` : ""}`
           : esc(r.carpeta)}</span>
-        ${opciones ? `<label class="g-destino">Mandarlo a
+        ${opciones ? `<div class="g-destino" hidden>
+          <span>Tenés ${S.mt5.terminales.length} MetaTrader instalados. Mandarlo a:</span>
           <select id="insp-destino">
             ${S.mt5.terminales.map(t => `<option value="${esc(t.id)}"
               ${t.id === S.mt5.elegido ? "selected" : ""}>${esc(t.nombre)}</option>`).join("")}
             <option value="" ${S.mt5.elegido ? "" : "selected"}>Descargas</option>
-          </select></label>` : ""}
+          </select></div>` : ""}
       </div>
       <div class="g-acciones">
         <button class="btn small" id="insp-abrir-archivo">${
@@ -2822,6 +2903,18 @@ function renderInspector(box, row, res, ctx) {
       try { await api.post("/api/abrir-carpeta", { ruta: r.carpeta }); }
       catch (e) { toast(e.message, "err"); }
     };
+    /* La lista de MetaTrader arranca escondida. Mostrarla siempre convierte
+       un aviso de "listo, quedó acá" en una pregunta con tres nombres casi
+       iguales, y encima ya está resuelta: la aplicación eligió el terminal
+       que se usó más recientemente. Sólo aparece si el usuario la pide. */
+    const cambiar = $("#insp-cambiar", caja);
+    if (cambiar) cambiar.onclick = (ev) => {
+      ev.preventDefault();
+      const panel = $(".g-destino", caja);
+      if (panel) panel.hidden = false;
+      cambiar.remove();
+    };
+
     const destino = $("#insp-destino", caja);
     if (destino) destino.onchange = () => {
       S.mt5.elegido = destino.value;

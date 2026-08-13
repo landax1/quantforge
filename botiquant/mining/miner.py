@@ -30,7 +30,11 @@ _ROW_METRICS = ("net_profit_pct", "cagr_pct", "profit_factor", "max_drawdown_pct
                 "exposure_pct", "cagr_exposed_pct", "years",
                 "avg_win", "avg_loss", "avg_trade",
                 "months_positive_pct", "months_total", "worst_month_pct",
-                "top_trade_share_pct")
+                "top_trade_share_pct",
+                # los dos que se pueden exigir como filtro tienen que viajar en
+                # la fila: si no, el databank no puede mostrar ni ordenar por
+                # aquello mismo que se le pidió a la búsqueda
+                "recovery_factor", "trades_per_month")
 
 # after this many consecutive duplicate genomes the space is considered mined out
 _EXHAUSTED_AFTER = 300
@@ -91,12 +95,23 @@ def _row(genome: Genome, spec, m: dict[str, float], score: float,
 #: acceptance criterion -> (metric, comparison, human label)
 _CRITERIA: tuple[tuple[str, str, str, str], ...] = (
     ("min_pf", "profit_factor", "min", "profit factor"),
-    ("min_win_rate_pct", "win_rate_pct", "min", "porcentaje de aciertos"),
+    ("min_win_rate_pct", "win_rate_pct", "min", "win rate"),
     ("min_sharpe", "sharpe", "min", "Sharpe"),
-    ("max_dd_pct", "max_drawdown_pct", "max", "max drawdown"),
-    ("min_net_pct", "net_profit_pct", "min", "ganancia total"),
-    ("min_cagr_pct", "cagr_pct", "min", "rendimiento anual"),
+    ("max_dd_pct", "max_drawdown_pct", "max", "drawdown máximo"),
+    # Retorno sobre drawdown: ganancia neta dividida por la peor caída. Es el
+    # filtro de calidad que más se usa en esta clase de herramienta, porque
+    # junta las dos mitades de la pregunta —cuánto ganó y cuánto hubo que
+    # aguantar para ganarlo— en un solo número que no depende del riesgo por
+    # operación: subir el riesgo agranda las dos partes por igual.
+    ("min_ret_dd", "recovery_factor", "min", "retorno / drawdown"),
+    ("min_trades_month", "trades_per_month", "min", "operaciones por mes"),
+    ("min_cagr_pct", "cagr_pct", "min", "retorno anual"),
     ("min_exposure_pct", "exposure_pct", "min", "tiempo en mercado"),
+    # Sigue aceptándose para no romper las corridas ya archivadas, pero la
+    # pantalla no lo ofrece: el total depende de cuántos años tenga el
+    # histórico, así que el mismo número exige cosas distintas según el
+    # instrumento. Lo que se quiere pedir ahí es el retorno anual.
+    ("min_net_pct", "net_profit_pct", "min", "ganancia total"),
 )
 
 _CRIT_BY_KEY = {k: (metric, kind, label) for k, metric, kind, label in _CRITERIA}
