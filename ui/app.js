@@ -301,6 +301,48 @@ function isFullRange(ds) {
   return !b.lo || (r.from <= b.lo && r.to >= b.hi);
 }
 
+/* ================================================ ventana por defecto =====
+   El período con el que ARRANCA la pantalla: los últimos diez años.
+
+   Es una regla de tiempo de búsqueda, no de calidad. EURUSD tiene 21 años de
+   historia y su primer minado tardaba 405 segundos contra los 48 del S&P: en
+   parte porque cada backtest recorre casi el doble de velas, y en parte
+   porque es un mercado difícil y hay que probar muchas más candidatas. Siete
+   minutos mirando una barra es lo primero que ve alguien que abre esto.
+
+   Diez años y no tres a propósito. Es un límite pensado para que la búsqueda
+   termine, y sigue cubriendo varios regímenes distintos —2018, el
+   derrumbe de 2020, el bajista de 2022—, que es lo que hace que una
+   estrategia signifique algo. Recortar más acelera todavía más y a la vez
+   infla los resultados: con menos velas que satisfacer, cualquier regla se
+   acomoda al ruido. Medido sobre el S&P, pasar de la historia completa a dos
+   años sube el mejor CAGR de 3.5% a 21.4% y baja de 94% a 65% la proporción
+   de estrategias cuya ventaja sobrevive fuera de muestra.
+
+   Por eso son fechas VISIBLES en dos campos y no un recorte silencioso, y por
+   eso hay un botón al lado para usar el historial entero. Un default que
+   acelera se puede defender; uno que esconde sobre qué se midió, no. */
+const VENTANA_ANIOS = 10;
+
+function ventanaPorDefecto(ds) {
+  const b = datasetBounds(ds);
+  if (!b.lo || !b.hi) return "";
+  const hi = new Date(b.hi + "T00:00:00Z");
+  const corte = new Date(Date.UTC(hi.getUTCFullYear() - VENTANA_ANIOS,
+                                  hi.getUTCMonth(), hi.getUTCDate()));
+  const desde = corte.toISOString().slice(0, 10);
+  // historia más corta que la ventana: se usa entera y no hay nada que recortar
+  return desde > b.lo ? desde : "";
+}
+
+/** Pone la ventana de arranque, salvo que el usuario haya elegido su propio
+ *  período — en ese caso manda el suyo y sólo se ajustan los bordes. */
+function aplicarVentanaPorDefecto(ds) {
+  if (S.sel.rangoPropio) { clampRangeTo(ds); return; }
+  S.sel.dateFrom = ventanaPorDefecto(ds);
+  S.sel.dateTo = "";
+}
+
 /* Al cambiar de instrumento el período elegido se conserva — comparar el mismo
    tramo entre mercados es media razón para tener el selector. Lo único que se
    ajusta son los bordes: BTCUSD arranca en 2017, así que un "desde 2013"
@@ -1546,8 +1588,14 @@ PAGES.mining = async (main) => {
   const opt = (val, cur, label) => `<option value="${val}" ${val === cur ? "selected" : ""}>${label || val}</option>`;
 
   const curDs = S.datasets.find(d => d.id === S.sel.dataset_id);
+  // la ventana de arranque se resuelve antes de dibujar los campos, o el
+  // primer render mostraría el historial entero y cambiaría solo después
+  aplicarVentanaPorDefecto(curDs);
   const bounds = datasetBounds(curDs);
   const range = effectiveRange(curDs);
+  const acotado = !isFullRange(curDs);
+  const aniosTotales = bounds.lo && bounds.hi
+    ? (new Date(bounds.hi) - new Date(bounds.lo)) / 31557600000 : 0;
 
   const critRow = (cr) => {
     const on = !!S.cfg.critOn[cr.key];
@@ -1597,6 +1645,14 @@ PAGES.mining = async (main) => {
                 <input type="date" class="datefld" id="m-date-to"
                   min="${esc(bounds.lo)}" max="${esc(bounds.hi)}" value="${esc(range.to)}"></label>
             </div>
+            ${acotado && aniosTotales > VENTANA_ANIOS ? `
+              <div class="ventana">
+                <div>Arranca en los <b>últimos ${VENTANA_ANIOS} años</b> para que la
+                  primera búsqueda no tarde una eternidad. Este instrumento tiene
+                  ${aniosTotales.toFixed(0)} años.</div>
+                <button class="btn ghost small" id="m-todo-historial">Usar los ${
+                  aniosTotales.toFixed(0)} años</button>
+              </div>` : ""}
             <p class="stage-note" id="m-dsnote"></p>
 
             <details class="adv" id="m-adv-oos">
@@ -1850,7 +1906,11 @@ PAGES.mining = async (main) => {
   dsSel.onchange = () => {
     S.sel.dataset_id = dsSel.value;
     const ds = S.datasets.find(d => d.id === dsSel.value);
-    const clamped = clampRangeTo(ds);   // el período elegido se conserva
+    // el período propio se conserva y sólo se le ajustan los bordes; el que
+    // puso la aplicación se recalcula, porque doce años se cuentan desde el
+    // final de CADA instrumento
+    const clamped = S.sel.rangoPropio ? clampRangeTo(ds)
+      : (aplicarVentanaPorDefecto(ds), false);
     adoptInstrumentDefaults();          // costos del broker del mercado nuevo
     navigate("mining").then(() => {     // refresca la pastilla de contexto
       if (clamped) {
@@ -1865,11 +1925,22 @@ PAGES.mining = async (main) => {
   const onDate = () => {
     S.sel.dateFrom = dFrom.value;
     S.sel.dateTo = dTo.value;
+    // a partir de acá el período es una decisión suya: deja de reacomodarse
+    // solo al cambiar de instrumento
+    S.sel.rangoPropio = true;
     saveCfg();
     updateNotes();
   };
   dFrom.onchange = onDate;
   dTo.onchange = onDate;
+
+  const todoHist = $("#m-todo-historial", main);
+  if (todoHist) todoHist.onclick = () => {
+    S.sel.dateFrom = S.sel.dateTo = "";
+    S.sel.rangoPropio = true;      // elegido a mano: no se vuelve a acotar solo
+    saveCfg();
+    navigate("mining");
+  };
   // el calendario se abre tocando el campo entero, no sólo el iconito
   [dFrom, dTo].forEach(el => el.onmousedown = (ev) => {
     if (typeof el.showPicker !== "function") return;
