@@ -1360,6 +1360,21 @@ svg.spark { display: block; border-radius: 4px; }
 .score-detail .score-bars { margin-top: 0; }
 .score-detail .sb-row { grid-template-columns: 1fr 150px 48px; }
 
+/* El spread típico del mercado cargado, siempre a la vista. Un número solo no
+   se puede comprobar: podría ser el que corresponde o el que quedó de otro
+   instrumento, y se ven igual. */
+.sugerido {
+  display: flex; gap: 9px; align-items: flex-start; margin-top: 12px;
+  padding: 9px 12px; border-radius: var(--r-sm);
+  background: var(--card-2); border: 1px solid var(--border-soft);
+  font-size: 11px; line-height: 1.5; color: var(--text-2);
+}
+.sugerido[hidden] { display: none; }
+.sugerido .sg-ok { color: var(--pos); flex: none; margin-top: 1px; }
+.sugerido .sg-ojo { color: var(--warn); flex: none; margin-top: 1px; }
+.sugerido b { color: var(--text); font-variant-numeric: tabular-nums; }
+.sugerido .linkbtn { margin-left: 6px; }
+
 /* La complejidad de las reglas se elige por nombre, no con un número: es una
    decisión sobre cuánto dejar que la búsqueda se ajuste al pasado. */
 .complejidad { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }

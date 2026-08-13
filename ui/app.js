@@ -76,6 +76,9 @@ const DEFAULT_CFG = {
   // stop cueste un % fijo; "lots" manda siempre el mismo volumen — hay brokers
   // de CFDs que no interpretan bien un volumen calculado en cada operación.
   sizing: "risk",
+  // spread y slippage que el usuario corrigió a mano, por instrumento. Vacío
+  // significa "usar el sugerido de cada mercado" — ver costosDe().
+  costos: {},
   riskPct: 1,      // % del capital arriesgado por operación
   lots: 0.1,       // volumen fijo cuando sizing === "lots"
   rr: 2,           // relación riesgo/beneficio: el target vale 2× el stop
@@ -86,6 +89,7 @@ const DEFAULT_CFG = {
 const _saved = S.cfg;
 S.cfg = { ...DEFAULT_CFG, ...(_saved || {}) };
 S.cfg.critOn = { ...(S.cfg.critOn || {}) };
+S.cfg.costos = { ...(S.cfg.costos || {}) };
 // El primer default de Retorno/Drawdown fue 3, puesto a ojo. Medido sobre
 // datos reales lo pasa una de cada diez candidatas en un mercado bueno y
 // NINGUNA en EURUSD, así que como sugerencia mandaba a una búsqueda vacía.
@@ -528,13 +532,44 @@ function lockSetup(on) {
   }
 }
 
-/* Los costos del broker salen del dataset elegido, nunca se heredan del
-   anterior. (Las salidas ya no necesitan esto: van en volatilidad.) */
+/* ================================================ costos por instrumento ===
+   El spread no es una preferencia del usuario: es un dato del mercado. 0.36
+   puntos es el spread del S&P y sobre EURUSD a 1.15 significa pagar 31% por
+   operación — todas las candidatas dan -100% y la aplicación parece rota.
+
+   Esa dirección ya estaba cubierta. La otra no, y es la peligrosa: si venís
+   de EURUSD (0.00012) y pasás a Bitcoin (12), el costo queda en la
+   cienmilésima parte del real. No dispara ninguna alarma porque el guardia
+   vigila que no sea demasiado CARO, y el resultado no es un -100% evidente
+   sino un backtest sin costos que se ve espectacular. Un error que se ve como
+   un éxito es mucho peor que uno que se ve como un error.
+
+   Por eso los costos siguen al instrumento siempre. Y lo que el usuario haya
+   corregido a mano se guarda POR instrumento: su spread real de oro no tiene
+   por qué perderse cuando pasa a mirar el S&P y vuelve. */
+function costosDe(ds) {
+  if (!ds) return null;
+  const propio = (S.cfg.costos || {})[ds.id];
+  if (propio) return { ...propio, mio: true };
+  if (ds.suggested_spread == null) return null;
+  return { spread: ds.suggested_spread, slippage: ds.suggested_slippage ?? 0, mio: false };
+}
+
 function adoptInstrumentDefaults() {
   const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
+  const costos = costosDe(ds);
+  if (!costos) return;
+  S.cfg.spread = costos.spread;
+  S.cfg.slippage = costos.slippage;
+  saveCfg();
+}
+
+/** Lo que el usuario escribió a mano queda atado a SU instrumento. */
+function recordarCostos() {
+  const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
   if (!ds) return;
-  if (ds.suggested_spread != null) S.cfg.spread = ds.suggested_spread;
-  if (ds.suggested_slippage != null) S.cfg.slippage = ds.suggested_slippage;
+  S.cfg.costos = S.cfg.costos || {};
+  S.cfg.costos[ds.id] = { spread: +S.cfg.spread, slippage: +S.cfg.slippage };
   saveCfg();
 }
 
@@ -624,7 +659,13 @@ async function refreshDatasets() {
   if (S.sel.dataset_id && !S.datasets.some(d => d.id === S.sel.dataset_id)) {
     S.sel.dataset_id = null;
   }
-  if (!S.sel.dataset_id && S.datasets.length) S.sel.dataset_id = S.datasets[0].id;
+  if (!S.sel.dataset_id && S.datasets.length) {
+    // La aplicación elige el instrumento sola cuando no hay ninguno: al abrir,
+    // o cuando el que estaba se borró. Sin adoptar sus costos acá, ese caso
+    // arrancaba con el spread del instrumento ANTERIOR y nadie lo eligió.
+    S.sel.dataset_id = S.datasets[0].id;
+    adoptInstrumentDefaults();
+  }
 }
 
 async function navigate(page) {
@@ -1653,6 +1694,7 @@ PAGES.mining = async (main) => {
               <label class="fld"><span>Comisión % lado</span><input type="number" step="0.001" data-cfg="commission" value="${c.commission}"></label>
               <label class="fld"><span>Capital</span><input type="number" step="1000" data-cfg="capital" value="${c.capital}"></label>
             </div>
+            <div class="sugerido" id="m-sugerido" hidden></div>
             <p class="stage-note" id="m-costnote"></p>
           </div>
         </details>
@@ -1831,7 +1873,13 @@ PAGES.mining = async (main) => {
   // —que salta al salir del campo o al confirmar— es donde se acomoda
   $$("[data-cfg]", main).forEach(el => {
     el.oninput = () => { harvestCfg(main); updateNotes(); };
-    el.onchange = () => { harvestCfg(main, { normalizar: true }); updateNotes(); };
+    el.onchange = () => {
+      harvestCfg(main, { normalizar: true });
+      // el spread corregido a mano queda atado a SU instrumento: el de oro de
+      // tu broker no tiene por qué perderse por ir a mirar el S&P y volver
+      if (el.dataset.cfg === "spread" || el.dataset.cfg === "slippage") recordarCostos();
+      updateNotes();
+    };
   });
 
   function updateNotes() {
@@ -1873,6 +1921,45 @@ PAGES.mining = async (main) => {
       note.innerHTML = txt;
       const fixC = $("#fix-cost", note);
       if (fixC) fixC.onclick = () => { adoptInstrumentDefaults(); navigate("mining"); };
+    }
+
+    /* El spread sugerido de ESTE mercado, siempre a la vista.
+
+       Antes el número aparecía solo y no había forma de saber si correspondía
+       al instrumento cargado: podía ser el que la aplicación puso, o el que
+       quedó de otro mercado, y se ven exactamente igual. Decir cuál es el de
+       referencia convierte un número a ciegas en uno que se puede comprobar
+       contra el broker. */
+    const sug = $("#m-sugerido");
+    if (sug) {
+      const cat = ds ? S.catalog.find(c => c.dataset_id === ds.id) : null;
+      const refSpread = ds && ds.suggested_spread != null ? ds.suggested_spread
+        : (cat ? cat.spread : null);
+      if (refSpread == null) {
+        // instrumento propio del usuario: no hay referencia que ofrecer
+        sug.hidden = true;
+      } else {
+        sug.hidden = false;
+        const mercado = esc(ds.name.replace(/ M1.*/, ""));
+        const num = (v) => (+v).toLocaleString("es-AR", { maximumFractionDigits: 5 });
+        const igual = Math.abs(+S.cfg.spread - refSpread) < 1e-9;
+        sug.innerHTML = igual
+          ? `<span class="sg-ok">${icono("tilde","ico-sm")}</span>
+             <div>Es el spread típico de <b>${mercado}</b>: ${num(refSpread)}.
+               Cambialo si tu broker te cobra otro.</div>`
+          : `<span class="sg-ojo">${icono("info","ico-sm")}</span>
+             <div>Estás usando <b>${num(S.cfg.spread)}</b>. El típico de
+               <b>${mercado}</b> es <b>${num(refSpread)}</b>.
+               <button class="linkbtn" id="usar-sugerido">Usar el típico</button></div>`;
+        const usar = $("#usar-sugerido", sug);
+        if (usar) usar.onclick = () => {
+          // se borra el valor propio: pedir el sugerido es decir que el de uno
+          // ya no vale, y si quedara guardado volvería en la próxima visita
+          if (S.cfg.costos) delete S.cfg.costos[ds.id];
+          adoptInstrumentDefaults();
+          navigate("mining");
+        };
+      }
     }
 
     // la perilla de riesgo traducida a plata, y a lo que implica en el año
