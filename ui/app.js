@@ -58,7 +58,7 @@ const DEFAULT_CFG = {
   spread: 0.36, slippage: 0.1, commission: 0, capital: 10000,
   minPf: 1.10, minSharpe: 0.30, maxDd: 25, minNet: 20, minWinRate: 50,
   maxFilters: 2, direction: "long", minTrades: 30,
-  minCagr: 5, minExposure: 5, minRetDd: 3, minTradesMonth: 4,
+  minCagr: 5, minExposure: 5, minRetDd: 1.5, minTradesMonth: 4,
   // ningún filtro opcional activo de arranque: primero mostrale que encuentra
   // estrategias, después que suba la vara con lo que le importa
   critOn: {},
@@ -86,6 +86,11 @@ const DEFAULT_CFG = {
 const _saved = S.cfg;
 S.cfg = { ...DEFAULT_CFG, ...(_saved || {}) };
 S.cfg.critOn = { ...(S.cfg.critOn || {}) };
+// El primer default de Retorno/Drawdown fue 3, puesto a ojo. Medido sobre
+// datos reales lo pasa una de cada diez candidatas en un mercado bueno y
+// NINGUNA en EURUSD, así que como sugerencia mandaba a una búsqueda vacía.
+// Nadie eligió ese 3: era lo que venía puesto, y por eso se corrige solo.
+if (_saved && _saved.minRetDd === 3) S.cfg.minRetDd = DEFAULT_CFG.minRetDd;
 if (_saved && _saved.goal == null) {
   // config previa al modelo por objetivo: su "maxCandidates" era el total a
   // probar (a veces 120), inservible como tope de seguridad
@@ -147,8 +152,8 @@ const INST_FAMILIA = {
 const CRITERIA = [
   { key: "minPf",       label: "Profit factor ≥",       step: 0.05, min: 0, def: 1.10, unit: "",
     ayuda: "Cuántos dólares ganó por cada dólar que perdió. Por debajo de 1 la estrategia pierde plata." },
-  { key: "minRetDd",    label: "Retorno / drawdown ≥",  step: 0.5,  min: 0, def: 3,    unit: "",
-    ayuda: "Ganancia neta dividida por la peor caída. Junta las dos mitades de la pregunta —cuánto ganó y cuánto hubo que aguantar— y no se mueve si cambiás el riesgo por operación. Es el filtro de calidad más usado." },
+  { key: "minRetDd",    label: "Retorno / drawdown ≥",  step: 0.5,  min: 0, def: 1.5,  unit: "",
+    ayuda: "Ganancia neta dividida por la peor caída. Junta las dos mitades de la pregunta —cuánto ganó y cuánto hubo que aguantar— y no se mueve si cambiás el riesgo por operación. En 1 ganó justo lo que llegó a caer; 2 ya es exigente y 3 lo pasa una de cada diez en un mercado bueno." },
   { key: "maxDd",       label: "Drawdown máximo ≤",     step: 1,    min: 4, def: 25,   unit: "%",
     ayuda: "Lo peor que llegó a bajar la cuenta desde un pico hasta el fondo. Es lo que hay que poder aguantar sin cerrar todo." },
   { key: "minWinRate",  label: "Win rate ≥",            step: 1,    min: 0, def: 50,   unit: "%",
