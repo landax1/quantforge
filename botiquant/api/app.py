@@ -1319,6 +1319,31 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             return _html_de_la_app()
         return HTMLResponse(portada.read_text(encoding="utf-8"), headers=_NO_CACHE)
 
+    #: Las dos páginas que Google exige para publicar la aplicación a cualquiera
+    #: y no sólo a una lista de correos de prueba. Van servidas por el mismo
+    #: proceso y no como archivos sueltos porque tienen que existir siempre: si
+    #: la política de privacidad no carga, el revisor rechaza la aplicación.
+    @app.get("/privacidad", include_in_schema=False)
+    def pagina_privacidad() -> Response:
+        return _pagina_legal("privacidad.html")
+
+    @app.get("/terminos", include_in_schema=False)
+    def pagina_terminos() -> Response:
+        return _pagina_legal("terminos.html")
+
+    def _pagina_legal(archivo: str) -> Response:
+        pagina = LANDING_DIR / archivo
+        if not pagina.exists():
+            return RedirectResponse("/", status_code=303)
+        return HTMLResponse(pagina.read_text(encoding="utf-8"), headers=_NO_CACHE)
+
+    @app.get("/static-landing/legal.css", include_in_schema=False)
+    def css_legal() -> Response:
+        hoja = LANDING_DIR / "legal.css"
+        if not hoja.exists():
+            raise HTTPException(404, "No está.")
+        return Response(hoja.read_text(encoding="utf-8"), media_type="text/css")
+
     @app.get("/cuenta", include_in_schema=False)
     def pagina_cuenta() -> Response:
         """Quién sos, tu licencia y la descarga. Es lo único que el servidor
