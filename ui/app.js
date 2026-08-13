@@ -56,12 +56,23 @@ function lossStreakCost(pct, n = 10) {
 
 const DEFAULT_CFG = {
   spread: 0.36, slippage: 0.1, commission: 0, capital: 10000,
-  minPf: 1.10, minSharpe: 0.30, maxDd: 25, minNet: 20, minWinRate: 50,
+  minPf: 1.0, minSharpe: 0.30, maxDd: 25, minNet: 20, minWinRate: 50,
   maxFilters: 2, direction: "long", minTrades: 30,
   minCagr: 5, minExposure: 5, minRetDd: 1.5, minTradesMonth: 4,
-  // ningún filtro opcional activo de arranque: primero mostrale que encuentra
-  // estrategias, después que suba la vara con lo que le importa
-  critOn: {},
+  /* Una sola vara prendida de fábrica, y es la que nadie discute: que la
+     estrategia haya ganado plata.
+
+     Antes no venía ninguna, con el argumento de mostrar primero que la
+     búsqueda encuentra cosas. Medido, eso significaba llenar el databank en
+     catorce segundos con monedas al aire: en EURUSD, 21 de las 25 que
+     mostraba PERDÍAN plata. Encontrar veinticinco estrategias en catorce
+     segundos no es una buena primera impresión si la mitad no sirve — es una
+     promesa que el producto no cumple.
+
+     Profit factor 1 y no 1.10 a propósito: 1 es la línea que significa algo
+     —ganó contra perdió— y es la más barata de satisfacer, así que es la que
+     menos alarga la búsqueda. El resto de las varas las sube el usuario. */
+  critOn: { minPf: true },
   // el número que manda: cuántas estrategias APROBADAS tiene que juntar el
   // databank antes de parar. Cuántas candidatas hagan falta no se sabe de
   // antemano — depende de qué tan exigentes sean los criterios.
@@ -95,6 +106,14 @@ S.cfg.costos = { ...(S.cfg.costos || {}) };
 // NINGUNA en EURUSD, así que como sugerencia mandaba a una búsqueda vacía.
 // Nadie eligió ese 3: era lo que venía puesto, y por eso se corrige solo.
 if (_saved && _saved.minRetDd === 3) S.cfg.minRetDd = DEFAULT_CFG.minRetDd;
+/* Config previa a que hubiera una vara de fábrica. Un `critOn` vacío no
+   distingue "lo apagué a propósito" de "nunca lo toqué", pero de las dos la
+   segunda es la única que existía: hasta ahora no venía ninguno prendido. Y
+   como el 1.10 tampoco lo eligió nadie, se alinea con el nuevo. */
+if (_saved && _saved.critOn && !Object.keys(_saved.critOn).length) {
+  S.cfg.critOn = { ...DEFAULT_CFG.critOn };
+  if (_saved.minPf === 1.10) S.cfg.minPf = DEFAULT_CFG.minPf;
+}
 if (_saved && _saved.goal == null) {
   // config previa al modelo por objetivo: su "maxCandidates" era el total a
   // probar (a veces 120), inservible como tope de seguridad
@@ -154,8 +173,8 @@ const INST_FAMILIA = {
    y en cualquier informe. Traducir un término técnico no lo aclara, lo vuelve
    irreconocible. */
 const CRITERIA = [
-  { key: "minPf",       label: "Profit factor ≥",       step: 0.05, min: 0, def: 1.10, unit: "",
-    ayuda: "Cuántos dólares ganó por cada dólar que perdió. Por debajo de 1 la estrategia pierde plata." },
+  { key: "minPf",       label: "Profit factor ≥",       step: 0.05, min: 0, def: 1.0,  unit: "",
+    ayuda: "Cuántos dólares ganó por cada dólar que perdió. En 1 quedó igual; por debajo, la estrategia pierde plata. Viene tildado en 1 justamente para que el databank no se llene de perdedoras." },
   { key: "minRetDd",    label: "Retorno / drawdown ≥",  step: 0.5,  min: 0, def: 1.5,  unit: "",
     ayuda: "Ganancia neta dividida por la peor caída. Junta las dos mitades de la pregunta —cuánto ganó y cuánto hubo que aguantar— y no se mueve si cambiás el riesgo por operación. En 1 ganó justo lo que llegó a caer; 2 ya es exigente y 3 lo pasa una de cada diez en un mercado bueno." },
   { key: "maxDd",       label: "Drawdown máximo ≤",     step: 1,    min: 4, def: 25,   unit: "%",
