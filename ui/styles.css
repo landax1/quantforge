@@ -64,23 +64,23 @@
 */
 :root {
   /* ---- superficies: cada nivel se apoya sobre el anterior ---- */
-  --bg:            #120F10;
-  --bg-soft:       #1A1517;
-  --card:          #1E181A;
-  --card-2:        #241D1F;
-  --card-hover:    #2A2124;
-  --border:        #31262A;
-  --border-soft:   #2A2124;
-  --border-strong: #443338;
-  --grid:          #2A2124;
+  --bg:            #0C0E10;
+  --bg-soft:       #14171A;
+  --card:          #181C20;
+  --card-2:        #1E2328;
+  --card-hover:    #232A30;
+  --border:        #2A3138;
+  --border-soft:   #232A30;
+  --border-strong: #3A434C;
+  --grid:          #232A30;
 
   /* ---- texto ---- */
-  --text:      #F6EFEA;
-  --text-2:    #D3C6C3;
+  --text:      #EDF1F5;
+  --text-2:    #C6CFD8;
   /* #6d768f quedaba en 3.58:1 sobre las filas resaltadas y 4.06:1 sobre las
      tarjetas — por debajo del mínimo legible, y ahí vive casi todo el texto
      secundario. Este valor no baja de 4.78:1 en ninguna superficie oscura. */
-  --text-dim:  #A8999A;
+  --text-dim:  #97A3AE;
 
   /* ---- color de marca y semántica ----
      DOS tokens de acento con trabajos distintos, porque ninguno solo puede
@@ -94,20 +94,20 @@
 
      Que se vea vivo no es cuestión de saturación sino de dónde aparece: color
      saturado en pocos lugares, el resto sostenido con grises. */
-  --accent:        #EC6A7E;
-  --accent-2:      #EC6A7E;
-  --accent-hover:  #f08194;
-  --accent-active: #d95a6e;
-  --accent-fg:     #1A1517;   /* tinta oscura sobre el coral: el blanco encima da 2.2:1 */                        /* texto sobre el botón lleno */
-  --accent-soft:   rgba(236, 106, 126, 0.13);
-  --accent-line:   rgba(236, 106, 126, 0.34);
-  --pos:           #63C79A;
-  --pos-soft:      rgba(99, 199, 154, 0.09);
-  --pos-line:      rgba(99, 199, 154, 0.28);
-  --pos-glow:      rgba(99, 199, 154, 0.16);
-  --neg:           #E8635C;
-  --neg-soft:      rgba(232, 99, 92, 0.09);
-  --neg-line:      rgba(232, 99, 92, 0.28);
+  --accent:        #35A9AE;
+  --accent-2:      #35A9AE;
+  --accent-hover:  #45bcc1;
+  --accent-active: #2d9296;
+  --accent-fg:     #14171A;   /* tinta oscura sobre el coral: el blanco encima da 2.2:1 */                        /* texto sobre el botón lleno */
+  --accent-soft:   rgba(53, 169, 174, 0.13);
+  --accent-line:   rgba(53, 169, 174, 0.34);
+  --pos:           #4FC38A;
+  --pos-soft:      rgba(79, 195, 138, 0.09);
+  --pos-line:      rgba(79, 195, 138, 0.28);
+  --pos-glow:      rgba(79, 195, 138, 0.16);
+  --neg:           #E5594F;
+  --neg-soft:      rgba(229, 89, 79, 0.09);
+  --neg-line:      rgba(229, 89, 79, 0.28);
   --warn:          #F0C877;
   --warn-soft:     rgba(240, 200, 119, 0.08);
   --warn-line:     rgba(240, 200, 119, 0.28);
@@ -123,17 +123,17 @@
   --n-violet-bg: rgba(139,92,246,.14);  --n-violet-tx: #c4b5fd;
 
   /* ---- superficies compuestas (barras fijas, tooltips, overlays) ---- */
-  --glass:      rgba(26, 21, 23, .93);          /* barras pegajosas con blur */
-  --overlay:    rgba(14, 11, 12, .82);             /* fondo del inspector */
-  --sheet-fade: rgba(22, 17, 18, .98);          /* degradado del encabezado */
-  --tooltip-bg: rgba(22, 17, 18, .97);
-  --toast-bg:   rgba(36, 29, 31, .97);
+  --glass:      rgba(20, 23, 26, .93);          /* barras pegajosas con blur */
+  --overlay:    rgba(9, 11, 13, .82);             /* fondo del inspector */
+  --sheet-fade: rgba(17, 20, 23, .98);          /* degradado del encabezado */
+  --tooltip-bg: rgba(17, 20, 23, .97);
+  --toast-bg:   rgba(30, 35, 40, .97);
   --scroll:       #3a2d31;
   --scroll-hover: #4c3b40;
-  --scroll-thin:  #31262A;
+  --scroll-thin:  #2A3138;
 
   /* flecha de los <select> y icono del calendario, embebidos como data URI */
-  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23A8999A' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M5 9l7 7 7-7'/%3E%3C/svg%3E");
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2397A3AE' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M5 9l7 7 7-7'/%3E%3C/svg%3E");
   --date-icon: invert(.65);
 
   /* ---- forma y profundidad ---- */
@@ -148,7 +148,7 @@
   --sh-1: 0 1px 2px rgba(0,0,0,.28);
   --sh-2: 0 4px 16px rgba(0,0,0,.3);
   --sh-3: 0 20px 56px rgba(0,0,0,.5);
-  --ring: 0 0 0 3px rgba(236,106,126,.24);
+  --ring: 0 0 0 3px rgba(53,169,174,.24);
 
   /* alturas de control, para que todo lo clickeable quede parejo */
   --h-ctl: 38px;
