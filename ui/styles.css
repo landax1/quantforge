@@ -89,8 +89,11 @@
      es su versión clara para ACENTO EN TEXTO sobre fondo oscuro. El vivo da
      4.70:1 con blanco encima pero sólo 3.92:1 como texto, y al revés.
 
-     El verde y el rojo están RESERVADOS para ganancia y pérdida: el color de
-     marca nunca puede competir con ellos, y por eso es índigo y no azul-verde.
+     El verde y el rojo están RESERVADOS para ganancia y pérdida. El celeste es
+     el vecino más cercano que puede tener el color de marca sin invadirlos, y
+     por eso nunca se usa sobre un número: vive en botones, en la columna que
+     está ordenando y en lo que está elegido. Un acento que pinta cifras las
+     hace leer como una señal de resultado que no son.
 
      Que se vea vivo no es cuestión de saturación sino de dónde aparece: color
      saturado en pocos lugares, el resto sostenido con grises. */
@@ -98,7 +101,7 @@
   --accent-2:      #35A9AE;
   --accent-hover:  #45bcc1;
   --accent-active: #2d9296;
-  --accent-fg:     #14171A;   /* tinta oscura sobre el coral: el blanco encima da 2.2:1 */                        /* texto sobre el botón lleno */
+  --accent-fg:     #14171A;   /* tinta del botón lleno: el blanco encima da 2.82:1 y ésta 6.37:1 */
   --accent-soft:   rgba(53, 169, 174, 0.13);
   --accent-line:   rgba(53, 169, 174, 0.34);
   --pos:           #4FC38A;
@@ -128,8 +131,8 @@
   --sheet-fade: rgba(17, 20, 23, .98);          /* degradado del encabezado */
   --tooltip-bg: rgba(17, 20, 23, .97);
   --toast-bg:   rgba(30, 35, 40, .97);
-  --scroll:       #3a2d31;
-  --scroll-hover: #4c3b40;
+  --scroll:       #333C44;
+  --scroll-hover: #414B55;
   --scroll-thin:  #2A3138;
 
   /* flecha de los <select> y icono del calendario, embebidos como data URI */
@@ -461,6 +464,21 @@ main { flex: 1; overflow-y: auto; padding: 30px 34px 90px; scroll-behavior: smoo
 }
 .ctx-pill b { font-size: 12px; font-weight: 600; }
 .ctx-pill span { color: var(--text-dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+/* cuánto queda de banco. Se avisa antes de llegar al tope y no cuando ya se
+   podó: enterarse de un límite recién cuando te borró algo es enterarse tarde. */
+.ph-pill {
+  display: flex; align-items: baseline; gap: 3px;
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 999px; padding: 9px 18px; box-shadow: var(--sh-1);
+  font-variant-numeric: tabular-nums;
+}
+.ph-pill b { font-size: 15px; font-weight: 680; letter-spacing: -.02em; }
+.ph-pill u { text-decoration: none; color: var(--text-dim); font-size: 12px; }
+.ph-pill em { font-style: normal; color: var(--text-dim); font-size: 10px;
+              font-weight: 550; margin-left: 8px; }
+.ph-pill.alerta { border-color: var(--warn-line); background: var(--warn-soft); }
+.ph-pill.alerta em { color: var(--warn); }
 
 /* ============================================================ cards ===== */
 .card {
@@ -1342,12 +1360,98 @@ svg.spark { display: block; border-radius: 4px; }
 .score-detail .score-bars { margin-top: 0; }
 .score-detail .sb-row { grid-template-columns: 1fr 150px 48px; }
 
-/* ================================================ cuaderno de corridas == */
-table.runs td { font-size: 12px; vertical-align: top; }
-table.runs .run-sub { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
-table.runs .run-crit { max-width: 250px; font-size: 11px; color: var(--text-2); line-height: 1.45; }
-table.runs tr.best-run td { background: var(--pos-soft); }
-table.runs tr.best-run td:first-child { box-shadow: inset 2px 0 0 var(--pos); }
+/* ============================================================ databank ==
+   Las corridas son la unidad de navegación del banco: cada una es un
+   experimento con su instrumento, su temporalidad y su vara. Se listan como
+   fichas y no como pestañas porque una pestaña no puede decir todo eso. */
+.corridas-lista {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.corrida-chip {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 9px 14px; border-radius: var(--r-sm);
+  background: var(--card-2); border: 1px solid var(--border-soft);
+  color: var(--text-2); cursor: pointer; text-align: left;
+  transition: background .14s var(--ease), border-color .14s var(--ease), color .14s;
+}
+.corrida-chip:hover { background: var(--card-hover); border-color: var(--border); }
+.corrida-chip b { font-size: 12px; font-weight: 650; color: var(--text); letter-spacing: -.01em; }
+.corrida-chip span { font-size: 10px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.corrida-chip.on {
+  background: var(--accent-soft); border-color: var(--accent-line);
+}
+.corrida-chip.on b { color: var(--accent-2); }
+.corrida-chip.on span { color: var(--text-2); }
+/* la corrida que no encontró nada sigue estando —es parte del cuaderno— pero
+   no compite por la atención con las que sí tienen resultados */
+.corrida-chip.vacia b { color: var(--text-dim); font-weight: 550; }
+.corrida-chip.vacia.on b { color: var(--accent-2); }
+
+.cf-quedan { text-decoration: none; color: var(--text-dim); font-weight: 500; font-size: 11px; }
+
+.corrida-ficha {
+  margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-soft);
+}
+.cf-datos {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: 14px 18px;
+}
+.cf-datos span { display: block; font-size: 10px; color: var(--text-dim);
+                 font-weight: 550; margin-bottom: 3px; }
+.cf-datos b { font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.cf-vara { margin-top: 14px; font-size: 11px; color: var(--text-2); line-height: 1.5; }
+.cf-vara span { color: var(--text-dim); font-weight: 600; margin-right: 6px; }
+.cf-acciones { display: flex; align-items: center; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
+.linkbtn.peligro { color: var(--neg); }
+
+/* La barra de selección ocupa su lugar siempre, aunque no haya nada tildado:
+   si apareciera y desapareciera, la tabla saltaría una fila entera cada vez
+   que se marca la primera casilla. */
+.seleccion {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px; padding: 10px 14px; border-radius: var(--r-sm);
+  background: transparent; border: 1px solid transparent;
+  opacity: .55; transition: background .16s var(--ease), border-color .16s var(--ease),
+                            opacity .16s var(--ease);
+}
+.seleccion.activa {
+  background: var(--accent-soft); border-color: var(--accent-line); opacity: 1;
+}
+.seleccion .sel-n { font-size: 12px; font-weight: 650; color: var(--text);
+                    font-variant-numeric: tabular-nums; margin-right: auto; }
+.seleccion button[disabled] { opacity: .5; pointer-events: none; }
+.seleccion:not(.activa) button { pointer-events: none; }
+
+table.banco td { vertical-align: middle; }
+table.banco .tick { width: 34px; padding-left: 14px; padding-right: 0; }
+table.banco .tick input { cursor: pointer; accent-color: var(--accent); }
+table.banco tr.tildada td { background: var(--accent-soft); }
+table.banco .origen b { font-size: 12px; font-weight: 620; }
+table.banco .run-sub { font-size: 10px; color: var(--text-dim); margin-top: 2px;
+                       font-variant-numeric: tabular-nums; }
+
+/* Columna cuyo número no se puede comparar entre las corridas que están a la
+   vista: el rendimiento y la caída escalan con el riesgo por operación. El
+   punteado dice "medida en otra unidad", sin gritar como haría un color. */
+th.orden.mixta { color: var(--text-dim); }
+th.orden.mixta::after {
+  content: ""; display: block; height: 0; margin-top: 3px;
+  border-bottom: 1px dashed var(--border-strong);
+}
+
+.nav-count.nuevo {
+  animation: cuenta-nueva 1.6s var(--ease);
+}
+@keyframes cuenta-nueva {
+  0%   { background: var(--accent); color: var(--accent-fg); }
+  100% { background: inherit; color: inherit; }
+}
+
+/* Los dos controles de una búsqueda en curso comparten renglón: pausar y
+   detener no son lo mismo y tienen que poder elegirse uno al lado del otro. */
+.run-acciones { display: flex; gap: 8px; }
+.run-acciones .btn { flex: 1; }
+#m-pause.pausado { color: var(--accent-2); border-color: var(--accent-line); }
 
 /* ========================================================= métricas ===== */
 .metrics-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 11px; }

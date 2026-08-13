@@ -7,9 +7,13 @@ background jobs polled via ``/api/jobs/{id}``.
 
 from __future__ import annotations
 
+import dataclasses
 import hmac
 import os
+import sqlite3
 import time
+import traceback
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -81,6 +85,9 @@ CALCULO = (
     "/api/mine", "/api/backtest", "/api/generate", "/api/evolve",
     "/api/optimize", "/api/walkforward", "/api/montecarlo", "/api/portfolio",
     "/api/jobs", "/api/export",
+    # el banco es la salida del minado: si el servidor público lo sirviera,
+    # bastaría con minar una vez para que la web quedara de repositorio
+    "/api/banco", "/api/corridas",
 )
 
 
@@ -579,6 +586,18 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             raise HTTPException(404, "Job not found")
         return {"status": "stopping"}
 
+    @app.post("/api/jobs/{job_id}/pause")
+    def pause_job(job_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Frena el hilo sin perder la búsqueda.
+
+        Detener descarta la población, los genomas ya probados y el punto de la
+        semilla: volver a arrancar re-explora lo mismo. Pausar los conserva.
+        """
+        on = True if payload is None else bool(payload.get("paused", True))
+        if not jobs.pause(job_id, on):
+            raise HTTPException(404, "Ese trabajo ya no está corriendo.")
+        return {"paused": on}
+
     #: un ida y vuelta que supere este % del precio no es un costo de broker,
     #: es una configuración heredada de otro instrumento
     _MAX_COST_PCT = 2.0
@@ -637,6 +656,61 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         used_range = {"from": str(df.index[0]), "to": str(df.index[-1]),
                       "bars": int(len(df))}
 
+        dueno = duenio(request)
+        try:
+            ds_nombre = db.get_dataset(payload["dataset_id"], dueno)["name"]
+        except KeyError:
+            ds_nombre = ""
+
+        def archivar(out: dict[str, Any]) -> str | None:
+            """Guarda la corrida terminada con su databank entero.
+
+            Antes de esto el databank vivía en la memoria del trabajo: arrancar
+            otra búsqueda lo borraba y no había forma de comparar dos corridas
+            ni de rescatar una estrategia dos días después.
+
+            Se archiva del lado del servidor y no de la pantalla a propósito.
+            Una búsqueda larga se deja corriendo y uno se va; si el guardado
+            dependiera del navegador abierto, cerrarlo tiraría el trabajo.
+
+            El contexto va completo porque una fila del banco sin él es un
+            número sin unidad: 40% anual al 1% de riesgo y 40% al 3% no son
+            comparables, y sin el instrumento ni los costos la estrategia
+            tampoco se puede volver a exportar.
+
+            Una corrida que no encontró NADA se archiva igual, sin filas. Es el
+            experimento que más conviene tener anotado: dice que con esa vara,
+            sobre ese instrumento, se probaron novecientas candidatas y no pasó
+            ninguna. Sin ese registro se vuelve a intentar lo mismo dentro de
+            un mes. Ocupa una fila y no cuenta contra el tope del banco.
+            """
+            ended = ("detenida" if out.get("stopped")
+                     else "completa" if out.get("reached_goal") else "sin llegar")
+            contexto = {
+                "direction": payload.get("direction", "both"),
+                "method": out.get("method"), "fitness": payload.get("fitness", "composite"),
+                "min_trades": out.get("min_trades"), "accept": out.get("accept") or {},
+                "target_keep": out.get("target_keep"),
+                "risk": dataclasses.asdict(risk), "settings": dataclasses.asdict(settings),
+                "measured_range": out.get("measured_range"), "range": out.get("range"),
+                "split": out.get("split"), "exhausted": out.get("exhausted"),
+                "hit_cap": out.get("hit_cap"),
+            }
+            try:
+                guardado = db.guardar_corrida(
+                    dataset_id=payload["dataset_id"], dataset_name=ds_nombre,
+                    timeframe=payload.get("timeframe") or "native",
+                    seed=out.get("seed"), tested=out.get("tested", 0),
+                    elapsed=out.get("elapsed_s", 0.0), ended=ended, contexto=contexto,
+                    filas=out.get("databank") or [], user_id=dueno)
+            except sqlite3.Error:
+                # que falle el archivado no puede tirar la corrida: el usuario
+                # esperó los minutos y el resultado ya está en pantalla
+                traceback.print_exc()
+                return None
+            out["podadas"] = guardado["podadas"]
+            return guardado["id"]
+
         def work(handle):
             out = mine(
                 df, drv, flt,
@@ -656,8 +730,9 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 handle=handle,
             )
             out["range"] = used_range
+            out["corrida_id"] = archivar(out)
             return out
-        return {"job_id": jobs.submit_streaming("mine", work, duenio(request))}
+        return {"job_id": jobs.submit_streaming("mine", work, dueno)}
 
     @app.post("/api/generate")
     def start_generate(request: Request, payload: dict[str, Any]) -> dict[str, str]:
@@ -823,6 +898,86 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     def delete_strategy(request: Request, sid: str) -> dict[str, str]:
         db.delete_strategy(sid, duenio(request))
         return {"status": "deleted"}
+
+    # ----------------------------------------------------------------- banco
+    #: Cuántas filas devuelve un pedido del banco. El tope existe porque la
+    #: tabla ya viene ordenada por la base: pedir más que esto es pedir filas
+    #: que nadie va a mirar, y cada una arrastra su curva de capital.
+    _PAGINA_BANCO = 200
+
+    @app.get("/api/corridas")
+    def list_corridas(request: Request) -> dict[str, Any]:
+        dueno = duenio(request)
+        return {
+            "corridas": db.list_corridas(dueno),
+            "total": db.contar_banco(dueno),
+            "tope": db.TOPE_BANCO,
+            "tope_corridas": db.TOPE_CORRIDAS,
+        }
+
+    @app.get("/api/banco")
+    def list_banco(request: Request, corrida: str = "", orden: str = "puesto",
+                   dir: str = "", limite: int = _PAGINA_BANCO,
+                   desde: int = 0) -> list[dict[str, Any]]:
+        desc = None if dir not in ("asc", "desc") else (dir == "desc")
+        return db.list_banco(
+            corrida_id=corrida or None, orden=orden, desc=desc,
+            limite=max(1, min(limite, _PAGINA_BANCO)), desde=max(0, desde),
+            user_id=duenio(request))
+
+    @app.delete("/api/corridas/{cid}")
+    def borrar_corrida(request: Request, cid: str) -> dict[str, int]:
+        return {"borradas": db.borrar_corrida(cid, duenio(request))}
+
+    @app.post("/api/banco/borrar")
+    def borrar_del_banco(request: Request, payload: dict[str, Any]) -> dict[str, int]:
+        ids = [str(x) for x in (payload.get("ids") or [])]
+        return {"borradas": db.borrar_banco(ids, duenio(request))}
+
+    @app.post("/api/banco/guardar")
+    def guardar_del_banco(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+        """Copia filas del banco a Mis estrategias.
+
+        Se arma del lado del servidor porque el contexto de una fila vive en su
+        corrida, no en la pantalla: guardar mirando la configuración actual le
+        pegaría a una estrategia de EURUSD los costos que hoy están cargados
+        para el S&P, y el backtest de mañana no se parecería en nada.
+        """
+        ids = [str(x) for x in (payload.get("ids") or [])]
+        dueno = duenio(request)
+        filas = db.get_banco(ids, dueno)
+        if not filas:
+            raise HTTPException(404, "Esas estrategias ya no están en el banco.")
+        guardadas = []
+        for f in filas:
+            fila, ctx = f["fila"], f["contexto"]
+            ajustes = ctx.get("settings") or {}
+            riesgo = ctx.get("risk") or {}
+            por_lotes = riesgo.get("size_mode") == "fixed_units"
+            meta = {
+                "dataset_id": f["dataset_id"] or "", "dataset_name": f["dataset_name"] or "",
+                "timeframe": f["timeframe"] or "", "direction": ctx.get("direction", "both"),
+                "spread": ajustes.get("spread"), "slippage": ajustes.get("slippage"),
+                "commission": ajustes.get("commission_pct"),
+                "capital": ajustes.get("initial_capital"),
+                "sizing": "lots" if por_lotes else "risk",
+                "riskPct": None if por_lotes else riesgo.get("size_value"),
+                "lots": riesgo.get("size_value") if por_lotes else None,
+                "rr": riesgo.get("reward_ratio"),
+                "stop_mult": fila.get("stop_mult"), "blocks": fila.get("blocks") or "",
+                "genes_label": fila.get("genes_label") or "", "score": fila.get("score"),
+                "oos": fila.get("oos"), "oos_ratio": fila.get("oos_ratio"),
+                "metrics": fila.get("metrics") or {},
+                "measured_range": ctx.get("measured_range"),
+                "corrida_id": f["corrida_id"],
+                "saved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            }
+            sid = db.save_strategy(
+                f["nombre"], fila.get("spec") or {},
+                notes=f"Del banco · {f['dataset_name']} {f['timeframe']}".strip(),
+                meta=meta, user_id=dueno)
+            guardadas.append({"id": sid, "name": f["nombre"]})
+        return {"guardadas": guardadas}
 
     # --------------------------------------------------------------- results
     @app.get("/api/results")

@@ -19,9 +19,12 @@ const S = {
   mineLive: null,
   mineResult: null,
   mining: false,
+  minePaused: false,
   inspect: null,
-  // cuaderno de laboratorio: cada corrida terminada con su configuración
-  runs: JSON.parse(localStorage.getItem("qf.runs") || "[]"),
+  // el banco: corridas archivadas, qué se está mirando y qué está tildado
+  banco: { corridas: [], total: 0, tope: 0, filas: [], corrida: "", sel: new Set() },
+  // arranca en la vista de todas, y ahí el puesto no ordena nada — ver ORDEN_NATURAL
+  bancoSort: { key: "score", dir: -1 },
   // estrategias guardadas: viven en el servidor y sobreviven a cada corrida
   saved: [],
 };
@@ -394,6 +397,14 @@ const ICONOS = {
   info:     `<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5"/><path d="M12 7.6h.01"/>`,
   sube:     `<path d="m6 14.5 6-6 6 6"/>`,
   baja:     `<path d="m6 9.5 6 6 6-6"/>`,
+  // pausa y seguir van en rectángulo y triángulo para que hagan juego con
+  // `detener`, que ya era un rectángulo: los tres son el mismo control
+  pausa:    `<rect x="7" y="5.5" width="3.6" height="13" rx="1.2"/><rect x="13.4" y="5.5" width="3.6" height="13" rx="1.2"/>`,
+  seguir:   `<path d="M8 5.6v12.8a.6.6 0 0 0 .92.5l10-6.4a.6.6 0 0 0 0-1L8.92 5.1A.6.6 0 0 0 8 5.6Z"/>`,
+  // el banco es una tabla, no un cilindro: el cilindro ya es `base` y son los
+  // instrumentos. Dos cosas distintas no pueden compartir símbolo.
+  banco:    `<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17"/><path d="M9.5 9.5v10"/>`,
+  basura:   `<path d="M4.5 7h15"/><path d="M9.5 7V5.2a1.2 1.2 0 0 1 1.2-1.2h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/><path d="m6.7 7 .87 12.1a1.5 1.5 0 0 0 1.5 1.4h5.86a1.5 1.5 0 0 0 1.5-1.4L17.3 7"/>`,
 };
 
 /** Devuelve el SVG de un ícono. `cls` va al elemento para poder dimensionarlo
@@ -444,108 +455,6 @@ function scoreBars(parts) {
       <span class="sb-val">${Math.round(v * d.weight)}<u>/${d.weight}</u></span>
     </div>`;
   }).join("")}</div>`;
-}
-
-/* ================================================ cuaderno de corridas =====
-   Probar combinaciones se hace CORRIENDO la búsqueda de nuevo, no moviendo
-   umbrales sobre resultados ya vistos. Para que eso sea llevadero, cada
-   corrida queda anotada con su configuración: se comparan entre sí y se puede
-   volver a cualquiera con un clic. Ojo con leer el historial como un ranking
-   — dos corridas con la MISMA config dan estrategias distintas (semilla
-   aleatoria), así que la diferencia entre dos filas parecidas es varianza,
-   no necesariamente que una configuración sea mejor. */
-const MAX_RUNS = 24;
-
-function recordRun(result) {
-  const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
-  const bank = result.databank || [];
-  const best = bank[0]?.metrics;
-  S.runs.unshift({
-    at: Date.now(),
-    instrument: ds ? ds.name.replace(/ M1.*/, "") : "—",
-    tf: S.sel.timeframe || "1h",
-    dir: S.cfg.direction,
-    risk: S.cfg.riskPct, rr: S.cfg.rr,
-    minTrades: S.cfg.minTrades,
-    crit: CRITERIA.filter(cr => S.cfg.critOn[cr.key])
-      .map(cr => ({ k: cr.key, v: S.cfg[cr.key] })),
-    method: S.cfg.method,
-    goal: S.cfg.goal,
-    seed: result.seed,
-    tested: result.tested, kept: bank.length,
-    elapsed: result.elapsed_s,
-    ended: result.stopped ? "detenida" : result.reached_goal ? "completa" : "sin llegar",
-    best: best ? {
-      cagr: best.cagr_pct, pf: best.profit_factor,
-      dd: best.max_drawdown_pct, trades: best.trades,
-    } : null,
-  });
-  S.runs = S.runs.slice(0, MAX_RUNS);
-  localStorage.setItem("qf.runs", JSON.stringify(S.runs));
-}
-
-function critLabel(list) {
-  if (!list.length) return "sin filtros";
-  return list.map(c => `${CRIT_BY_KEY[c.k].label} ${c.v}${CRIT_BY_KEY[c.k].unit}`).join(" · ");
-}
-
-function renderRunHistory() {
-  const host = $("#m-runs");
-  if (!host) return;
-  if (!S.runs.length) { host.innerHTML = ""; return; }
-  const bestCagr = Math.max(...S.runs.map(r => r.best?.cagr ?? -Infinity));
-
-  host.innerHTML = `
-  <div class="card">
-    <h2>Cuaderno de corridas
-      <span class="hint">${S.runs.length} experimento${S.runs.length === 1 ? "" : "s"} ·
-        clic en “repetir” para volver a esa configuración</span>
-      <button class="linkbtn" id="runs-clear" style="margin-left:auto">Borrar historial</button></h2>
-    <div class="scroll-x"><table class="runs">
-      <thead><tr><th>Cuándo</th><th>Mercado</th><th>Riesgo</th><th>Filtros</th>
-        <th class="num">Probadas</th><th class="num">Encontradas</th>
-        <th class="num">Mejor anual</th><th class="num">PF</th><th class="num">DD</th><th></th></tr></thead>
-      <tbody>${S.runs.map((r, i) => `
-        <tr class="${r.best && r.best.cagr === bestCagr ? "best-run" : ""}">
-          <td class="muted">${new Date(r.at).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}
-            <div class="run-sub">${esc(r.ended)} · ${fmtDur(r.elapsed)}</div></td>
-          <td><b>${esc(r.instrument)}</b><div class="run-sub">${esc(r.tf)} · ${
-            r.dir === "long" ? "largos" : r.dir === "short" ? "cortos" : "ambos"} · semilla ${r.seed}</div></td>
-          <td>${r.risk}% <span class="muted">1:${r.rr}</span>
-            <div class="run-sub">${r.minTrades}+ trades</div></td>
-          <td class="run-crit">${esc(critLabel(r.crit))}</td>
-          <td class="num">${fmtInt(r.tested)}</td>
-          <td class="num"><b>${r.kept}</b><span class="muted">/${r.goal}</span></td>
-          <td class="num ${r.best && r.best.cagr >= 0 ? "pos" : "neg"}">
-            <b>${r.best ? fmtPct(r.best.cagr) : "—"}</b></td>
-          <td class="num">${r.best ? fmtNum(r.best.pf) : "—"}</td>
-          <td class="num neg">${r.best ? fmtNum(r.best.dd, 0) + "%" : "—"}</td>
-          <td class="num"><button class="btn ghost small" data-redo="${i}">Repetir</button></td>
-        </tr>`).join("")}</tbody></table></div>
-    <p class="stage-note">Dos corridas con la misma configuración dan estrategias distintas
-      (la semilla es aleatoria): si dos filas parecidas dan resultados distintos, eso es varianza
-      de la búsqueda, no una configuración mejor que la otra.</p>
-  </div>`;
-
-  $$("[data-redo]", host).forEach(b => b.onclick = () => {
-    const r = S.runs[+b.dataset.redo];
-    S.cfg.riskPct = r.risk; S.cfg.rr = r.rr;
-    S.cfg.minTrades = r.minTrades; S.cfg.goal = r.goal;
-    S.cfg.direction = r.dir; S.cfg.method = r.method;
-    S.cfg.critOn = {};
-    r.crit.forEach(c => { S.cfg.critOn[c.k] = true; S.cfg[c.k] = c.v; });
-    S.sel.timeframe = r.tf;
-    const ds = S.datasets.find(d => d.name.replace(/ M1.*/, "") === r.instrument);
-    if (ds) S.sel.dataset_id = ds.id;
-    saveCfg();
-    navigate("mining").then(() => toast("Configuración cargada — dale a Iniciar", "ok"));
-  });
-
-  $("#runs-clear", host).onclick = () => {
-    S.runs = [];
-    localStorage.removeItem("qf.runs");
-    renderRunHistory();
-  };
 }
 
 /* Una vez que arrancó la búsqueda la configuración queda congelada: si se
@@ -702,7 +611,8 @@ async function navigate(page) {
 }
 
 const TITULOS = {
-  data: "Datos", mining: "Mining", saved: "Mis estrategias", results: "Resultados",
+  data: "Datos", mining: "Mining", banco: "Databank",
+  saved: "Mis estrategias", results: "Resultados",
 };
 
 /* ============================================================ página DATOS */
@@ -858,15 +768,27 @@ PAGES.data = async (main) => {
 };
 
 /* ==================================================== página MIS ESTRATEGIAS
-   Lo que sobrevive a la corrida. Cada minado empieza de cero con una semilla
-   nueva, así que sin este cajón una estrategia buena se pierde para siempre
-   apenas volvés a minar con otros filtros. */
+   El estante elegido, y el último de los tres pasos: Mining busca, el Databank
+   junta todo lo que encontró corrida por corrida, y acá quedan las pocas que
+   uno decidió quedarse. La diferencia con el banco es el tope: el banco se
+   poda solo cuando se llena, esto no se toca nunca. */
 async function refreshSavedCount() {
   try {
     S.saved = await api.get("/api/strategies");
     const el = $("#saved-count");
     if (el) el.textContent = S.saved.length || "";
   } catch (e) { /* si el backend no responde ya hay un aviso arriba */ }
+}
+
+async function refreshBancoCount() {
+  try {
+    const r = await api.get("/api/corridas");
+    S.banco.corridas = r.corridas;
+    S.banco.total = r.total;
+    S.banco.tope = r.tope;
+    const el = $("#banco-count");
+    if (el) el.textContent = r.total || "";
+  } catch (e) { /* ídem */ }
 }
 
 PAGES.saved = async (main) => {
@@ -994,6 +916,461 @@ async function openSaved(s) {
     sinRango: !r,
     settings: { spread: t.spread, slippage: t.slippage,
                 commission_pct: t.commission, initial_capital: t.capital },
+  });
+}
+
+/* ========================================================= página DATABANK ==
+   El banco es donde queda TODO lo minado, corrida por corrida.
+
+   Antes esto no existía: el databank vivía en la memoria del trabajo en curso
+   y apretar Iniciar otra vez lo borraba entero. Comparar dos configuraciones
+   significaba anotar los números a mano antes de volver a minar, y una
+   estrategia que se veía bien el martes no estaba el miércoles.
+
+   La corrida no es una etiqueta decorativa, es la unidad de sentido. Dos filas
+   de corridas distintas pueden tener el mismo "42% anual" y no querer decir lo
+   mismo: el rendimiento y la caída escalan con el riesgo por operación, así
+   que 42% al 1% y 42% al 3% son estrategias muy distintas. Por eso cada fila
+   se muestra siempre con su origen, y por eso la vista de todas juntas avisa
+   qué columnas se pueden comparar entre corridas y cuáles no. */
+
+//: qué exigió cada corrida, con el nombre que ve el usuario. Las claves son
+//: las del backend; el orden es el mismo de la pantalla de Mining.
+const VARA = [
+  ["min_pf", "Profit factor ≥", ""],
+  ["min_win_rate_pct", "Aciertos ≥", "%"],
+  ["min_net_pct", "Ganancia total ≥", "%"],
+  ["min_cagr_pct", "Rendimiento anual ≥", "%"],
+  ["max_dd_pct", "Caída máxima ≤", "%"],
+  ["min_sharpe", "Sharpe ≥", ""],
+  ["min_exposure_pct", "Tiempo en mercado ≥", "%"],
+];
+
+/* Las columnas que dependen del tamaño de posición. Un riesgo del 3% por
+   operación da más o menos el triple de rendimiento Y el triple de caída que
+   el 1%: ordenar una lista mezclada por estas columnas ordena por la perilla
+   de riesgo, no por la calidad de la estrategia. Las otras —profit factor,
+   score, aciertos, meses positivos— son proporciones y no se mueven con el
+   tamaño, así que sí comparan de verdad. */
+const COLS_CON_RIESGO = new Set(["cagr", "dd"]);
+
+const BANCO_COLS = [
+  ["score", "Score", "Puntaje propio de robustez: qué tan repetible parece la estrategia, no cuánto rindió."],
+  ["cagr", "Anual", "Rendimiento anualizado. Escala con el riesgo por operación: no se compara entre corridas de distinto riesgo."],
+  ["pf", "PF", "Profit factor: cuántos dólares ganó por cada dólar que perdió. No depende del tamaño de posición, así que compara bien entre corridas."],
+  ["dd", "Máx. DD", "Máxima caída desde un pico. Escala con el riesgo por operación igual que el rendimiento."],
+  ["trades", "Ops.", "Cantidad de operaciones. Pocas operaciones hacen que cualquier métrica sea poco confiable."],
+  ["months", "Meses +", "Porcentaje de meses cerrados en ganancia. Alto significa que gana seguido, no de un solo golpe."],
+  ["oos", "Fuera<br>de muestra", "Profit factor fuera de muestra sobre el de adentro. Cerca de 1 la ventaja se sostuvo."],
+];
+
+const nombreCorto = (s) => String(s || "—").replace(/ M1.*/, "");
+
+function etiquetaCorrida(c) {
+  return `${nombreCorto(c.dataset_name)} · ${c.timeframe || "1h"}`;
+}
+
+/** El riesgo por operación de una corrida, que es lo que hace comparables (o
+ *  no) sus números con los de otra. */
+function riesgoDe(c) {
+  const r = (c.contexto || {}).risk || {};
+  return r.size_mode === "fixed_units" ? `${r.size_value} lotes` : `${r.size_value ?? "—"}%`;
+}
+
+function varaDe(c) {
+  const acc = (c.contexto || {}).accept || {};
+  const puestos = VARA.filter(([k]) => acc[k] != null)
+    .map(([k, lab, u]) => `${lab} ${acc[k]}${u}`);
+  const min = (c.contexto || {}).min_trades;
+  if (min) puestos.unshift(`${min}+ operaciones`);
+  return puestos.length ? puestos.join(" · ") : "sin filtros";
+}
+
+/* El orden con el que abre cada vista.
+
+   Dentro de una corrida el puesto es el ranking que le dio el minero, que es
+   su recomendación y por eso manda. Entre corridas ese mismo número no ordena
+   nada: el puesto 1 de EURUSD y el puesto 1 de XAUUSD quedan pegados y la
+   lista sale intercalada sin criterio. Ahí ordena el score, que es lo único
+   comparable entre búsquedas porque no depende del riesgo de cada una. */
+const ORDEN_NATURAL = (todas) => todas
+  ? { key: "score", dir: -1 }
+  : { key: "puesto", dir: 1 };
+
+async function cargarBanco({ corridas = true } = {}) {
+  if (corridas) {
+    const r = await api.get("/api/corridas");
+    S.banco.corridas = r.corridas;
+    S.banco.total = r.total;
+    S.banco.tope = r.tope;
+    // una corrida podada o borrada no puede seguir siendo el filtro activo, o
+    // la tabla queda vacía para siempre sin decir por qué
+    if (S.banco.corrida && !r.corridas.some(c => c.id === S.banco.corrida)) {
+      S.banco.corrida = "";
+      S.banco.sel.clear();
+    }
+  }
+  const s = S.bancoSort;
+  S.banco.filas = await api.get("/api/banco?" + new URLSearchParams({
+    corrida: S.banco.corrida, orden: s.key, dir: s.dir === 1 ? "asc" : "desc",
+  }));
+  // lo tildado que ya no está (borrado, podado, o de otra corrida) se suelta:
+  // si no, el contador diría "5 seleccionadas" con tres filas a la vista
+  const vivos = new Set(S.banco.filas.map(f => f.banco_id));
+  [...S.banco.sel].forEach(id => { if (!vivos.has(id)) S.banco.sel.delete(id); });
+}
+
+PAGES.banco = async (main) => {
+  await Promise.all([refreshDatasets(), cargarBanco()]);
+  const b = S.banco;
+
+  if (!b.corridas.length) {
+    main.innerHTML = pageHead("Databank", "Todo lo que encontrás, corrida por corrida.") +
+      `<div class="card"><div class="empty-state">
+        <div class="big">${icono("banco", "ico-xl")}</div>
+        <b>El banco está vacío</b>
+        <p class="mt">Cada búsqueda que termina deja acá sus estrategias con el instrumento,
+          la temporalidad y los filtros con los que se encontraron. Se acumulan: minar de
+          nuevo ya no borra lo anterior.</p>
+        <button class="btn mt" id="ir-a-minar">Ir a Mining</button>
+      </div></div>`;
+    $("#ir-a-minar", main).onclick = () => navigate("mining");
+    return;
+  }
+
+  const lleno = b.tope ? b.total / b.tope : 0;
+  main.innerHTML = pageHead("Databank",
+    `${fmtInt(b.total)} estrategia${b.total === 1 ? "" : "s"} de
+     ${b.corridas.length} corrida${b.corridas.length === 1 ? "" : "s"}.`,
+    `<div class="ph-pill ${lleno > 0.85 ? "alerta" : ""}">
+       <b>${fmtInt(b.total)}</b><u>/${fmtInt(b.tope)}</u>
+       <em>${lleno > 0.85 ? "casi lleno" : "capacidad"}</em></div>`) +
+    `<div id="banco-corridas"></div><div id="banco-tabla"></div>`;
+
+  pintarCorridas();
+  pintarBanco();
+};
+
+/* Las corridas como una lista, no como pestañas: son hasta cuarenta y cada
+   una necesita decir su instrumento, su temporalidad, su riesgo y su vara.
+   Eso no entra en una pestaña. */
+function pintarCorridas() {
+  const host = $("#banco-corridas");
+  if (!host) return;
+  const b = S.banco;
+  const activa = b.corridas.find(c => c.id === b.corrida);
+
+  host.innerHTML = `<div class="card">
+    <h2>Corridas <span class="hint">cada búsqueda quedó con la configuración
+      que la produjo · clic para ver sólo la suya</span></h2>
+    <div class="corridas-lista">
+      <button class="corrida-chip ${b.corrida ? "" : "on"}" data-corrida="">
+        <b>Todas</b><span>${fmtInt(b.total)} estrategias</span></button>
+      ${b.corridas.map(c => `
+        <button class="corrida-chip ${b.corrida === c.id ? "on" : ""} ${c.n ? "" : "vacia"}"
+          data-corrida="${esc(c.id)}" title="${esc(varaDe(c))}">
+          <b>${esc(etiquetaCorrida(c))}</b>
+          <span>${c.n ? `${c.n} · riesgo ${esc(riesgoDe(c))}` : "sin resultados"}</span>
+        </button>`).join("")}
+    </div>
+    ${activa ? `
+      <div class="corrida-ficha">
+        <div class="cf-datos">
+          <div><span>Buscó</span><b>${fmtInt(activa.tested)} candidatas</b></div>
+          <div><span>Encontró</span><b>${activa.encontradas ?? activa.n}${
+            activa.n !== (activa.encontradas ?? activa.n)
+              ? `<u class="cf-quedan"> · quedan ${activa.n}</u>` : ""}</b></div>
+          <div><span>Tardó</span><b>${fmtDur(activa.elapsed)}</b></div>
+          <div><span>Terminó</span><b>${esc(activa.ended)}</b></div>
+          <div><span>Semilla</span><b>${activa.seed ?? "—"}</b></div>
+          <div><span>Dirección</span><b>${
+            (activa.contexto || {}).direction === "short" ? "cortos"
+            : (activa.contexto || {}).direction === "both" ? "ambos" : "largos"}</b></div>
+        </div>
+        <p class="cf-vara"><span>Vara</span> ${esc(varaDe(activa))}</p>
+        <div class="cf-acciones">
+          <button class="btn ghost small" id="repetir-corrida">Repetir esta configuración</button>
+          <button class="linkbtn peligro" id="borrar-corrida">${icono("basura","ico-sm")} Borrar la corrida entera</button>
+        </div>
+        <p class="stage-note">Repetir no da las mismas estrategias: la semilla es aleatoria y cada
+          búsqueda explora otras combinaciones. Dos corridas iguales que rinden distinto son
+          varianza de la búsqueda, no una configuración mejor que la otra.</p>
+      </div>` : ""}
+  </div>`;
+
+  $$("[data-corrida]", host).forEach(btn => btn.onclick = async () => {
+    if (S.banco.corrida === btn.dataset.corrida) return;
+    S.banco.corrida = btn.dataset.corrida;
+    // cambiar de corrida cambia la población: mantener lo tildado dejaría
+    // acciones en masa apuntando a filas que ya no se ven
+    S.banco.sel.clear();
+    S.bancoSort = ORDEN_NATURAL(!S.banco.corrida);
+    await cargarBanco({ corridas: false });
+    pintarCorridas();
+    pintarBanco();
+  });
+
+  const repetir = $("#repetir-corrida", host);
+  if (repetir) repetir.onclick = () => repetirCorrida(activa);
+
+  const borrar = $("#borrar-corrida", host);
+  if (borrar) borrar.onclick = async () => {
+    if (!confirm(`¿Borrar la corrida ${etiquetaCorrida(activa)} y sus ${activa.n} estrategias?\n\n` +
+                 `Las que ya copiaste a Mis estrategias no se tocan.`)) return;
+    try {
+      await api.del(`/api/corridas/${activa.id}`);
+      S.banco.corrida = "";
+      S.banco.sel.clear();
+      await cargarBanco();
+      pintarCorridas();
+      pintarBanco();
+      toast("Corrida borrada", "ok");
+    } catch (e) { toast(e.message, "err"); }
+  };
+}
+
+function pintarBanco() {
+  const host = $("#banco-tabla");
+  if (!host) return;
+  const b = S.banco, s = S.bancoSort;
+  const todas = !b.corrida;
+  const porId = Object.fromEntries(b.corridas.map(c => [c.id, c]));
+
+  // ¿la vista mezcla corridas con distinto riesgo? Es lo que decide si las
+  // columnas de rendimiento y caída significan lo mismo de una fila a otra.
+  const riesgos = new Set(b.filas.map(f => riesgoDe(porId[f.corrida_id] || {})));
+  const mezcla = todas && riesgos.size > 1;
+
+  const th = (key, label, ayuda) => {
+    const activa = s.key === key;
+    const flecha = activa ? (s.dir === -1 ? icono("baja","ico-sm") : icono("sube","ico-sm")) : "";
+    const ojo = mezcla && COLS_CON_RIESGO.has(key) ? " mixta" : "";
+    return `<th class="num orden ${activa ? "activa" : ""}${ojo}" data-sort="${key}"
+      title="${esc(ayuda)}${activa ? "" : " · clic para ordenar"}">${label}<i>${flecha}</i></th>`;
+  };
+
+  const todosTildados = b.filas.length && b.filas.every(f => b.sel.has(f.banco_id));
+
+  host.innerHTML = `<div class="card">
+    <h2>${todas ? "Todas las estrategias" : etiquetaCorrida(porId[b.corrida] || {})}
+      <span class="hint">${b.filas.length} a la vista · clic en una fila para analizarla</span></h2>
+
+    ${mezcla ? `<div class="banner info mt" style="margin-bottom:14px">
+      <span class="b-ic">${icono("info")}</span><div>
+      <b>Estás viendo corridas con riesgos distintos.</b>
+      <b>Anual</b> y <b>Máx. DD</b> escalan con el riesgo por operación, así que entre
+      corridas ordenan por esa perilla y no por la estrategia.
+      <b>PF</b>, <b>Score</b> y <b>Meses +</b> son proporciones: ésas sí comparan.</div>
+    </div>` : ""}
+
+    <div class="seleccion ${b.sel.size ? "activa" : ""}">
+      <span class="sel-n">${b.sel.size} seleccionada${b.sel.size === 1 ? "" : "s"}</span>
+      <button class="btn small" id="sel-guardar">${icono("marcador","ico-sm")} Guardar en Mis estrategias</button>
+      <button class="btn ghost small" id="sel-borrar">${icono("basura","ico-sm")} Quitar del banco</button>
+      <button class="linkbtn" id="sel-limpiar">Limpiar</button>
+    </div>
+
+    ${b.filas.length ? `<div class="databank-wrap"><table class="banco">
+      <thead><tr>
+        <th class="tick"><input type="checkbox" id="sel-todas" ${todosTildados ? "checked" : ""}
+          aria-label="Seleccionar todas las de la vista"></th>
+        <th>Estrategia</th>
+        ${todas ? `<th>Corrida</th>` : `<th class="num orden ${s.key === "puesto" ? "activa" : ""}"
+          data-sort="puesto" title="El orden que le dio el minero, por QF Score">#<i>${
+            s.key === "puesto" ? icono("sube","ico-sm") : ""}</i></th>`}
+        ${BANCO_COLS.map(([k, l, a]) => th(k, l, a)).join("")}
+      </tr></thead>
+      <tbody>${b.filas.map(f => {
+        const m = f.metrics || {}, c = porId[f.corrida_id] || {};
+        return `<tr class="clickable ${b.sel.has(f.banco_id) ? "tildada" : ""}" data-fila="${esc(f.banco_id)}">
+          <td class="tick"><input type="checkbox" data-tick="${esc(f.banco_id)}"
+            ${b.sel.has(f.banco_id) ? "checked" : ""} aria-label="Seleccionar ${esc(f.name)}"></td>
+          <td><span class="strat-name">${esc(f.name)}</span>
+              <div class="strat-genes">${esc(f.genes_label || "")}</div></td>
+          ${todas
+            ? `<td class="origen"><b>${esc(nombreCorto(c.dataset_name))}</b>
+                 <div class="run-sub">${esc(c.timeframe || "")} · riesgo ${esc(riesgoDe(c))}</div></td>`
+            : `<td class="rank-cell"><span class="rank">${String(f.puesto + 1).padStart(2, "0")}</span></td>`}
+          <td class="num">${scoreCell(f.score)}</td>
+          <td class="num ${(m.cagr_pct ?? 0) >= 0 ? "pos" : "neg"}"><b>${
+            m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
+          <td class="num">${m.profit_factor != null ? fmtNum(m.profit_factor) : "—"}</td>
+          <td class="num neg">${m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
+          <td class="num">${fmtInt(m.trades ?? 0)}</td>
+          <td class="num">${fmtNum(m.months_positive_pct ?? 0, 0)}%</td>
+          <td class="num">${oosCell(f)}</td>
+        </tr>`;
+      }).join("")}</tbody></table></div>`
+      : bancoVacioHtml(porId[b.corrida])}
+  </div>`;
+
+  cablearBanco(host);
+}
+
+/* Una corrida sin filas puede serlo por dos motivos opuestos, y confundirlos
+   manda a hacer cosas distintas: si la búsqueda no encontró nada hay que
+   aflojar la vara, y si las borraste no hay nada que arreglar. */
+function bancoVacioHtml(c) {
+  if (!c) {
+    return `<div class="empty-state"><b>No queda nada en el banco.</b>
+      <p class="mt">Las que hayas guardado siguen en Mis estrategias.</p></div>`;
+  }
+  if (!c.encontradas) {
+    return `<div class="empty-state">
+      <div class="big">${icono("diana","ico-xl")}</div>
+      <b>Esta búsqueda no encontró ninguna.</b>
+      <p class="mt">Probó ${fmtInt(c.tested)} candidatas sobre
+        ${esc(nombreCorto(c.dataset_name))} y ninguna pasó la vara:
+        <b>${esc(varaDe(c))}</b>.</p>
+      <p class="mt muted">Queda anotada igual — es el experimento que conviene no repetir
+        por olvido. Repetí la configuración y aflojá el filtro que más descarta.</p>
+    </div>`;
+  }
+  return `<div class="empty-state"><b>Le sacaste las ${c.encontradas} que había encontrado.</b>
+    <p class="mt">Las que hayas guardado siguen en Mis estrategias.</p></div>`;
+}
+
+function cablearBanco(host) {
+  const b = S.banco;
+
+  $$("[data-sort]", host).forEach(th => th.onclick = async () => {
+    const key = th.dataset.sort;
+    const s = S.bancoSort;
+    // menos es mejor en la caída: ahí el primer clic tiene que traer las mejores
+    const natural = key === "dd" || key === "puesto" ? 1 : -1;
+    S.bancoSort = s.key === key ? { key, dir: -s.dir } : { key, dir: natural };
+    await cargarBanco({ corridas: false });
+    pintarBanco();
+  });
+
+  const refrescar = () => pintarBanco();
+
+  $$("[data-tick]", host).forEach(cb => cb.onclick = (ev) => {
+    ev.stopPropagation();      // el clic en la casilla no abre el inspector
+    const id = cb.dataset.tick;
+    if (cb.checked) b.sel.add(id); else b.sel.delete(id);
+    refrescar();
+  });
+
+  const todas = $("#sel-todas", host);
+  if (todas) todas.onclick = (ev) => {
+    ev.stopPropagation();
+    if (todas.checked) b.filas.forEach(f => b.sel.add(f.banco_id));
+    else b.sel.clear();
+    refrescar();
+  };
+
+  $$("[data-fila]", host).forEach(tr => tr.onclick = (ev) => {
+    if (ev.target.closest(".tick")) return;
+    abrirDelBanco(b.filas.find(f => f.banco_id === tr.dataset.fila));
+  });
+
+  $("#sel-limpiar", host).onclick = () => { b.sel.clear(); refrescar(); };
+
+  $("#sel-guardar", host).onclick = async () => {
+    const ids = [...b.sel];
+    if (!ids.length) return;
+    const btn = $("#sel-guardar", host);
+    btn.disabled = true;
+    try {
+      const r = await api.post("/api/banco/guardar", { ids });
+      const n = r.guardadas.length;
+      // guardar es COPIAR: la fila sigue en el banco. Si además la sacara,
+      // revisar una corrida la iría vaciando a medida que uno la mira.
+      b.sel.clear();
+      refrescar();
+      await refreshSavedCount();
+      toast(`${n} estrategia${n === 1 ? "" : "s"} en Mis estrategias — siguen también en el banco`, "ok");
+    } catch (e) { toast(e.message, "err"); }
+    btn.disabled = false;
+  };
+
+  $("#sel-borrar", host).onclick = async () => {
+    const ids = [...b.sel];
+    if (!ids.length) return;
+    if (!confirm(`¿Quitar ${ids.length} estrategia${ids.length === 1 ? "" : "s"} del banco?\n\n` +
+                 `Las que hayas guardado en Mis estrategias no se tocan.`)) return;
+    try {
+      await api.post("/api/banco/borrar", { ids });
+      b.sel.clear();
+      await cargarBanco();
+      pintarCorridas();
+      pintarBanco();
+      toast(`${ids.length} fuera del banco`, "ok");
+    } catch (e) { toast(e.message, "err"); }
+  };
+}
+
+/* Vuelve a Mining con la configuración exacta de una corrida vieja.
+
+   Es lo que hace del banco un cuaderno de laboratorio y no un archivo muerto:
+   se prueba una idea, se ve el resultado, se vuelve a la que había funcionado
+   y se le cambia una sola cosa. Reconstruir eso a mano son quince campos. */
+function repetirCorrida(c) {
+  if (!c) return;
+  const ctx = c.contexto || {};
+  const acc = ctx.accept || {}, risk = ctx.risk || {}, ajustes = ctx.settings || {};
+
+  S.cfg.critOn = {};
+  for (const [ui, backend] of Object.entries(CRIT_FIELD)) {
+    if (acc[backend] == null) continue;
+    S.cfg.critOn[ui] = true;
+    S.cfg[ui] = acc[backend];
+  }
+  S.cfg.direction = ctx.direction || "both";
+  if (ctx.min_trades != null) S.cfg.minTrades = ctx.min_trades;
+  if (ctx.target_keep != null) S.cfg.goal = ctx.target_keep;
+  if (ctx.method) S.cfg.method = ctx.method;
+  if (ctx.fitness) S.cfg.fitness = ctx.fitness;
+
+  if (risk.size_mode === "fixed_units") {
+    S.cfg.sizing = "lots";
+    if (risk.size_value != null) S.cfg.lots = risk.size_value;
+  } else {
+    S.cfg.sizing = "risk";
+    if (risk.size_value != null) S.cfg.riskPct = risk.size_value;
+  }
+  if (risk.reward_ratio != null) S.cfg.rr = risk.reward_ratio;
+
+  // los costos van con la configuración: son del mercado que se minó, y son
+  // justamente lo que no hay que arrastrar de otro instrumento
+  if (ajustes.spread != null) S.cfg.spread = ajustes.spread;
+  if (ajustes.slippage != null) S.cfg.slippage = ajustes.slippage;
+  if (ajustes.commission_pct != null) S.cfg.commission = ajustes.commission_pct;
+  if (ajustes.initial_capital != null) S.cfg.capital = ajustes.initial_capital;
+
+  S.sel.timeframe = c.timeframe || "1h";
+  const hay = S.datasets.some(d => d.id === c.dataset_id);
+  if (hay) S.sel.dataset_id = c.dataset_id;
+  saveCfg();
+  navigate("mining").then(() => toast(hay
+    ? "Configuración cargada — dale a Iniciar"
+    : `Configuración cargada, pero ${nombreCorto(c.dataset_name)} ya no está en el workspace`,
+    hay ? "ok" : "err"));
+}
+
+/* Una fila del banco se reabre con los datos de SU corrida, no con lo que esté
+   cargado ahora en Mining: el instrumento, el tramo medido y los costos son los
+   de aquella búsqueda. Con los de la pantalla, el backtest devolvería otra
+   estrategia con el mismo nombre. */
+function abrirDelBanco(f) {
+  if (!f) return;
+  const c = S.banco.corridas.find(x => x.id === f.corrida_id);
+  const ctx = c ? (c.contexto || {}) : {};
+  const rango = ctx.measured_range;
+  if (!c || !S.datasets.some(d => d.id === c.dataset_id)) {
+    toast("El instrumento con el que se minó ya no está en el workspace", "err");
+    return;
+  }
+  openInspector(f, {
+    dataset_id: c.dataset_id, timeframe: c.timeframe || "1h",
+    date_from: rango ? rango.from : undefined,
+    date_to: rango ? rango.to : undefined,
+    sinRango: !rango,
+    settings: ctx.settings || {},
+    // decir de qué corrida salió, no "guardada": todavía no lo está, y
+    // confundir las dos cosas hace creer que ya se rescató algo que no
+    etiqueta: `del banco · ${etiquetaCorrida(c)} · riesgo ${riesgoDe(c)}`,
   });
 }
 
@@ -1246,7 +1623,10 @@ PAGES.mining = async (main) => {
           </div>
         </div>
         <button class="btn big" id="m-run">${icono("pico")} Iniciar mining</button>
-        <button class="btn ghost big" id="m-stop" style="display:none">${icono("detener")} Detener</button>
+        <div class="run-acciones" id="m-acciones" style="display:none">
+          <button class="btn ghost big" id="m-pause">${icono("pausa")} Pausar</button>
+          <button class="btn ghost big" id="m-stop">${icono("detener")} Detener</button>
+        </div>
         ${progressHtml("m-prog")}
       </div>
     </aside>
@@ -1254,7 +1634,6 @@ PAGES.mining = async (main) => {
     <section class="results">
       <div id="m-live"></div>
       <div id="m-bank"></div>
-      <div id="m-runs"></div>
     </section>
   </div>`;
 
@@ -1542,13 +1921,32 @@ PAGES.mining = async (main) => {
   }
   if (S.mineResult || S.mineLive) renderMining(S.mineResult || S.mineLive, !!S.mineResult);
   else renderIdle();
-  renderRunHistory();
 
   $("#m-stop").onclick = async () => {
     if (S.mineJobId) {
       try { await api.post(`/api/jobs/${S.mineJobId}/stop`); toast("Deteniendo…"); }
       catch (e) { toast(e.message, "err"); }
     }
+  };
+
+  /* Pausar no es detener a medias.
+     Detener descarta la población, los genomas ya probados y el punto de la
+     semilla: volver a arrancar re-explora lo mismo desde cero. Pausar congela
+     el hilo con todo eso intacto, así que reanudar sigue en la candidata
+     siguiente. Es lo que permite liberar el procesador un rato sin perder los
+     minutos que ya se buscaron. */
+  $("#m-pause").onclick = async () => {
+    if (!S.mineJobId) return;
+    const btn = $("#m-pause");
+    btn.disabled = true;
+    try {
+      const r = await api.post(`/api/jobs/${S.mineJobId}/pause`, { paused: !S.minePaused });
+      pintarPausa(r.paused);
+      toast(r.paused
+        ? "En pausa — se guarda dónde iba, no se pierde nada"
+        : "Sigue la búsqueda");
+    } catch (e) { toast(e.message, "err"); }
+    btn.disabled = false;
   };
 
   $("#m-run").onclick = async () => {
@@ -1565,7 +1963,8 @@ PAGES.mining = async (main) => {
     // señal de que algo pasa si el usuario se fue a otra pantalla
     $("#nav [data-page='mining']")?.classList.add("minando");
     $("#m-run").disabled = true;
-    $("#m-stop").style.display = "";
+    $("#m-acciones").style.display = "";
+    pintarPausa(false);
     $("#m-runbar")?.classList.add("running");
     lockSetup(true);
     // pintar el estado "buscando" YA: el primer snapshot del backend tarda
@@ -1595,28 +1994,51 @@ PAGES.mining = async (main) => {
         },
       }, j => {
         setProgress("m-prog", j);
+        // el botón se sincroniza con el servidor y no con el clic: si el pedido
+        // de pausa se perdió, la pantalla no puede seguir diciendo que pausó
+        pintarPausa(!!j.paused);
         if (j.partial) { S.mineLive = j.partial; renderMining(j.partial, false); }
       }, id => { S.mineJobId = id; });
       S.mineResult = result;
       hideProgress("m-prog");
-      recordRun(result);
       renderMining(result, true);
-      renderRunHistory();
+      // la corrida ya quedó archivada del lado del servidor: acá sólo se
+      // actualiza el contador de la barra para que se note que entró
+      refreshBancoCount().then(() => {
+        const el = $("#banco-count");
+        if (el) { el.classList.add("nuevo"); setTimeout(() => el.classList.remove("nuevo"), 2000); }
+      });
       const kept = result.databank.length;
-      if (result.stopped) toast(`Detenido — ${kept} estrategias en el databank`, "ok");
+      if (result.stopped) toast(`Detenido — ${kept} estrategias, guardadas en el Databank`, "ok");
       else if (result.reached_goal)
-        toast(`Databank lleno: ${kept} estrategias en ${fmtDur(result.elapsed_s)}`, "ok");
+        toast(`${kept} estrategias en ${fmtDur(result.elapsed_s)} — quedaron en el Databank`, "ok");
       else toast(`Se probaron ${fmtInt(result.tested)} y sólo ${kept} pasaron los filtros`, "err");
+      if (result.podadas) {
+        toast(`El banco estaba lleno: se soltaron las ${result.podadas} corridas más viejas`);
+      }
     } catch (e) { toast(e.message, "err"); hideProgress("m-prog"); }
-    S.mining = false; S.mineJobId = null;
+    S.mining = false; S.mineJobId = null; S.minePaused = false;
     $("#nav [data-page='mining']")?.classList.remove("minando");
-    const run = $("#m-run"), stop = $("#m-stop");
+    const run = $("#m-run"), acciones = $("#m-acciones");
     if (run) run.disabled = false;
-    if (stop) stop.style.display = "none";
+    if (acciones) acciones.style.display = "none";
     $("#m-runbar")?.classList.remove("running");
     lockSetup(false);
   };
 };
+
+/* El botón de pausa dice qué va a pasar si lo apretás, no en qué estado está:
+   "Seguir" cuando está pausado, "Pausar" cuando está buscando. Un control que
+   se rotula con su estado hace dudar en el momento de tocarlo. */
+function pintarPausa(on) {
+  S.minePaused = !!on;
+  const btn = $("#m-pause");
+  if (!btn) return;
+  btn.innerHTML = on ? `${icono("seguir")} Seguir` : `${icono("pausa")} Pausar`;
+  btn.classList.toggle("pausado", !!on);
+  $("#m-runbar")?.classList.toggle("pausado", !!on);
+  $("#nav [data-page='mining']")?.classList.toggle("pausado", !!on);
+}
 
 /* La columna de resultados antes de la primera corrida: explica el flujo y
    confirma qué se va a buscar, en vez de mostrar un hueco vacío. */
@@ -2116,7 +2538,7 @@ async function openInspector(row, ctx) {
   host.innerHTML = `<div class="sheet">
     <div class="sheet-head">
       <div><h2>${esc(row.name)} ${ctx
-        ? `<span class="badge">guardada</span>`
+        ? `<span class="badge">${esc(ctx.etiqueta || "guardada")}</span>`
         : `<span class="badge">fitness ${fmtNum(row.fitness, 3)}</span>`}</h2>
         <p>${esc(row.blocks || "")} · <span style="font-family:ui-monospace">${esc(row.genes_label)}</span></p></div>
       <button class="sheet-close">${icono("cerrar")}</button>
@@ -2552,6 +2974,7 @@ function pedirCuenta(status) {
   refreshAuth();
   initTheme();
   refreshSavedCount();
+  refreshBancoCount();
   $$("#nav button").forEach(b => b.onclick = () => navigate(b.dataset.page));
   navigate(S.datasets.length ? "mining" : "data");
 })();

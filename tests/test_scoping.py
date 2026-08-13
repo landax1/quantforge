@@ -155,12 +155,19 @@ def test_the_sole_account_adopts_what_predates_accounts(tmp_path, monkeypatch):
     db = Database(tmp_path / "botiquant.sqlite")
     db.save_strategy("vieja", _spec())                    # sin dueño
     db.save_result("vieja", "ds", "DS", {"metrics": {}})
+    # y el banco, que es lo más fácil de perder: son horas de minado
+    db.guardar_corrida(
+        dataset_id="ds", dataset_name="DS", timeframe="1h", seed=1, tested=10,
+        elapsed=1.0, ended="completa", contexto={},
+        filas=[{"name": "B-001", "spec": {}, "score": 9, "metrics": {}}])
 
     u = db.upsert_user("sub-1", "yo@example.com", "Yo")
     movido = db.adoptar_huerfanos(u["id"])
 
-    assert movido == {"strategies": 1, "results": 1}
+    assert movido == {"strategies": 1, "results": 1, "corridas": 1, "banco": 1}
     assert [s["name"] for s in db.list_strategies(u["id"])] == ["vieja"]
+    assert len(db.list_corridas(u["id"])) == 1
+    assert db.contar_banco(u["id"]) == 1
 
 
 def test_an_account_that_predates_the_scoping_still_adopts(tmp_path):
@@ -189,7 +196,8 @@ def test_the_second_account_inherits_nothing(tmp_path):
     db.save_strategy("de-uno", _spec(), user_id=uno["id"])
 
     dos = db.upsert_user("sub-2", "dos@example.com", "Dos")
-    assert db.adoptar_huerfanos(dos["id"]) == {"strategies": 0, "results": 0}
+    assert db.adoptar_huerfanos(dos["id"]) == {
+        "strategies": 0, "results": 0, "corridas": 0, "banco": 0}
     assert db.list_strategies(dos["id"]) == []
     assert [s["name"] for s in db.list_strategies(uno["id"])] == ["de-uno"]
 

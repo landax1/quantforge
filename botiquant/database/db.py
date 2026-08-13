@@ -52,6 +52,32 @@ CREATE TABLE IF NOT EXISTS results (
     payload TEXT NOT NULL,
     created TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS corridas (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL DEFAULT '',
+    created TEXT NOT NULL,
+    dataset_id TEXT NOT NULL DEFAULT '',
+    dataset_name TEXT NOT NULL DEFAULT '',
+    timeframe TEXT NOT NULL DEFAULT '',
+    seed INTEGER,
+    tested INTEGER NOT NULL DEFAULT 0,
+    encontradas INTEGER NOT NULL DEFAULT 0,
+    elapsed REAL NOT NULL DEFAULT 0,
+    ended TEXT NOT NULL DEFAULT '',
+    contexto TEXT NOT NULL DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS banco (
+    id TEXT PRIMARY KEY,
+    corrida_id TEXT NOT NULL,
+    user_id TEXT NOT NULL DEFAULT '',
+    nombre TEXT NOT NULL,
+    puesto INTEGER NOT NULL DEFAULT 0,
+    spec TEXT NOT NULL,
+    fila TEXT NOT NULL,
+    score REAL, cagr REAL, pf REAL, dd REAL,
+    trades INTEGER, months REAL, oos_ratio REAL,
+    created TEXT NOT NULL
+);
 """
 
 
@@ -123,7 +149,7 @@ class Database:
         y dárselos a alguien se los sacaría a todos los demás.
         """
         hecho = {}
-        for tabla in ("strategies", "results"):
+        for tabla in ("strategies", "results", "corridas", "banco"):
             cur = self._exec(f"UPDATE {tabla} SET user_id=? WHERE user_id=''", (uid,))
             hecho[tabla] = cur.rowcount
         return hecho
@@ -155,6 +181,19 @@ class Database:
             "CREATE INDEX IF NOT EXISTS ix_strategies_user ON strategies(user_id)")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS ix_results_user ON results(user_id)")
+        # Cuántas encontró la corrida al archivarse. Sin esto no se puede
+        # distinguir una búsqueda que no encontró nada de una cuyas filas se
+        # borraron después, y son dos cosas muy distintas de leer en el banco.
+        have = {r["name"] for r in self._conn.execute("PRAGMA table_info(corridas)")}
+        if "encontradas" not in have:
+            self._conn.execute(
+                "ALTER TABLE corridas ADD COLUMN encontradas INTEGER NOT NULL DEFAULT 0")
+        # El banco es la tabla que crece: miles de filas contra las decenas de
+        # las otras. Se lee siempre por dueño y casi siempre por corrida.
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_banco_corrida ON banco(user_id, corrida_id)")
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_corridas_user ON corridas(user_id, created DESC)")
 
     def _exec(self, sql: str, args: tuple = ()) -> sqlite3.Cursor:
         with self._lock:
@@ -312,3 +351,177 @@ class Database:
     def delete_result(self, rid: str, user_id: str | None = None) -> None:
         cond, args = self._de(user_id)
         self._exec(f"DELETE FROM results WHERE id=?{cond}", (rid,) + args)
+
+    # ---------------------------------------------------------------- banco
+    #: Tope de estrategias vivas en el banco. No es una cifra de rendimiento de
+    #: SQLite —aguanta millones— sino de la persona: pasadas unas miles, el
+    #: banco deja de ser una mesa de trabajo y pasa a ser un depósito que nadie
+    #: revisa. Lo que valía la pena se copia a Mis estrategias, que no tiene
+    #: tope y no se poda nunca.
+    TOPE_BANCO = 2000
+    #: Y de corridas, que es el eje por el que se navega.
+    TOPE_CORRIDAS = 40
+
+    #: Columnas por las que se puede ordenar, y hacia dónde va el primer clic.
+    #: Ordenar en SQL y no en Python no es purismo: con el banco lleno, ordenar
+    #: afuera obliga a traer las 2000 filas con su JSON entero para devolver 50.
+    ORDENES = {
+        "score": ("score", "DESC"), "cagr": ("cagr", "DESC"),
+        "pf": ("pf", "DESC"), "dd": ("dd", "ASC"),
+        "trades": ("trades", "DESC"), "months": ("months", "DESC"),
+        "oos": ("oos_ratio", "DESC"), "puesto": ("puesto", "ASC"),
+    }
+
+    @staticmethod
+    def _num(v: Any) -> float | None:
+        """NaN e infinito no sobreviven a SQLite como números ordenables."""
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        return f if f == f and abs(f) != float("inf") else None
+
+    def guardar_corrida(self, *, dataset_id: str, dataset_name: str, timeframe: str,
+                        seed: int | None, tested: int, elapsed: float, ended: str,
+                        contexto: dict[str, Any], filas: list[dict[str, Any]],
+                        user_id: str | None = None) -> dict[str, Any]:
+        """Archiva una corrida terminada con todo su databank.
+
+        Es lo que convierte el databank en un banco: hasta acá las estrategias
+        vivían en el snapshot del trabajo en curso y arrancar otra búsqueda las
+        borraba sin avisar.
+
+        El ``contexto`` viaja entero a propósito. Una fila del banco sin su
+        instrumento, su timeframe y su riesgo es un número sin unidad: 40% anual
+        al 1% de riesgo y 40% al 3% no son la misma estrategia ni se comparan.
+        """
+        cid = _new_id()
+        dueno = user_id or ""
+        ahora = _now()
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO corridas (id, user_id, created, dataset_id, dataset_name,"
+                " timeframe, seed, tested, encontradas, elapsed, ended, contexto)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (cid, dueno, ahora, dataset_id, dataset_name, timeframe, seed,
+                 int(tested), len(filas), float(elapsed), ended, json.dumps(contexto)))
+            for i, fila in enumerate(filas):
+                m = fila.get("metrics") or {}
+                self._conn.execute(
+                    "INSERT INTO banco (id, corrida_id, user_id, nombre, puesto, spec,"
+                    " fila, score, cagr, pf, dd, trades, months, oos_ratio, created)"
+                    " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (_new_id(), cid, dueno, str(fila.get("name") or "—"), i,
+                     json.dumps(fila.get("spec") or {}), json.dumps(fila),
+                     self._num(fila.get("score")), self._num(m.get("cagr_pct")),
+                     self._num(m.get("profit_factor")), self._num(m.get("max_drawdown_pct")),
+                     self._num(m.get("trades")), self._num(m.get("months_positive_pct")),
+                     self._num(fila.get("oos_ratio")), ahora))
+            self._conn.commit()
+        podadas = self._podar(dueno, proteger=cid)
+        return {"id": cid, "guardadas": len(filas), "podadas": podadas}
+
+    def _podar(self, user_id: str, proteger: str = "") -> int:
+        """Deja el banco dentro del tope tirando las corridas más viejas.
+
+        Se poda por corrida ENTERA y nunca por fila suelta. Media corrida es
+        peor que ninguna: el puesto 1 de 25 significa algo, y el puesto 1 de las
+        9 que sobrevivieron a una poda significa otra cosa que nadie pidió.
+        """
+        cond, args = self._de(user_id, "c.user_id")
+        corridas = self._rows(
+            "SELECT c.id, (SELECT COUNT(*) FROM banco b WHERE b.corrida_id=c.id) AS n"
+            f" FROM corridas c WHERE 1=1{cond} ORDER BY c.created DESC, c.rowid DESC", args)
+        total = sum(c["n"] for c in corridas)
+        quedan = len(corridas)
+        muertas: list[str] = []
+        # de la más vieja hacia adelante, y la recién guardada nunca se toca
+        for c in [x for x in reversed(corridas) if x["id"] != proteger]:
+            if total <= self.TOPE_BANCO and quedan <= self.TOPE_CORRIDAS:
+                break
+            muertas.append(c["id"])
+            total -= c["n"]
+            quedan -= 1
+        for cid in muertas:
+            self._exec("DELETE FROM banco WHERE corrida_id=?", (cid,))
+            self._exec("DELETE FROM corridas WHERE id=?", (cid,))
+        return len(muertas)
+
+    def list_corridas(self, user_id: str | None = None) -> list[dict[str, Any]]:
+        cond, args = self._de(user_id, "c.user_id")
+        filas = self._rows(
+            "SELECT c.*, (SELECT COUNT(*) FROM banco b WHERE b.corrida_id=c.id) AS n"
+            f" FROM corridas c WHERE 1=1{cond} ORDER BY c.created DESC, c.rowid DESC", args)
+        for f in filas:
+            f["contexto"] = json.loads(f.get("contexto") or "{}")
+        return filas
+
+    def contar_banco(self, user_id: str | None = None) -> int:
+        cond, args = self._de(user_id)
+        return int(self._rows(
+            f"SELECT COUNT(*) AS n FROM banco WHERE 1=1{cond}", args)[0]["n"])
+
+    def list_banco(self, *, corrida_id: str | None = None, orden: str = "puesto",
+                   desc: bool | None = None, limite: int = 200, desde: int = 0,
+                   user_id: str | None = None) -> list[dict[str, Any]]:
+        """Filas del banco, ordenadas en la base.
+
+        Sin ``corrida_id`` devuelve el banco entero, que es la vista que permite
+        comparar corridas — con el cuidado de que ahí las columnas que dependen
+        del riesgo (anual, caída) no son comparables entre corridas de distinta
+        configuración. Esa advertencia la da la UI; acá sólo se ordena.
+        """
+        col, natural = self.ORDENES.get(orden) or self.ORDENES["puesto"]
+        sentido = natural if desc is None else ("DESC" if desc else "ASC")
+        cond, args = self._de(user_id)
+        if corrida_id:
+            cond += " AND corrida_id=?"
+            args = args + (corrida_id,)
+        # Las filas sin dato van al fondo se ordene como se ordene: pedir "las
+        # mejores por fuera de muestra" no puede arrancar con las que no tienen.
+        filas = self._rows(
+            f"SELECT * FROM banco WHERE 1=1{cond}"
+            f" ORDER BY ({col} IS NULL), {col} {sentido}, puesto ASC"
+            " LIMIT ? OFFSET ?", args + (max(1, limite), max(0, desde)))
+        salida = []
+        for f in filas:
+            fila = json.loads(f["fila"])
+            fila["banco_id"] = f["id"]
+            fila["corrida_id"] = f["corrida_id"]
+            fila["puesto"] = f["puesto"]
+            salida.append(fila)
+        return salida
+
+    def get_banco(self, ids: list[str], user_id: str | None = None) -> list[dict[str, Any]]:
+        """Filas puntuales por id, con su corrida al lado.
+
+        Va junto porque quien guarda una fila necesita el contexto de su corrida
+        para reconstruir el instrumento y los costos con los que se midió.
+        """
+        if not ids:
+            return []
+        cond, args = self._de(user_id, "b.user_id")
+        marcas = ",".join("?" * len(ids))
+        filas = self._rows(
+            "SELECT b.*, c.dataset_id, c.dataset_name, c.timeframe, c.contexto"
+            " FROM banco b LEFT JOIN corridas c ON c.id=b.corrida_id"
+            f" WHERE b.id IN ({marcas}){cond} ORDER BY b.puesto ASC", tuple(ids) + args)
+        for f in filas:
+            f["fila"] = json.loads(f["fila"])
+            f["contexto"] = json.loads(f.get("contexto") or "{}")
+        return filas
+
+    def borrar_banco(self, ids: list[str], user_id: str | None = None) -> int:
+        if not ids:
+            return 0
+        cond, args = self._de(user_id)
+        marcas = ",".join("?" * len(ids))
+        cur = self._exec(f"DELETE FROM banco WHERE id IN ({marcas}){cond}",
+                         tuple(ids) + args)
+        return cur.rowcount
+
+    def borrar_corrida(self, cid: str, user_id: str | None = None) -> int:
+        cond, args = self._de(user_id)
+        self._exec(f"DELETE FROM banco WHERE corrida_id=?{cond}", (cid,) + args)
+        cur = self._exec(f"DELETE FROM corridas WHERE id=?{cond}", (cid,) + args)
+        return cur.rowcount

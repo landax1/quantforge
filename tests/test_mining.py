@@ -262,11 +262,14 @@ def test_evolution_and_random_share_the_databank_shape(df):
 def test_mine_stop_via_handle(df):
     class FakeHandle:
         cancelled = False
+        paused = False
         def progress(self, frac, msg=""):
             pass
         def publish(self, snap):
             # cancel as soon as the first snapshot arrives
             FakeHandle.cancelled = True
+        def esperar(self):
+            pass
 
     t0 = time.time()
     r = mine(df, DRIVERS, FILTERS, max_candidates=100_000, min_trades=5,

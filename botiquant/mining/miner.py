@@ -205,6 +205,8 @@ def mine(
     # "pediste 65 y lo mejor fue 70.67", que se lee como una contradicción.
     fail_best: dict[str, float] = {}
     t0 = time.time()
+    #: segundos acumulados en pausa, que no son tiempo de búsqueda
+    pausa_total = 0.0
 
     # drawdown of the highest-CAGR candidate, to project what raising the risk
     # per trade would cost — CAGR and drawdown both scale ~linearly with it
@@ -264,6 +266,22 @@ def mine(
         else:
             fail_best[key] = max(cur, v) if kind == "min" else min(cur, v)
 
+    def _transcurrido() -> float:
+        """Segundos de búsqueda REAL, sin contar lo que estuvo en pausa.
+
+        Sin descontarlo, un café de diez minutos con la búsqueda pausada se
+        lee como diez minutos sin aceptar nada: el ritmo se desploma y el
+        tiempo restante estimado se dispara a un número absurdo."""
+        return time.time() - t0 - pausa_total
+
+    def _esperar_pausa() -> None:
+        nonlocal pausa_total
+        if handle is None or not handle.paused:
+            return
+        desde = time.time()
+        handle.esperar()
+        pausa_total += time.time() - desde
+
     def _eta_s() -> float | None:
         """Seconds left to fill the databank at the acceptance rate so far."""
         if target_keep is None or not bank:
@@ -271,7 +289,7 @@ def mine(
         missing = target_keep - len(bank)
         if missing <= 0:
             return 0.0
-        elapsed = max(time.time() - t0, 1e-6)
+        elapsed = max(_transcurrido(), 1e-6)
         per_second = len(bank) / elapsed
         return round(missing / per_second, 1) if per_second > 0 else None
 
@@ -305,7 +323,8 @@ def mine(
             # puede decir la vara completa que se aplicó
             "min_trades": min_trades,
             "best_fitness": bank[0]["fitness"] if bank else 0.0,
-            "elapsed_s": round(time.time() - t0, 1),
+            "elapsed_s": round(_transcurrido(), 1),
+            "pausado_s": round(pausa_total, 1),
             "eta_s": _eta_s(),
             "best_history": best_history,
             "databank": bank if final else bank[:50],
@@ -467,7 +486,17 @@ def mine(
         return score
 
     def keep_going() -> bool:
-        """Stop on: cancel, goal reached, or the safety cap on candidates."""
+        """Stop on: cancel, goal reached, or the safety cap on candidates.
+
+        Es también el punto de pausa. Corta entre candidata y candidata y no en
+        medio de un backtest: así el estado que se congela es siempre coherente
+        —población, genomas vistos, banco— y reanudar sigue exactamente donde
+        estaba en vez de repetir o saltear una candidata.
+        """
+        if handle is not None and handle.paused:
+            handle.progress(_fraction(), f"En pausa · {len(bank)} en el databank")
+            handle.publish(snapshot())
+            _esperar_pausa()
         if handle is not None and handle.cancelled:
             return False
         if tested >= max_candidates:

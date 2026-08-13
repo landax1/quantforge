@@ -26,12 +26,17 @@ class Job:
     partial: Any = None              # streaming snapshot while running
     cancelled: bool = False
     owner: str | None = None         # de quién es, para el cupo por persona
+    paused: bool = False
+    #: puesto cuando se reanuda; el hilo espera acá en vez de sondear
+    reanudar: threading.Event = field(default_factory=threading.Event)
 
     def to_dict(self, include_result: bool = True) -> dict[str, Any]:
         d: dict[str, Any] = {
             "id": self.id, "kind": self.kind, "status": self.status,
             "progress": round(self.progress, 4), "message": self.message,
         }
+        if self.paused:
+            d["paused"] = True
         if self.status == "error":
             d["error"] = self.error
         if include_result and self.status == "done":
@@ -58,6 +63,25 @@ class JobHandle:
     @property
     def cancelled(self) -> bool:
         return self._job.cancelled
+
+    @property
+    def paused(self) -> bool:
+        return self._job.paused
+
+    def esperar(self) -> None:
+        """Bloquea mientras el trabajo esté en pausa.
+
+        El worker llama esto en su punto de corte natural. Pausar no es
+        cancelar: el estado de la búsqueda —población, genomas ya vistos,
+        semilla— sigue intacto en el hilo, y al reanudar continúa donde estaba
+        en vez de volver a empezar.
+
+        El `wait` tiene tope aunque haya un Event: si el pedido de cancelación
+        llega mientras está pausado, nadie va a poner el evento y el hilo se
+        quedaría dormido para siempre.
+        """
+        while self._job.paused and not self._job.cancelled:
+            self._job.reanudar.wait(0.5)
 
 
 class DemasiadoTrabajo(Exception):
@@ -100,8 +124,9 @@ class JobManager:
                 "Probá de nuevo en un minuto.")
         if dueno is not None and self._corriendo(dueno) >= self._max_por_usuario:
             raise DemasiadoTrabajo(
-                "Ya tenés una búsqueda corriendo. Esperá a que termine "
-                "o frenala antes de empezar otra.")
+                "Ya tenés una búsqueda abierta. Esperá a que termine o frenala "
+                "antes de empezar otra — una búsqueda en pausa también ocupa "
+                "el lugar, porque guarda su estado para poder continuar.")
 
     def submit(self, kind: str, fn: Callable[[Callable[[float, str], None]], Any],
                dueno: str | None = None) -> str:
@@ -160,6 +185,22 @@ class JobManager:
         if job is None:
             return False
         job.cancelled = True
+        # si estaba pausado hay un hilo dormido esperando: sin esto se entera
+        # recién medio segundo después, y con el `wait` sin tope, nunca
+        job.paused = False
+        job.reanudar.set()
+        return True
+
+    def pause(self, job_id: str, on: bool) -> bool:
+        """Pausa o reanuda. True si el trabajo existe y sigue corriendo."""
+        job = self._jobs.get(job_id)
+        if job is None or job.status != "running":
+            return False
+        job.paused = on
+        if on:
+            job.reanudar.clear()
+        else:
+            job.reanudar.set()
         return True
 
     def get(self, job_id: str) -> Job | None:
