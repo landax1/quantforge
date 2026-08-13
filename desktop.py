@@ -84,6 +84,19 @@ def main() -> int:
         print("El servidor interno no respondió a tiempo.", file=sys.stderr)
         return 1
 
+    # pywebview CANCELA todas las descargas por defecto: su manejador pone
+    # `args.Cancel = True` y no avisa a nadie. Con eso, el botón de bajar el
+    # Expert Advisor no hacía nada — ni archivo, ni error, ni mensaje. Es la
+    # clase de falla peor que un error, porque parece que la aplicación te
+    # ignora.
+    #
+    # La aplicación guarda los .mq5 y los .pine ella misma en una carpeta fija
+    # (ver rutas.carpeta_de_estrategias), que es mejor que una descarga porque
+    # no hay diálogo y la ruta se puede decir. Esto queda igual habilitado para
+    # todo lo demás que el navegador sí baja por su cuenta: los informes en
+    # HTML, el Excel y los CSV de operaciones.
+    webview.settings["ALLOW_DOWNLOADS"] = True
+
     ventana = webview.create_window(
         f"BotiQuant {__version__}",
         f"http://127.0.0.1:{puerto}/app",

@@ -405,6 +405,7 @@ const ICONOS = {
   // instrumentos. Dos cosas distintas no pueden compartir símbolo.
   banco:    `<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17"/><path d="M9.5 9.5v10"/>`,
   basura:   `<path d="M4.5 7h15"/><path d="M9.5 7V5.2a1.2 1.2 0 0 1 1.2-1.2h2.6a1.2 1.2 0 0 1 1.2 1.2V7"/><path d="m6.7 7 .87 12.1a1.5 1.5 0 0 0 1.5 1.4h5.86a1.5 1.5 0 0 0 1.5-1.4L17.3 7"/>`,
+  copiar:   `<rect x="9" y="9" width="11" height="11.5" rx="2"/><path d="M15.5 9V5.5a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2V13a2 2 0 0 0 2 2h3.5"/>`,
 };
 
 /** Devuelve el SVG de un ícono. `cls` va al elemento para poder dimensionarlo
@@ -859,22 +860,14 @@ PAGES.saved = async (main) => {
     const s = items.find(x => x.id === b.dataset.export);
     b.disabled = true;
     try {
-      const safe = `BQ_${s.name.replace(/[^\w]/g, "_")}`;
-      const r = await fetch("/api/export/mql5", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ spec: s.spec, name: safe,
-          dataset_id: (s.meta || {}).dataset_id,
-          timeframe: (s.meta || {}).timeframe, metrics: (s.meta || {}).metrics }),
+      // lo escribe el servidor, que corre en esta misma máquina: la ventana
+      // nativa cancela las descargas del navegador y el botón no hacía nada
+      const r = await api.post("/api/export/mql5/archivo", {
+        spec: s.spec, name: `BQ_${s.name.replace(/[^\w]/g, "_")}`,
+        dataset_id: (s.meta || {}).dataset_id,
+        timeframe: (s.meta || {}).timeframe, metrics: (s.meta || {}).metrics,
       });
-      if (!r.ok) {
-        const detalle = await r.json().then(j => j.detail).catch(() => r.status);
-        throw Object.assign(new Error(detalle), { status: r.status });
-      }
-      const url = URL.createObjectURL(new Blob([await r.text()], { type: "text/plain" }));
-      const a = document.createElement("a");
-      a.href = url; a.download = `${safe}.mq5`; a.click();
-      URL.revokeObjectURL(url);
-      toast("EA descargado", "ok");
+      toast(`${r.archivo} guardado en ${r.carpeta}`, "ok");
     } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     b.disabled = false;
   });
@@ -2681,10 +2674,12 @@ function renderInspector(box, row, res, ctx) {
   </section>
 
   <div class="controls">
-    <button class="btn" id="insp-mql5">⬇ MetaTrader 5 (.mq5)</button>
-    <button class="btn ghost" id="insp-pine">⬇ TradingView (Pine)</button>
-    <button class="btn ghost" id="insp-save">Guardar estrategia</button>
+    <button class="btn" id="insp-mql5">${icono("bajar")} MetaTrader 5 (.mq5)</button>
+    <button class="btn ghost" id="insp-pine">${icono("bajar")} TradingView (.pine)</button>
+    <button class="btn ghost" id="insp-copiar">${icono("copiar")} Copiar Pine</button>
+    <button class="btn ghost" id="insp-save">${icono("marcador")} Guardar en Mis estrategias</button>
   </div>
+  <div class="guardado" id="insp-guardado" hidden></div>
   <p class="stage-note">El <b>.mq5</b> se compila en MetaEditor (F7) y se prueba en el Strategy Tester.
     El <b>.pine</b> se pega en el Pine Editor de TradingView y se agrega al gráfico.
     En los dos casos, poné el mismo spread que usaste acá.</p>`;
@@ -2740,40 +2735,104 @@ function renderInspector(box, row, res, ctx) {
     btn.disabled = false;
   };
 
-  /* MQL5 y Pine comparten todo salvo el endpoint, la extensión y el aviso */
-  async function exportAs(btnId, endpoint, ext, done) {
+  /* El instrumento sale del contexto de la estrategia cuando lo tiene —una
+     guardada, una del banco— y no de lo que esté elegido ahora en Mining. Si
+     no, exportar una estrategia de EURUSD mientras mirás el S&P escribía el
+     símbolo equivocado adentro del propio Expert Advisor. */
+  const cuerpoExport = () => ({
+    spec: row.spec, name: `BQ_${row.name.replace("-", "_")}`,
+    dataset_id: ctx ? ctx.dataset_id : S.sel.dataset_id,
+    timeframe: (ctx ? ctx.timeframe : S.sel.timeframe) || "1h",
+    metrics: m,
+  });
+
+  /* MQL5 y Pine comparten todo salvo el formato. */
+  async function exportAs(btnId, formato, aviso) {
     const btn = $(`#${btnId}`, box);
     btn.disabled = true;
-    const safe = `BQ_${row.name.replace("-", "_")}`;
     try {
-      const r = await fetch(endpoint, {
+      const r = await api.post(`/api/export/${formato}/archivo`, cuerpoExport());
+      mostrarGuardado(r, aviso);
+    } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
+    btn.disabled = false;
+  }
+
+  /* Dónde quedó el archivo, en texto y con un botón para ir.
+     Un aviso que se desvanece a los cuatro segundos no sirve para una ruta:
+     es justo el dato que hay que leer despacio y volver a mirar. */
+  function mostrarGuardado(r, aviso) {
+    toast(aviso, "ok");
+    const caja = $("#insp-guardado", box);
+    if (!caja) return;
+    caja.hidden = false;
+    caja.innerHTML = `<span class="g-ic">${icono("tilde")}</span>
+      <div><b>${esc(r.archivo)}</b>
+        <span class="g-ruta">${esc(r.carpeta)}</span></div>
+      <button class="btn ghost small" id="insp-abrir">Abrir carpeta</button>`;
+    $("#insp-abrir", caja).onclick = async () => {
+      try { await api.post("/api/abrir-carpeta", {}); }
+      catch (e) { toast(e.message, "err"); }
+    };
+  }
+
+  $("#insp-mql5", box).onclick = () => exportAs(
+    "insp-mql5", "mql5", "Expert Advisor guardado — copialo a MQL5/Experts y compilá");
+  $("#insp-pine", box).onclick = () => exportAs(
+    "insp-pine", "pine", "Pine guardado — o usá Copiar y pegalo en TradingView");
+
+  /* TradingView no se carga de un archivo: se pega en el Pine Editor. Bajar un
+     .pine para después abrirlo y copiarlo a mano es dar una vuelta de más.
+
+     Si el portapapeles se niega, este botón NO se queda sin hacer nada — que
+     es exactamente el defecto que vinimos a arreglar. Guarda el archivo y lo
+     dice. Peor que fallar es fallar en silencio. */
+  $("#insp-copiar", box).onclick = async () => {
+    const btn = $("#insp-copiar", box);
+    btn.disabled = true;
+    try {
+      const r = await fetch("/api/export/pine", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          spec: row.spec, name: safe,
-          dataset_id: S.sel.dataset_id, timeframe: S.sel.timeframe || "1h",
-          metrics: m,
-        }),
+        body: JSON.stringify(cuerpoExport()),
       });
       if (!r.ok) {
         const detalle = await r.json().then(j => j.detail).catch(() => r.status);
         throw Object.assign(new Error(detalle), { status: r.status });
       }
-      const code = await r.text();
-      const url = URL.createObjectURL(new Blob([code], { type: "text/plain" }));
-      const a = document.createElement("a");
-      a.href = url; a.download = `${safe}.${ext}`;
-      a.click(); URL.revokeObjectURL(url);
-      toast(done, "ok");
+      const codigo = await r.text();
+      if (await copiar(codigo)) {
+        toast("Pine copiado — pegalo en el Pine Editor de TradingView", "ok");
+      } else {
+        const g = await api.post("/api/export/pine/archivo", cuerpoExport());
+        mostrarGuardado(g, "El sistema no dejó copiar, así que lo guardé como archivo");
+      }
     } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     btn.disabled = false;
-  }
+  };
+}
 
-  $("#insp-mql5", box).onclick = () => exportAs(
-    "insp-mql5", "/api/export/mql5", "mq5",
-    "EA descargado — copialo a MQL5/Experts y compilá");
-  $("#insp-pine", box).onclick = () => exportAs(
-    "insp-pine", "/api/export/pine", "pine",
-    "Pine descargado — pegalo en el Pine Editor de TradingView");
+/* Copiar al portapapeles, con red de contención. Devuelve si se pudo.
+
+   `navigator.clipboard` pide contexto seguro Y ventana con foco. 127.0.0.1 es
+   contexto seguro, así que en la ventana nativa anda; pero abriendo la
+   aplicación por la IP de la máquina en la red de casa deja de serlo. El
+   camino viejo es feo y también pide foco, pero cubre casos que el nuevo no.
+
+   No tira excepción: quien llama decide qué hacer, y lo que hace es guardar
+   el archivo. */
+async function copiar(texto) {
+  try {
+    await navigator.clipboard.writeText(texto);
+    return true;
+  } catch (e) { /* seguimos por abajo */ }
+  const ta = document.createElement("textarea");
+  ta.value = texto;
+  ta.style.cssText = "position:fixed;left:-9999px;top:0";
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  ta.remove();
+  return ok;
 }
 
 /* el componente más flojo, dicho en criollo: qué habría que arreglar */

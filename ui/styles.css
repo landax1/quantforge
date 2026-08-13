@@ -1389,6 +1389,22 @@ svg.spark { display: block; border-radius: 4px; }
 
 .cf-quedan { text-decoration: none; color: var(--text-dim); font-weight: 500; font-size: 11px; }
 
+/* Dónde quedó el archivo exportado. Es un aviso que se queda: una ruta es
+   justo el dato que hay que poder volver a mirar, y un toast que se borra a
+   los cuatro segundos obliga a exportar de nuevo para leerla. */
+.guardado {
+  display: flex; align-items: center; gap: 12px; margin-top: 12px;
+  padding: 12px 16px; border-radius: var(--r-sm);
+  background: var(--pos-soft); border: 1px solid var(--pos-line);
+}
+.guardado .g-ic { display: grid; place-items: center; color: var(--pos); flex: none; }
+.guardado b { font-size: 12px; font-weight: 650; display: block; }
+.guardado .g-ruta {
+  display: block; margin-top: 2px; font-family: var(--mono); font-size: 10.5px;
+  color: var(--text-2); word-break: break-all;
+}
+.guardado button { margin-left: auto; flex: none; }
+
 .corrida-ficha {
   margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-soft);
 }

@@ -11,6 +11,8 @@ import dataclasses
 import hmac
 import os
 import sqlite3
+import subprocess
+import sys
 import time
 import traceback
 from datetime import datetime, timezone
@@ -55,7 +57,9 @@ from botiquant.portfolio.portfolio import build_portfolio
 from botiquant.reports.mql5 import export_mql5
 from botiquant.reports.pine import export_pine
 from botiquant.reports.report import excel_report, html_report, metrics_csv, trades_csv
-from botiquant.rutas import carpeta_de_trabajo, raiz_recursos
+from botiquant.rutas import (
+    carpeta_de_estrategias, carpeta_de_trabajo, raiz_recursos,
+)
 
 #: Los recursos vienen con el programa; el workspace es del usuario y tiene que
 #: sobrevivir a cerrar la aplicación. Empaquetados son carpetas distintas —ver
@@ -1032,6 +1036,34 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="report_{rid}.xlsx"'})
 
+    def _codigo_exportado(formato: str, payload: dict[str, Any],
+                          request: Request) -> tuple[str, str]:
+        """Renderiza la estrategia y devuelve (código, nombre de archivo).
+
+        Lo comparten la descarga por el navegador y el guardado en disco: son
+        dos formas de entregar exactamente el mismo texto, y duplicar el
+        renderizado garantizaba que un día dieran archivos distintos.
+        """
+        _exigir_para_descargar(request)
+        spec = _spec(payload)
+        ds_name = ""
+        if payload.get("dataset_id"):
+            try:
+                ds_name = db.get_dataset(payload["dataset_id"], duenio(request))["name"]
+            except KeyError:
+                ds_name = ""
+        tf = str(payload.get("timeframe") or "")
+        metricas = payload.get("metrics") or None
+        if formato == "pine":
+            name = str(payload.get("name") or "QF Strategy")
+            code = export_pine(spec, name=name, symbol_hint=ds_name,
+                               timeframe_hint=tf, metrics=metricas)
+            return code, f"{name.replace(' ', '_')}.pine"
+        name = str(payload.get("name") or "BQ_Strategy").replace(" ", "_")
+        code = export_mql5(spec, ea_name=name, symbol_hint=ds_name,
+                           timeframe_hint=tf, metrics=metricas)
+        return code, f"{name}.mq5"
+
     @app.post("/api/export/mql5")
     def export_mql5_endpoint(payload: dict[str, Any], request: Request) -> PlainTextResponse:
         """Render a mined strategy as a compilable MQL5 Expert Advisor.
@@ -1039,40 +1071,73 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         Minar y mirar resultados es libre; bajarse el archivo pide cuenta. Es
         el momento en que el usuario se lleva algo, y el unico donde la
         friccion del registro se justifica."""
-        _exigir_para_descargar(request)
-        spec = _spec(payload)
-        name = str(payload.get("name") or "BQ_Strategy").replace(" ", "_")
-        ds_name = ""
-        if payload.get("dataset_id"):
-            try:
-                ds_name = db.get_dataset(payload["dataset_id"], duenio(request))["name"]
-            except KeyError:
-                ds_name = ""
-        code = export_mql5(spec, ea_name=name, symbol_hint=ds_name,
-                           timeframe_hint=str(payload.get("timeframe") or ""),
-                           metrics=payload.get("metrics") or None)
+        code, archivo = _codigo_exportado("mql5", payload, request)
         return PlainTextResponse(code, media_type="text/plain",
                                  headers={"Content-Disposition":
-                                          f'attachment; filename="{name}.mq5"'})
+                                          f'attachment; filename="{archivo}"'})
 
     @app.post("/api/export/pine")
     def export_pine_endpoint(payload: dict[str, Any], request: Request) -> PlainTextResponse:
         """Render a mined strategy as a TradingView Pine Script v5 strategy."""
-        _exigir_para_descargar(request)
-        spec = _spec(payload)
-        name = str(payload.get("name") or "QF Strategy")
-        ds_name = ""
-        if payload.get("dataset_id"):
-            try:
-                ds_name = db.get_dataset(payload["dataset_id"], duenio(request))["name"]
-            except KeyError:
-                ds_name = ""
-        code = export_pine(spec, name=name, symbol_hint=ds_name,
-                           timeframe_hint=str(payload.get("timeframe") or ""),
-                           metrics=payload.get("metrics") or None)
+        code, archivo = _codigo_exportado("pine", payload, request)
         return PlainTextResponse(code, media_type="text/plain",
                                  headers={"Content-Disposition":
-                                          f'attachment; filename="{name.replace(" ", "_")}.pine"'})
+                                          f'attachment; filename="{archivo}"'})
+
+    @app.post("/api/export/{formato}/archivo")
+    def export_a_disco(formato: str, payload: dict[str, Any],
+                       request: Request) -> dict[str, Any]:
+        """Escribe la estrategia en el disco del usuario y dice dónde quedó.
+
+        Este es el camino bueno en el escritorio, y no por gusto: la ventana
+        nativa CANCELA las descargas del navegador, así que el botón de bajar
+        no hacía absolutamente nada — ni archivo, ni error, ni aviso.
+
+        Pero además es mejor que una descarga aunque funcionara. El servidor
+        corre en la máquina del usuario: puede escribir el archivo directamente
+        en una carpeta fija, sin diálogo de por medio, y decir la ruta exacta.
+        Un .mq5 hay que ir a buscarlo con MetaEditor, así que saber dónde está
+        es la mitad del trabajo.
+        """
+        if formato not in ("mql5", "pine"):
+            raise HTTPException(404, "Formato desconocido.")
+        code, archivo = _codigo_exportado(formato, payload, request)
+        carpeta = carpeta_de_estrategias()
+        try:
+            carpeta.mkdir(parents=True, exist_ok=True)
+            destino = carpeta / archivo
+            destino.write_text(code, encoding="utf-8")
+        except OSError as exc:
+            # disco lleno, permisos, ruta redirigida a OneDrive sin conexión…
+            raise HTTPException(
+                500, f"No se pudo escribir en {carpeta}: {exc.strerror or exc}") from exc
+        return {"ruta": str(destino), "carpeta": str(carpeta), "archivo": archivo}
+
+    @app.post("/api/abrir-carpeta")
+    def abrir_carpeta() -> dict[str, str]:
+        """Abre la carpeta de estrategias en el explorador de archivos.
+
+        No recibe ninguna ruta a propósito. Un endpoint que abre lo que le
+        manden es un endpoint que ejecuta lo que le manden: acá el destino es
+        siempre el mismo y está calculado del lado del servidor.
+
+        Y sólo en el escritorio. Servido a varios, esto abriría una ventana en
+        la máquina del servidor, que nadie va a ver y nadie pidió.
+        """
+        if MULTIUSER:
+            raise HTTPException(404, "No disponible.")
+        carpeta = carpeta_de_estrategias()
+        carpeta.mkdir(parents=True, exist_ok=True)
+        try:
+            if sys.platform == "win32":
+                os.startfile(carpeta)                     # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(carpeta)])
+            else:
+                subprocess.Popen(["xdg-open", str(carpeta)])
+        except OSError as exc:
+            raise HTTPException(500, f"No se pudo abrir la carpeta: {exc}") from exc
+        return {"carpeta": str(carpeta)}
 
     # ------------------------------------------------------- descarga y cuenta
     #: Dónde queda el instalador que produce el empaquetado. No está en el

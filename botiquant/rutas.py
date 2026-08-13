@@ -56,3 +56,23 @@ def carpeta_de_trabajo() -> Path:
     if base:
         return Path(base) / "Botiquant"
     return Path.home() / ".botiquant"
+
+
+def carpeta_de_estrategias() -> Path:
+    """Dónde caen los archivos que el usuario se lleva: los .mq5 y los .pine.
+
+    NO va en la carpeta de trabajo. Esa vive en LOCALAPPDATA, que es una ruta
+    que nadie encuentra: son datos internos del programa. Un Expert Advisor es
+    lo contrario — hay que abrirlo con MetaEditor, o sea que el usuario tiene
+    que poder llegar a él, y por eso va a Descargas, que es donde uno busca lo
+    que se acaba de bajar.
+
+    La subcarpeta existe para que no se pierdan entre los cientos de archivos
+    que ya hay ahí.
+    """
+    forzada = os.environ.get("BQ_EXPORTS", "").strip()
+    if forzada:
+        return Path(forzada)
+    descargas = Path.home() / "Downloads"
+    raiz = descargas if descargas.is_dir() else Path.home()
+    return raiz / "Botiquant"
