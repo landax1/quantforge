@@ -115,17 +115,98 @@ def test_sin_spec_no_hay_archivo(client, salida):
 
 
 # ---------------------------------------------------------------- la carpeta
-def test_abrir_la_carpeta_no_recibe_ninguna_ruta(client, salida, monkeypatch):
-    """Un endpoint que abre lo que le manden ejecuta lo que le manden. El
-    destino se calcula del lado del servidor y no se puede influir desde afuera.
-    """
+def test_solo_se_abren_carpetas_de_la_aplicacion(client, salida, monkeypatch):
+    """La ruta que llega no se usa como ruta: se busca en la lista de carpetas
+    que la aplicación calculó. Si no está, no se abre. Un endpoint que abre lo
+    que le manden ejecuta lo que le manden."""
     abiertas = []
     monkeypatch.setattr("os.startfile", lambda p: abiertas.append(str(p)), raising=False)
     monkeypatch.setattr("sys.platform", "win32")
 
-    r = client.post("/api/abrir-carpeta", json={"carpeta": "C:/Windows/System32"})
-    assert r.status_code == 200
-    assert abiertas == [str(salida)]              # la suya, no la que mandaron
+    assert client.post("/api/abrir-carpeta",
+                       json={"ruta": "C:/Windows/System32"}).status_code == 403
+    assert abiertas == []
+
+    # sin ruta abre la propia, que es el caso normal
+    assert client.post("/api/abrir-carpeta", json={}).status_code == 200
+    assert abiertas == [str(salida)]
+
+
+def test_solo_se_abren_archivos_que_exporto_la_aplicacion(client, salida, monkeypatch, tmp_path):
+    """Abrir por asociación es ejecutar lo que el sistema tenga configurado
+    para esa extensión. Se comprueban dos cosas: la extensión Y la carpeta."""
+    abiertos = []
+    monkeypatch.setattr("os.startfile", lambda p: abiertos.append(str(p)), raising=False)
+    monkeypatch.setattr("sys.platform", "win32")
+
+    mio = Path(client.post("/api/export/mql5/archivo",
+                           json={"spec": _spec(), "name": "BQ_Mio"}).json()["ruta"])
+
+    # uno de afuera, aunque tenga la extensión correcta
+    ajeno = tmp_path / "ajeno.mq5"
+    ajeno.write_text("// no es nuestro", encoding="utf-8")
+    assert client.post("/api/abrir-archivo", json={"ruta": str(ajeno)}).status_code == 403
+
+    # y algo nuestro pero que no es una estrategia
+    otro = salida / "notas.txt"
+    otro.write_text("x", encoding="utf-8")
+    assert client.post("/api/abrir-archivo", json={"ruta": str(otro)}).status_code == 400
+
+    assert abiertos == []
+    assert client.post("/api/abrir-archivo", json={"ruta": str(mio)}).status_code == 200
+    assert abiertos == [str(mio)]
+
+
+def test_el_robot_va_a_la_carpeta_de_metatrader(client, salida, tmp_path, monkeypatch):
+    """El paso que sobraba: copiar el .mq5 a mano hasta MQL5/Experts.
+
+    Compilado desde Descargas, el .ex5 queda al lado del .mq5 y el terminal no
+    lo ve nunca — se compila sin errores y el robot no aparece en el Probador.
+    """
+    terminal = tmp_path / "MetaQuotes" / "ABC123"
+    (terminal / "MQL5" / "Experts").mkdir(parents=True)
+    (terminal / "origin.txt").write_bytes(
+        "C:\\Program Files\\Vantage MetaTrader 5".encode("utf-16"))
+    monkeypatch.setenv("BQ_METAQUOTES", str(tmp_path / "MetaQuotes"))
+
+    encontrados = client.get("/api/metatrader").json()["terminales"]
+    assert [t["nombre"] for t in encontrados] == ["Vantage MetaTrader 5"]
+
+    r = client.post("/api/export/mql5/archivo", json={
+        "spec": _spec(), "name": "BQ_Robot", "terminal": encontrados[0]["id"]}).json()
+
+    assert r["terminal"] == "Vantage MetaTrader 5"
+    destino = terminal / "MQL5" / "Experts" / "BQ_Robot.mq5"
+    assert destino.exists()
+    assert str(destino) == r["ruta"]
+    assert not (salida / "BQ_Robot.mq5").exists()   # no quedó también en Descargas
+
+
+def test_un_metatrader_inventado_no_escribe_en_ningun_lado(client, salida, tmp_path, monkeypatch):
+    """El id llega de afuera: si se concatenara a una ruta base, mandar
+    `..\\..\\Windows` escribiría fuera de la carpeta prevista."""
+    monkeypatch.setenv("BQ_METAQUOTES", str(tmp_path / "vacio"))
+
+    for falso in ("no-existe", "..", "../../Windows/System32"):
+        r = client.post("/api/export/mql5/archivo",
+                        json={"spec": _spec(), "name": "X", "terminal": falso})
+        assert r.status_code == 404, falso
+    assert not salida.exists()
+
+
+def test_el_pine_nunca_va_a_metatrader(client, salida, tmp_path, monkeypatch):
+    """MetaTrader no sabe qué hacer con un Pine. Aunque se mande un terminal,
+    el .pine va a Descargas."""
+    terminal = tmp_path / "MetaQuotes" / "ABC123"
+    (terminal / "MQL5" / "Experts").mkdir(parents=True)
+    monkeypatch.setenv("BQ_METAQUOTES", str(tmp_path / "MetaQuotes"))
+    tid = client.get("/api/metatrader").json()["terminales"][0]["id"]
+
+    r = client.post("/api/export/pine/archivo",
+                    json={"spec": _spec(), "name": "X", "terminal": tid}).json()
+
+    assert Path(r["ruta"]).parent == salida
+    assert r["terminal"] == ""
 
 
 def test_abrir_la_carpeta_no_existe_en_el_servidor_publico(tmp_path, monkeypatch):

@@ -1398,12 +1398,21 @@ svg.spark { display: block; border-radius: 4px; }
   background: var(--pos-soft); border: 1px solid var(--pos-line);
 }
 .guardado .g-ic { display: grid; place-items: center; color: var(--pos); flex: none; }
+.guardado .g-txt { flex: 1; min-width: 0; }
 .guardado b { font-size: 12px; font-weight: 650; display: block; }
 .guardado .g-ruta {
   display: block; margin-top: 2px; font-family: var(--mono); font-size: 10.5px;
   color: var(--text-2); word-break: break-all;
 }
-.guardado button { margin-left: auto; flex: none; }
+.guardado .g-ruta b { display: inline; font-family: var(--sans); font-size: 11px; }
+.guardado .g-destino {
+  display: flex; align-items: center; gap: 8px; margin-top: 9px;
+  font-size: 11px; color: var(--text-dim);
+}
+.guardado .g-destino select { font-size: 11px; padding: 4px 26px 4px 9px; }
+.guardado .g-acciones {
+  display: flex; align-items: center; gap: 14px; flex: none; margin-left: auto;
+}
 
 .corrida-ficha {
   margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-soft);

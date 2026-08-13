@@ -21,6 +21,9 @@ const S = {
   mining: false,
   minePaused: false,
   inspect: null,
+  // los MetaTrader de esta máquina y a cuál mandamos los robots. "" es
+  // Descargas, que es lo que queda cuando no hay ninguno instalado.
+  mt5: { terminales: [], elegido: localStorage.getItem("qf.mt5") },
   // el banco: corridas archivadas, qué se está mirando y qué está tildado
   banco: { corridas: [], total: 0, tope: 0, filas: [], corrida: "", sel: new Set() },
   // arranca en la vista de todas, y ahí el puesto no ordena nada — ver ORDEN_NATURAL
@@ -779,6 +782,23 @@ async function refreshSavedCount() {
     const el = $("#saved-count");
     if (el) el.textContent = S.saved.length || "";
   } catch (e) { /* si el backend no responde ya hay un aviso arriba */ }
+}
+
+/* Los MetaTrader instalados. Se pregunta una vez al arrancar: instalar un
+   terminal mientras la aplicación está abierta es raro, y preguntarlo en cada
+   exportación recorrería el disco cada vez. */
+async function refreshMt5() {
+  try {
+    const r = await api.get("/api/metatrader");
+    S.mt5.terminales = r.terminales || [];
+    const existe = S.mt5.terminales.some(t => t.id === S.mt5.elegido);
+    // sin elección previa —o con una que apunta a un MetaTrader desinstalado—
+    // manda el que se usó más recientemente, que viene primero
+    if (S.mt5.elegido === null || (S.mt5.elegido && !existe)) {
+      S.mt5.elegido = S.mt5.terminales.length ? S.mt5.terminales[0].id : "";
+      localStorage.setItem("qf.mt5", S.mt5.elegido);
+    }
+  } catch (e) { S.mt5.terminales = []; }
 }
 
 async function refreshBancoCount() {
@@ -2746,32 +2766,69 @@ function renderInspector(box, row, res, ctx) {
     metrics: m,
   });
 
-  /* MQL5 y Pine comparten todo salvo el formato. */
+  /* MQL5 y Pine comparten todo salvo el formato. El .mq5 va a la carpeta de
+     robots del MetaTrader elegido, si hay alguno instalado. */
   async function exportAs(btnId, formato, aviso) {
     const btn = $(`#${btnId}`, box);
     btn.disabled = true;
     try {
-      const r = await api.post(`/api/export/${formato}/archivo`, cuerpoExport());
-      mostrarGuardado(r, aviso);
+      const cuerpo = cuerpoExport();
+      if (formato === "mql5" && S.mt5.elegido) cuerpo.terminal = S.mt5.elegido;
+      const r = await api.post(`/api/export/${formato}/archivo`, cuerpo);
+      mostrarGuardado(r, formato, r.terminal
+        ? `Robot instalado en ${r.terminal} — abrilo y compilá con F7`
+        : aviso);
     } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     btn.disabled = false;
   }
 
-  /* Dónde quedó el archivo, en texto y con un botón para ir.
+  /* Dónde quedó el archivo y qué hacer con él.
+
      Un aviso que se desvanece a los cuatro segundos no sirve para una ruta:
-     es justo el dato que hay que leer despacio y volver a mirar. */
-  function mostrarGuardado(r, aviso) {
+     es justo el dato que hay que leer despacio y volver a mirar. Y el botón
+     que abre el archivo es el que cierra el círculo — un .mq5 abre MetaEditor
+     listo para compilar, sin que haya que ir a buscarlo a ninguna carpeta. */
+  function mostrarGuardado(r, formato, aviso) {
     toast(aviso, "ok");
     const caja = $("#insp-guardado", box);
     if (!caja) return;
+    const esRobot = formato === "mql5";
+    const opciones = esRobot && S.mt5.terminales.length > 1;
     caja.hidden = false;
     caja.innerHTML = `<span class="g-ic">${icono("tilde")}</span>
-      <div><b>${esc(r.archivo)}</b>
-        <span class="g-ruta">${esc(r.carpeta)}</span></div>
-      <button class="btn ghost small" id="insp-abrir">Abrir carpeta</button>`;
-    $("#insp-abrir", caja).onclick = async () => {
-      try { await api.post("/api/abrir-carpeta", {}); }
+      <div class="g-txt">
+        <b>${esc(r.archivo)}</b>
+        <span class="g-ruta">${r.terminal
+          ? `Robots de <b>${esc(r.terminal)}</b> · ya aparece en el Navegador`
+          : esc(r.carpeta)}</span>
+        ${opciones ? `<label class="g-destino">Mandarlo a
+          <select id="insp-destino">
+            ${S.mt5.terminales.map(t => `<option value="${esc(t.id)}"
+              ${t.id === S.mt5.elegido ? "selected" : ""}>${esc(t.nombre)}</option>`).join("")}
+            <option value="" ${S.mt5.elegido ? "" : "selected"}>Descargas</option>
+          </select></label>` : ""}
+      </div>
+      <div class="g-acciones">
+        <button class="btn small" id="insp-abrir-archivo">${
+          esRobot ? "Abrir en MetaEditor" : "Abrir archivo"}</button>
+        <button class="linkbtn" id="insp-abrir">Ver la carpeta</button>
+      </div>`;
+
+    $("#insp-abrir-archivo", caja).onclick = async () => {
+      try { await api.post("/api/abrir-archivo", { ruta: r.ruta }); }
       catch (e) { toast(e.message, "err"); }
+    };
+    $("#insp-abrir", caja).onclick = async () => {
+      try { await api.post("/api/abrir-carpeta", { ruta: r.carpeta }); }
+      catch (e) { toast(e.message, "err"); }
+    };
+    const destino = $("#insp-destino", caja);
+    if (destino) destino.onchange = () => {
+      S.mt5.elegido = destino.value;
+      localStorage.setItem("qf.mt5", destino.value);
+      // se vuelve a exportar en el acto: cambiar el destino sin mover el
+      // archivo dejaría el cartel diciendo un lugar y el robot en otro
+      exportAs("insp-mql5", "mql5", "Guardado");
     };
   }
 
@@ -3034,6 +3091,7 @@ function pedirCuenta(status) {
   initTheme();
   refreshSavedCount();
   refreshBancoCount();
+  refreshMt5();
   $$("#nav button").forEach(b => b.onclick = () => navigate(b.dataset.page));
   navigate(S.datasets.length ? "mining" : "data");
 })();

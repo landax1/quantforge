@@ -57,6 +57,7 @@ from botiquant.portfolio.portfolio import build_portfolio
 from botiquant.reports.mql5 import export_mql5
 from botiquant.reports.pine import export_pine
 from botiquant.reports.report import excel_report, html_report, metrics_csv, trades_csv
+from botiquant.metatrader import experts_de, terminales
 from botiquant.rutas import (
     carpeta_de_estrategias, carpeta_de_trabajo, raiz_recursos,
 )
@@ -1102,7 +1103,20 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         if formato not in ("mql5", "pine"):
             raise HTTPException(404, "Formato desconocido.")
         code, archivo = _codigo_exportado(formato, payload, request)
-        carpeta = carpeta_de_estrategias()
+
+        # Un .mq5 puede ir directo a la carpeta de robots de MetaTrader. Ahí
+        # aparece en el Navegador y compila donde el Probador lo encuentra;
+        # compilado desde Descargas, el .ex5 queda al lado del .mq5 y el
+        # terminal no lo ve nunca. Ver botiquant/metatrader.py.
+        terminal = str(payload.get("terminal") or "").strip()
+        carpeta, donde = carpeta_de_estrategias(), ""
+        if terminal and formato == "mql5":
+            experts = experts_de(terminal)
+            if experts is None:
+                raise HTTPException(404, "Ese MetaTrader ya no está en esta máquina.")
+            carpeta = experts
+            donde = next((t["nombre"] for t in terminales() if t["id"] == terminal), "")
+
         try:
             carpeta.mkdir(parents=True, exist_ok=True)
             destino = carpeta / archivo
@@ -1111,15 +1125,67 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             # disco lleno, permisos, ruta redirigida a OneDrive sin conexión…
             raise HTTPException(
                 500, f"No se pudo escribir en {carpeta}: {exc.strerror or exc}") from exc
-        return {"ruta": str(destino), "carpeta": str(carpeta), "archivo": archivo}
+        return {"ruta": str(destino), "carpeta": str(carpeta), "archivo": archivo,
+                "terminal": donde}
+
+    @app.get("/api/metatrader")
+    def listar_metatrader() -> dict[str, Any]:
+        """Los MetaTrader 5 de ESTA máquina. Sólo tiene sentido en el escritorio."""
+        if MULTIUSER:
+            return {"terminales": []}
+        return {"terminales": [{"id": t["id"], "nombre": t["nombre"],
+                                "experts": t["experts"]} for t in terminales()]}
+
+    def _carpetas_permitidas() -> list[Path]:
+        """Las únicas carpetas cuyos archivos esta aplicación acepta abrir."""
+        permitidas = [carpeta_de_estrategias()]
+        permitidas.extend(Path(t["experts"]) for t in terminales())
+        return permitidas
+
+    @app.post("/api/abrir-archivo")
+    def abrir_archivo(payload: dict[str, Any]) -> dict[str, str]:
+        """Abre el archivo con el programa que le corresponda en el sistema.
+
+        Que es lo que el usuario quiere: un .mq5 abre MetaEditor, listo para
+        compilar con F7. No hay que saber dónde quedó ni ir a buscarlo.
+
+        Abrir un archivo por su asociación es, literalmente, ejecutar lo que el
+        sistema tenga configurado para esa extensión. Así que se comprueban dos
+        cosas y no una: que la extensión sea de las nuestras, y que el archivo
+        esté DENTRO de una carpeta nuestra. Con sólo lo primero, un .mq5 puesto
+        en cualquier lado por otro programa sería un destino válido.
+        """
+        if MULTIUSER:
+            raise HTTPException(404, "No disponible.")
+        try:
+            ruta = Path(str(payload.get("ruta") or "")).resolve()
+        except (OSError, ValueError) as exc:
+            raise HTTPException(400, "Ruta inválida.") from exc
+        if ruta.suffix.lower() not in (".mq5", ".pine"):
+            raise HTTPException(400, "Sólo se abren estrategias exportadas.")
+        if not any(ruta.is_relative_to(c.resolve()) for c in _carpetas_permitidas()
+                   if c.exists()):
+            raise HTTPException(403, "Ese archivo no lo exportó Botiquant.")
+        if not ruta.is_file():
+            raise HTTPException(404, "El archivo ya no está ahí.")
+        try:
+            if sys.platform == "win32":
+                os.startfile(ruta)                        # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(ruta)])
+            else:
+                subprocess.Popen(["xdg-open", str(ruta)])
+        except OSError as exc:
+            raise HTTPException(500, f"No se pudo abrir: {exc}") from exc
+        return {"ruta": str(ruta)}
 
     @app.post("/api/abrir-carpeta")
-    def abrir_carpeta() -> dict[str, str]:
-        """Abre la carpeta de estrategias en el explorador de archivos.
+    def abrir_carpeta(payload: dict[str, Any] | None = None) -> dict[str, str]:
+        """Abre en el explorador una de NUESTRAS carpetas de salida.
 
-        No recibe ninguna ruta a propósito. Un endpoint que abre lo que le
-        manden es un endpoint que ejecuta lo que le manden: acá el destino es
-        siempre el mismo y está calculado del lado del servidor.
+        La ruta que llega no se usa como ruta: se busca en la lista de carpetas
+        que la aplicación misma calculó, y si no está, no se abre. Un endpoint
+        que abre lo que le manden es un endpoint que ejecuta lo que le manden.
 
         Y sólo en el escritorio. Servido a varios, esto abriría una ventana en
         la máquina del servidor, que nadie va a ver y nadie pidió.
@@ -1127,6 +1193,12 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         if MULTIUSER:
             raise HTTPException(404, "No disponible.")
         carpeta = carpeta_de_estrategias()
+        pedida = str((payload or {}).get("ruta") or "").strip()
+        if pedida:
+            elegida = next((c for c in _carpetas_permitidas() if str(c) == pedida), None)
+            if elegida is None:
+                raise HTTPException(403, "Esa carpeta no es de Botiquant.")
+            carpeta = elegida
         carpeta.mkdir(parents=True, exist_ok=True)
         try:
             if sys.platform == "win32":
