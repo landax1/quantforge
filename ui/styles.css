@@ -25,6 +25,26 @@
    `swap` para que el texto sea legible mientras carga, en vez de un momento
    en blanco. */
 @font-face {
+  font-family: "Outfit";
+  src: url("/static/fuentes/outfit-var.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+}
+/* Space Mono no es variable: cada peso es su propio archivo. Sólo se traen los
+   dos que usa el diseño; pedir los siete pesaría más que la interfaz entera. */
+@font-face {
+  font-family: "Space Mono";
+  src: url("/static/fuentes/spacemono-400.woff2") format("woff2");
+  font-weight: 400; font-display: swap;
+}
+@font-face {
+  font-family: "Space Mono";
+  src: url("/static/fuentes/spacemono-700.woff2") format("woff2");
+  font-weight: 700; font-display: swap;
+}
+/* Inter queda como red de seguridad hasta que Outfit cargue: las dos son
+   grotescas de ancho parecido, así que el salto no descoloca el layout. */
+@font-face {
   font-family: "Inter";
   src: url("/static/fuentes/inter-var.woff2") format("woff2");
   font-weight: 100 900;
@@ -44,23 +64,23 @@
 */
 :root {
   /* ---- superficies: cada nivel se apoya sobre el anterior ---- */
-  --bg:            #07080c;
-  --bg-soft:       #0c0e15;
-  --card:          #11141d;
-  --card-2:        #161a25;
-  --card-hover:    #1b2030;
-  --border:        #222839;
-  --border-soft:   #1a1f2c;
-  --border-strong: #2f3750;
-  --grid:          #1a1f2c;
+  --bg:            #120F10;
+  --bg-soft:       #1A1517;
+  --card:          #1E181A;
+  --card-2:        #241D1F;
+  --card-hover:    #2A2124;
+  --border:        #31262A;
+  --border-soft:   #2A2124;
+  --border-strong: #443338;
+  --grid:          #2A2124;
 
   /* ---- texto ---- */
-  --text:      #e9ecf7;
-  --text-2:    #a6aec7;
+  --text:      #F6EFEA;
+  --text-2:    #D3C6C3;
   /* #6d768f quedaba en 3.58:1 sobre las filas resaltadas y 4.06:1 sobre las
      tarjetas — por debajo del mínimo legible, y ahí vive casi todo el texto
      secundario. Este valor no baja de 4.78:1 en ninguna superficie oscura. */
-  --text-dim:  #828ba6;
+  --text-dim:  #A8999A;
 
   /* ---- color de marca y semántica ----
      DOS tokens de acento con trabajos distintos, porque ninguno solo puede
@@ -74,23 +94,23 @@
 
      Que se vea vivo no es cuestión de saturación sino de dónde aparece: color
      saturado en pocos lugares, el resto sostenido con grises. */
-  --accent:        #635bff;
-  --accent-2:      #9d97ff;
-  --accent-hover:  #7570ff;
-  --accent-active: #524aeb;
-  --accent-fg:     #fff;                        /* texto sobre el botón lleno */
-  --accent-soft:   rgba(99, 91, 255, 0.12);
-  --accent-line:   rgba(99, 91, 255, 0.34);
-  --pos:           #43c88a;
-  --pos-soft:      rgba(67, 200, 138, 0.09);
-  --pos-line:      rgba(67, 200, 138, 0.28);
-  --pos-glow:      rgba(67, 200, 138, 0.16);
-  --neg:           #e0736f;
-  --neg-soft:      rgba(224, 115, 111, 0.09);
-  --neg-line:      rgba(224, 115, 111, 0.28);
-  --warn:          #d9a441;
-  --warn-soft:     rgba(217, 164, 65, 0.08);
-  --warn-line:     rgba(217, 164, 65, 0.28);
+  --accent:        #EC6A7E;
+  --accent-2:      #EC6A7E;
+  --accent-hover:  #f08194;
+  --accent-active: #d95a6e;
+  --accent-fg:     #1A1517;   /* tinta oscura sobre el coral: el blanco encima da 2.2:1 */                        /* texto sobre el botón lleno */
+  --accent-soft:   rgba(236, 106, 126, 0.13);
+  --accent-line:   rgba(236, 106, 126, 0.34);
+  --pos:           #63C79A;
+  --pos-soft:      rgba(99, 199, 154, 0.09);
+  --pos-line:      rgba(99, 199, 154, 0.28);
+  --pos-glow:      rgba(99, 199, 154, 0.16);
+  --neg:           #E8635C;
+  --neg-soft:      rgba(232, 99, 92, 0.09);
+  --neg-line:      rgba(232, 99, 92, 0.28);
+  --warn:          #F0C877;
+  --warn-soft:     rgba(240, 200, 119, 0.08);
+  --warn-line:     rgba(240, 200, 119, 0.28);
   --selection:     rgba(99, 91, 255, 0.34);
 
   /* un color por paso del setup. Dos variantes por familia: el tinte va de
@@ -103,17 +123,17 @@
   --n-violet-bg: rgba(139,92,246,.14);  --n-violet-tx: #c4b5fd;
 
   /* ---- superficies compuestas (barras fijas, tooltips, overlays) ---- */
-  --glass:      rgba(17, 20, 29, .92);          /* barras pegajosas con blur */
-  --overlay:    rgba(4, 5, 9, .80);             /* fondo del inspector */
-  --sheet-fade: rgba(12, 14, 21, .98);          /* degradado del encabezado */
-  --tooltip-bg: rgba(12, 14, 21, .96);
-  --toast-bg:   rgba(22, 26, 37, .97);
-  --scroll:       #262d40;
-  --scroll-hover: #333c55;
-  --scroll-thin:  #2a3145;
+  --glass:      rgba(26, 21, 23, .93);          /* barras pegajosas con blur */
+  --overlay:    rgba(14, 11, 12, .82);             /* fondo del inspector */
+  --sheet-fade: rgba(22, 17, 18, .98);          /* degradado del encabezado */
+  --tooltip-bg: rgba(22, 17, 18, .97);
+  --toast-bg:   rgba(36, 29, 31, .97);
+  --scroll:       #3a2d31;
+  --scroll-hover: #4c3b40;
+  --scroll-thin:  #31262A;
 
   /* flecha de los <select> y icono del calendario, embebidos como data URI */
-  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23828ba6' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M5 9l7 7 7-7'/%3E%3C/svg%3E");
+  --select-arrow: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23A8999A' stroke-width='3' stroke-linecap='round'%3E%3Cpath d='M5 9l7 7 7-7'/%3E%3C/svg%3E");
   --date-icon: invert(.65);
 
   /* ---- forma y profundidad ---- */
@@ -128,14 +148,14 @@
   --sh-1: 0 1px 2px rgba(0,0,0,.28);
   --sh-2: 0 4px 16px rgba(0,0,0,.3);
   --sh-3: 0 20px 56px rgba(0,0,0,.5);
-  --ring: 0 0 0 3px rgba(99,91,255,.22);
+  --ring: 0 0 0 3px rgba(236,106,126,.24);
 
   /* alturas de control, para que todo lo clickeable quede parejo */
   --h-ctl: 38px;
   --h-ctl-lg: 44px;
 
-  --font: "Inter", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SF Mono", Consolas, monospace;
+  --font: "Outfit", "Inter", system-ui, -apple-system, sans-serif;
+  --mono: "Space Mono", ui-monospace, Consolas, monospace;
   --ease: cubic-bezier(.22, .61, .36, 1);
 
   color-scheme: dark;
@@ -274,60 +294,51 @@ body {
   text-transform: uppercase; color: var(--text-dim); margin-top: 3px;
 }
 
-#nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
-/* Rótulo del grupo. Sin él la barra empieza en el vacío: tres botones sueltos
-   flotando bajo el logo. */
+#nav { display: flex; flex-direction: column; gap: 2px; flex: 1; }
 .nav-rotulo {
-  font-size: 10px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--text-dim); padding: 0 12px; margin-bottom: 8px;
+  font-family: var(--mono);
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-dim); padding: 0 10px; margin-bottom: 12px;
 }
 #nav button {
   position: relative;
-  display: flex; align-items: center; gap: 11px;
-  background: none; border: none; color: var(--text-2);
-  font: inherit; font-weight: 500; font-size: 13px;
-  /* más alto: tres ítems de 38px en una columna de 226px se veían perdidos */
-  padding: 9px 10px; border-radius: var(--r);
+  display: flex; align-items: center; gap: 10px;
+  background: none; border: none; color: var(--text-dim);
+  font: inherit; font-weight: 500; font-size: 14px;
+  padding: 9px 10px; border-radius: var(--r-sm);
   cursor: pointer; text-align: left;
   transition: background .14s var(--ease), color .14s var(--ease);
 }
 
-/* EL ICONO COMO CHIP DE COLOR.
-   Antes era un trazo gris del mismo tono que el texto, así que la barra entera
-   era una columna de gris sobre gris. El chip le da a cada sección una
-   identidad que se reconoce de reojo, sin leer — es lo que hace que una barra
-   lateral se vea armada y no como una lista de enlaces.
-
-   El color es tinte de fondo y trazo oscuro, nunca al revés: un ícono de
-   color claro sobre blanco no llega al contraste que necesita un elemento
-   que hay que poder distinguir. */
-#nav button .ic {
-  width: 30px; height: 30px; flex-shrink: 0;
-  display: grid; place-items: center; border-radius: 9px;
-  background: var(--card-2); border: 1px solid var(--border);
-  transition: background .14s var(--ease), color .14s var(--ease),
-              border-color .14s var(--ease);
+/* UN PUNTO, NO UN ICONO.
+   Tres secciones no necesitan pictogramas que distinguir: necesitan saber
+   cuál está activa. El punto lo dice con menos tinta que cualquier ícono, y
+   además puede latir — que es lo que convierte "estás en Minado" en "hay algo
+   corriendo en Minado". Un ícono no puede hacer eso sin verse ridículo. */
+.punto {
+  width: 5px; height: 5px; border-radius: 50%; flex: none;
+  background: var(--border-strong);
+  transition: background .14s var(--ease);
 }
-#nav button .ic svg { width: 16px; height: 16px; }
-#nav button[data-page="data"]   .ic { background: var(--n-blue-bg);   color: var(--n-blue-tx);   border-color: transparent; }
-#nav button[data-page="mining"] .ic { background: var(--n-indigo-bg); color: var(--n-indigo-tx); border-color: transparent; }
-#nav button[data-page="saved"]  .ic { background: var(--n-teal-bg);   color: var(--n-teal-tx);   border-color: transparent; }
-
-#nav button:hover { background: var(--card-2); color: var(--text); }
-/* Segundo momento: dónde estás parado. El acento como tinte y como texto
-   dice "acá" sin necesidad de una barra ni un borde extra. */
+#nav button:hover { background: var(--card-2); color: var(--text-2); }
 #nav button.active {
-  background: var(--card); color: var(--text);
-  font-weight: 600;
-  box-shadow: var(--sh-1);
+  background: var(--card-2); color: var(--text); font-weight: 600;
 }
-#nav button.active .ic { opacity: 1; }
+#nav button.active .punto { background: var(--accent); }
+/* El latido es el único momento de movimiento continuo de la interfaz, y sólo
+   mientras se mina: si latiera siempre sería ruido y dejaría de significar
+   nada. Lo enciende app.js con .minando. */
+#nav button.active.minando .punto { animation: latido 1.6s ease-in-out infinite; }
+@keyframes latido { 0%, 100% { opacity: 1 } 50% { opacity: .3 } }
+@media (prefers-reduced-motion: reduce) {
+  #nav button.active.minando .punto { animation: none }
+}
+
 /* cuántas estrategias guardadas hay, sin tener que entrar a mirar */
 .nav-count {
-  margin-left: auto; font-size: 10px; font-weight: 650;
+  margin-left: auto; font-family: var(--mono); font-size: 12px; font-weight: 400;
   font-variant-numeric: tabular-nums; color: var(--text-dim);
-  background: var(--card-2); border: 1px solid var(--border);
-  border-radius: 999px; padding: 1px 7px; min-width: 20px; text-align: center;
+  border-radius: 999px; padding: 0; min-width: 20px; text-align: right;
 }
 .nav-count:empty { display: none; }
 #nav button.active .nav-count {
@@ -594,40 +605,49 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
   contain: paint;
 }
 
-.sect { border-bottom: 1px solid var(--border-soft); }
-.sect:last-of-type { border-bottom: none; }
+/* EL PANEL DE CONFIGURACIÓN, COMO FILAS Y NO COMO TARJETAS.
+   Antes cada paso era una tarjeta con un chip de color numerado. Seis colores
+   compitiendo por atención en una columna que sólo hay que recorrer de arriba
+   abajo: el color prometía que cada paso era distinto en naturaleza, y no lo
+   es — son seis momentos del mismo formulario.
+
+   Ahora el número va en monoespaciada tenue y la separación la hace una línea
+   de 1px. Lo que gana peso es el valor actual a la derecha, que es lo único
+   que uno viene a mirar cuando la sección está cerrada. */
+.sect { border-top: 1px solid var(--border-soft); }
+.sect:first-of-type { border-top: none; }
 .sect > summary {
-  display: flex; align-items: center; gap: 11px;
-  padding: 13px 12px; cursor: pointer; list-style: none; user-select: none;
-  border-radius: var(--r); transition: background .12s;
+  display: grid; grid-template-columns: 22px 1fr auto auto;
+  align-items: baseline; gap: 12px;
+  padding: 14px 4px; cursor: pointer; list-style: none; user-select: none;
+  transition: color .12s;
 }
 .sect > summary::-webkit-details-marker { display: none; }
-.sect > summary:hover { background: var(--card-2); }
+.sect > summary:hover { color: var(--text); }
+.sect > summary:hover .sect-num { color: var(--accent); }
+
+/* El número ordena, no decora: por eso es del mismo gris que el resto de la
+   fila hasta que se pasa por encima. */
 .sect-num {
-  width: 23px; height: 23px; flex-shrink: 0; display: grid; place-items: center;
-  border-radius: 7px; font-size: 11px; font-weight: 700;
-  background: var(--bg-soft); color: var(--text-dim); border: 1px solid var(--border);
-  transition: all .16s;
+  font-family: var(--mono); font-size: 12px; font-weight: 400;
+  color: var(--text-dim); background: none; border: none;
+  width: auto; height: auto; display: block; border-radius: 0;
+  transition: color .12s;
 }
-/* Cada paso con su color. Plegada la sección, el número es lo único visible
-   además del título: darle color le da identidad estable y ayuda a leer el
-   panel como una secuencia y no como seis opciones sueltas. */
-.sect-num.n-indigo { background: var(--n-indigo-bg); color: var(--n-indigo-tx); border-color: transparent; }
-.sect-num.n-teal   { background: var(--n-teal-bg);   color: var(--n-teal-tx);   border-color: transparent; }
-.sect-num.n-pink   { background: var(--n-pink-bg);   color: var(--n-pink-tx);   border-color: transparent; }
-.sect-num.n-blue   { background: var(--n-blue-bg);   color: var(--n-blue-tx);   border-color: transparent; }
-.sect-num.n-amber  { background: var(--n-amber-bg);  color: var(--n-amber-tx);  border-color: transparent; }
-.sect-num.n-violet { background: var(--n-violet-bg); color: var(--n-violet-tx); border-color: transparent; }
-/* abierta, el color se refuerza en vez de cambiar de familia */
-.sect[open] .sect-num { box-shadow: 0 0 0 1px currentColor inset; }
-.sect-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
-.sect-t b { font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
+.sect[open] .sect-num { color: var(--accent); }
+.sect-t { display: contents; }
+.sect-t b { font-size: 14px; font-weight: 600; letter-spacing: -.01em; color: var(--text); }
+/* El resumen del paso: lo que está configurado ahora mismo. Alineado a la
+   derecha y en monoespaciada para que los seis se lean como una columna de
+   valores y no como seis frases sueltas. */
 .sect-t em {
-  font-style: normal; font-size: 11px; color: var(--text-dim);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  font-style: normal; font-family: var(--mono); font-size: 12px;
+  color: var(--text-dim); text-align: right;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px;
 }
-.sect .chev { color: var(--text-dim); font-size: 16px; transition: transform .18s var(--ease); }
-.sect[open] .chev { transform: rotate(90deg); }
+.sect .chev { color: var(--border-strong); font-size: 14px; transition: transform .18s var(--ease), color .12s; }
+.sect[open] .chev { transform: rotate(90deg); color: var(--text-dim); }
+
 .sect-body { padding: 4px 14px 20px; }
 
 /* configuración congelada durante la búsqueda */
@@ -1038,8 +1058,10 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
 .champ {
   position: relative; overflow: hidden;
   background: var(--card);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
+  /* El filo de color de 3px a la izquierda se saco: es decoracion haciendo de
+     jerarquia. Lo que destaca esta tarjeta es su borde de acento y la sombra,
+     que es la misma profundidad que usa el resto del sistema. */
+  border: 1px solid var(--accent-line);
   box-shadow: var(--sh-2);
   border-radius: var(--r-lg); padding: 22px 24px; margin-bottom: 18px;
   display: grid; grid-template-columns: minmax(240px, 1fr) 1.7fr; gap: 26px;

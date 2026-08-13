@@ -10,32 +10,32 @@
 <meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>⚡</text></svg>">
 <style>
-@font-face{font-family:"Inter";src:url("/static/fuentes/inter-var.woff2") format("woff2");
-  font-weight:100 900;font-display:swap}
+@font-face{font-family:"Outfit";src:url("/static/fuentes/outfit-var.woff2") format("woff2");font-weight:100 900;font-display:swap}
+@font-face{font-family:"Space Mono";src:url("/static/fuentes/spacemono-400.woff2") format("woff2");font-weight:400;font-display:swap}
 :root{
-  --bg:#f4f6fa; --bg-soft:#eef1f7; --card:#ffffff; --card-2:#f7f9fc;
-  --border:#e6eaf2; --border-soft:#eff2f8; --border-strong:#cfd6e4;
-  --text:#16191f; --text-2:#4a5262;
-  /* #5f6775 daba 4.42:1 en la nota bajo el botón y en el aviso de riesgo,
+  --bg:#120F10; --bg-soft:#1A1517; --card:#1E181A; --card-2:#241D1F;
+  --border:#31262A; --border-soft:#2A2124; --border-strong:#443338;
+  --text:#F6EFEA; --text-2:#D3C6C3;
+  /* #A8999A daba 4.42:1 en la nota bajo el botón y en el aviso de riesgo,
      por debajo del mínimo legible. Mismo valor que ya usa la aplicación. */
-  --text-dim:#5f6775;
-  --accent:#5348e8; --accent-2:#4338ca;
-  --accent-soft:rgba(99, 91, 255,.10); --accent-line:rgba(99, 91, 255,.28);
-  --pos:#0c784a; --neg:#bc3934; --warn:#895f0b;
+  --text-dim:#A8999A;
+  --accent:#EC6A7E; --accent-2:#EC6A7E;
+  --accent-soft:rgba(236,106,126,.10); --accent-line:rgba(236,106,126,.28);
+  --pos:#63C79A; --neg:#E8635C; --warn:#F0C877;
   --r:10px; --r-lg:14px; --r-xl:20px;
-  --font:"Inter","Segoe UI Variable","Segoe UI",system-ui,-apple-system,sans-serif;
-  --mono:ui-monospace,"Cascadia Code","JetBrains Mono",Consolas,monospace;
+  --font:"Outfit","Inter",system-ui,-apple-system,sans-serif;
+  --mono:"Space Mono",ui-monospace,Consolas,monospace;
   --ease:cubic-bezier(.22,.61,.36,1);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
-::selection{background:rgba(99, 91, 255,.28)}
+::selection{background:rgba(236,106,126,.28)}
 a{color:inherit;text-decoration:none}
 .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
 
 /* ---------------------------------------------------------------- nav */
-header{position:sticky;top:0;z-index:50;background:rgba(244,246,250,.85);backdrop-filter:blur(14px);border-bottom:1px solid var(--border-soft)}
+header{position:sticky;top:0;z-index:50;background:rgba(18,15,16,.86);backdrop-filter:blur(14px);border-bottom:1px solid var(--border-soft)}
 .nav{display:flex;align-items:center;gap:14px;height:64px}
 .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:-.025em;font-size:17px}
 .brand-mark{width:30px;height:30px;display:grid;place-items:center;border-radius:8px;background:var(--card-2);border:1px solid var(--border);color:var(--accent-2)}
@@ -43,10 +43,10 @@ header{position:sticky;top:0;z-index:50;background:rgba(244,246,250,.85);backdro
 .nav-links{display:flex;gap:26px;margin-left:auto;font-size:14px;color:var(--text-2)}
 .nav-links a:hover{color:var(--text)}
 @media(max-width:760px){.nav-links{display:none}}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:38px;padding:0 18px;border-radius:var(--r);border:1px solid transparent;background:var(--accent);color:#fff;font:inherit;font-size:14px;font-weight:550;cursor:pointer;transition:background .14s,border-color .14s,color .14s}
-.btn:hover{background:#4a3fd6}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:38px;padding:0 18px;border-radius:var(--r);border:1px solid transparent;background:var(--accent);color:#1A1517;font:inherit;font-size:14px;font-weight:550;cursor:pointer;transition:background .14s,border-color .14s,color .14s}
+.btn:hover{background:#f08194}
 .btn.ghost{background:var(--card-2);color:var(--text-2);border-color:var(--border)}
-.btn.ghost:hover{background:#f1f4fa;color:var(--text);border-color:var(--border-strong)}
+.btn.ghost:hover{background:#2A2124;color:var(--text);border-color:var(--border-strong)}
 .btn.lg{height:46px;padding:0 24px;font-size:15px}
 
 /* --------------------------------------------------------------- hero */
@@ -60,9 +60,9 @@ h1 em{font-style:normal;color:var(--accent-2)}
 .cta-note{color:var(--text-dim);font-size:13px;margin-top:16px}
 
 /* ------------------------------------------------------------ mockup */
-.shot{margin:56px auto 0;border:1px solid var(--border);border-radius:var(--r-xl);overflow:hidden;background:var(--card);box-shadow:0 8px 16px rgba(16,24,40,.06), 0 24px 64px rgba(16,24,40,.14)}
+.shot{margin:56px auto 0;border:1px solid var(--border);border-radius:var(--r-xl);overflow:hidden;background:var(--card);box-shadow:0 8px 16px rgba(0,0,0,.06), 0 24px 64px rgba(0,0,0,.14)}
 .shot-bar{display:flex;align-items:center;gap:7px;padding:11px 15px;border-bottom:1px solid var(--border-soft);background:var(--bg-soft)}
-.shot-bar i{width:10px;height:10px;border-radius:50%;background:#cfd6e4;display:block}
+.shot-bar i{width:10px;height:10px;border-radius:50%;background:#443338;display:block}
 .shot-bar span{margin-left:10px;font-size:11.5px;color:var(--text-dim);font-family:var(--mono)}
 .shot svg{display:block;width:100%;height:auto}
 
@@ -146,7 +146,7 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
 /* aviso de sesión, debajo del encabezado */
 .aviso{background:var(--accent-soft);border-bottom:1px solid var(--accent-line);color:var(--text);
   font-size:14px;padding:12px 24px;text-align:center}
-.aviso.malo{background:rgba(217,164,65,.10);border-bottom-color:rgba(217,164,65,.32)}
+.aviso.malo{background:rgba(240,200,119,.10);border-bottom-color:rgba(240,200,119,.32)}
 /* la sesión activa, en el encabezado */
 .cuenta{display:flex;align-items:center;gap:10px;margin-left:auto}
 .chip{display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--text-2);
@@ -202,132 +202,132 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
     <svg viewBox="0 0 1000 520" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vista del minado: panel de configuración a la izquierda y databank de estrategias a la derecha">
       <defs>
         <linearGradient id="eq" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#5348e8" stop-opacity=".35"/>
-          <stop offset="100%" stop-color="#5348e8" stop-opacity="0"/>
+          <stop offset="0%" stop-color="#EC6A7E" stop-opacity=".35"/>
+          <stop offset="100%" stop-color="#EC6A7E" stop-opacity="0"/>
         </linearGradient>
         <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stop-color="#5348e8"/><stop offset="100%" stop-color="#4338ca"/>
+          <stop offset="0%" stop-color="#EC6A7E"/><stop offset="100%" stop-color="#EC6A7E"/>
         </linearGradient>
       </defs>
-      <rect width="1000" height="520" fill="#ffffff"/>
+      <rect width="1000" height="520" fill="#1E181A"/>
       <!-- sidebar -->
-      <rect x="0" y="0" width="150" height="520" fill="#eef1f7"/>
-      <rect x="18" y="22" width="20" height="20" rx="6" fill="#f7f9fc" stroke="#e6eaf2"/>
-      <rect x="46" y="27" width="72" height="10" rx="3" fill="#cfd6e4"/>
-      <rect x="14" y="70" width="122" height="30" rx="8" fill="#f7f9fc"/>
-      <rect x="26" y="80" width="52" height="9" rx="3" fill="#5f6775"/>
-      <rect x="14" y="106" width="122" height="30" rx="8" fill="#f1f4fa"/>
-      <rect x="26" y="116" width="60" height="9" rx="3" fill="#4a5262"/>
+      <rect x="0" y="0" width="150" height="520" fill="#1A1517"/>
+      <rect x="18" y="22" width="20" height="20" rx="6" fill="#241D1F" stroke="#31262A"/>
+      <rect x="46" y="27" width="72" height="10" rx="3" fill="#443338"/>
+      <rect x="14" y="70" width="122" height="30" rx="8" fill="#241D1F"/>
+      <rect x="26" y="80" width="52" height="9" rx="3" fill="#A8999A"/>
+      <rect x="14" y="106" width="122" height="30" rx="8" fill="#2A2124"/>
+      <rect x="26" y="116" width="60" height="9" rx="3" fill="#D3C6C3"/>
       <!-- setup panel -->
-      <rect x="166" y="22" width="250" height="476" rx="12" fill="#ffffff" stroke="#e6eaf2"/>
-      <g fill="#5f6775">
-        <rect x="182" y="42" width="22" height="22" rx="7" fill="#f7f9fc" stroke="#cfd6e4"/>
-        <rect x="214" y="45" width="66" height="9" rx="3" fill="#16191f"/>
+      <rect x="166" y="22" width="250" height="476" rx="12" fill="#1E181A" stroke="#31262A"/>
+      <g fill="#A8999A">
+        <rect x="182" y="42" width="22" height="22" rx="7" fill="#241D1F" stroke="#443338"/>
+        <rect x="214" y="45" width="66" height="9" rx="3" fill="#F6EFEA"/>
         <rect x="214" y="59" width="140" height="7" rx="3"/>
-        <rect x="182" y="86" width="22" height="22" rx="7" fill="#f7f9fc" stroke="#cfd6e4"/>
-        <rect x="214" y="89" width="54" height="9" rx="3" fill="#16191f"/>
+        <rect x="182" y="86" width="22" height="22" rx="7" fill="#241D1F" stroke="#443338"/>
+        <rect x="214" y="89" width="54" height="9" rx="3" fill="#F6EFEA"/>
         <rect x="214" y="103" width="120" height="7" rx="3"/>
-        <rect x="182" y="130" width="22" height="22" rx="7" fill="#5348e8" fill-opacity=".18" stroke="#5348e8" stroke-opacity=".4"/>
-        <rect x="214" y="133" width="96" height="9" rx="3" fill="#16191f"/>
+        <rect x="182" y="130" width="22" height="22" rx="7" fill="#EC6A7E" fill-opacity=".18" stroke="#EC6A7E" stroke-opacity=".4"/>
+        <rect x="214" y="133" width="96" height="9" rx="3" fill="#F6EFEA"/>
         <rect x="214" y="147" width="132" height="7" rx="3"/>
       </g>
       <!-- risk knobs -->
-      <rect x="182" y="172" width="218" height="52" rx="9" fill="#eef1f7" stroke="#eff2f8"/>
-      <rect x="196" y="186" width="86" height="9" rx="3" fill="#4a5262"/>
-      <rect x="196" y="203" width="34" height="9" rx="3" fill="#0c784a"/>
-      <rect x="340" y="184" width="46" height="26" rx="7" fill="#f7f9fc" stroke="#cfd6e4"/>
-      <text x="363" y="201" font-family="monospace" font-size="12" fill="#16191f" text-anchor="middle">1%</text>
-      <rect x="182" y="234" width="218" height="52" rx="9" fill="#eef1f7" stroke="#eff2f8"/>
-      <rect x="196" y="248" width="112" height="9" rx="3" fill="#4a5262"/>
-      <rect x="196" y="265" width="52" height="9" rx="3" fill="#5f6775"/>
-      <rect x="340" y="246" width="46" height="26" rx="7" fill="#f7f9fc" stroke="#cfd6e4"/>
-      <text x="363" y="263" font-family="monospace" font-size="12" fill="#16191f" text-anchor="middle">1:2</text>
+      <rect x="182" y="172" width="218" height="52" rx="9" fill="#1A1517" stroke="#2A2124"/>
+      <rect x="196" y="186" width="86" height="9" rx="3" fill="#D3C6C3"/>
+      <rect x="196" y="203" width="34" height="9" rx="3" fill="#63C79A"/>
+      <rect x="340" y="184" width="46" height="26" rx="7" fill="#241D1F" stroke="#443338"/>
+      <text x="363" y="201" font-family="monospace" font-size="12" fill="#F6EFEA" text-anchor="middle">1%</text>
+      <rect x="182" y="234" width="218" height="52" rx="9" fill="#1A1517" stroke="#2A2124"/>
+      <rect x="196" y="248" width="112" height="9" rx="3" fill="#D3C6C3"/>
+      <rect x="196" y="265" width="52" height="9" rx="3" fill="#A8999A"/>
+      <rect x="340" y="246" width="46" height="26" rx="7" fill="#241D1F" stroke="#443338"/>
+      <text x="363" y="263" font-family="monospace" font-size="12" fill="#F6EFEA" text-anchor="middle">1:2</text>
       <!-- criteria -->
       <g>
-        <rect x="182" y="300" width="218" height="26" rx="6" fill="#5348e8" fill-opacity=".07"/>
-        <rect x="192" y="309" width="9" height="9" rx="2" fill="#5348e8"/>
-        <rect x="209" y="309" width="96" height="8" rx="3" fill="#4a5262"/>
-        <rect x="348" y="306" width="42" height="15" rx="4" fill="#f7f9fc"/>
-        <rect x="182" y="330" width="218" height="26" rx="6" fill="#eef1f7"/>
-        <rect x="192" y="339" width="9" height="9" rx="2" fill="none" stroke="#cfd6e4"/>
-        <rect x="209" y="339" width="76" height="8" rx="3" fill="#5f6775"/>
-        <rect x="182" y="360" width="218" height="26" rx="6" fill="#eef1f7"/>
-        <rect x="192" y="369" width="9" height="9" rx="2" fill="none" stroke="#cfd6e4"/>
-        <rect x="209" y="369" width="88" height="8" rx="3" fill="#5f6775"/>
+        <rect x="182" y="300" width="218" height="26" rx="6" fill="#EC6A7E" fill-opacity=".07"/>
+        <rect x="192" y="309" width="9" height="9" rx="2" fill="#EC6A7E"/>
+        <rect x="209" y="309" width="96" height="8" rx="3" fill="#D3C6C3"/>
+        <rect x="348" y="306" width="42" height="15" rx="4" fill="#241D1F"/>
+        <rect x="182" y="330" width="218" height="26" rx="6" fill="#1A1517"/>
+        <rect x="192" y="339" width="9" height="9" rx="2" fill="none" stroke="#443338"/>
+        <rect x="209" y="339" width="76" height="8" rx="3" fill="#A8999A"/>
+        <rect x="182" y="360" width="218" height="26" rx="6" fill="#1A1517"/>
+        <rect x="192" y="369" width="9" height="9" rx="2" fill="none" stroke="#443338"/>
+        <rect x="209" y="369" width="88" height="8" rx="3" fill="#A8999A"/>
       </g>
       <!-- run bar -->
-      <rect x="166" y="410" width="250" height="88" rx="12" fill="#f7f9fc"/>
-      <rect x="182" y="424" width="70" height="8" rx="3" fill="#5f6775"/>
-      <rect x="182" y="440" width="52" height="26" rx="7" fill="#eef1f7" stroke="#cfd6e4"/>
-      <text x="208" y="457" font-family="monospace" font-size="13" fill="#16191f" text-anchor="middle">25</text>
-      <rect x="182" y="474" width="218" height="14" rx="7" fill="#5348e8"/>
+      <rect x="166" y="410" width="250" height="88" rx="12" fill="#241D1F"/>
+      <rect x="182" y="424" width="70" height="8" rx="3" fill="#A8999A"/>
+      <rect x="182" y="440" width="52" height="26" rx="7" fill="#1A1517" stroke="#443338"/>
+      <text x="208" y="457" font-family="monospace" font-size="13" fill="#F6EFEA" text-anchor="middle">25</text>
+      <rect x="182" y="474" width="218" height="14" rx="7" fill="#EC6A7E"/>
       <!-- results: goal card -->
-      <rect x="432" y="22" width="552" height="128" rx="12" fill="#ffffff" stroke="#e6eaf2"/>
-      <circle cx="494" cy="86" r="38" fill="none" stroke="#e6eaf2" stroke-width="8"/>
+      <rect x="432" y="22" width="552" height="128" rx="12" fill="#1E181A" stroke="#31262A"/>
+      <circle cx="494" cy="86" r="38" fill="none" stroke="#31262A" stroke-width="8"/>
       <circle cx="494" cy="86" r="38" fill="none" stroke="url(#ring)" stroke-width="8" stroke-linecap="round"
               stroke-dasharray="239" stroke-dashoffset="72" transform="rotate(-90 494 86)"/>
-      <text x="494" y="90" font-family="Inter,sans-serif" font-size="17" font-weight="700" fill="#16191f" text-anchor="middle">18/25</text>
-      <rect x="556" y="46" width="150" height="11" rx="3" fill="#16191f"/>
-      <rect x="556" y="66" width="240" height="7" rx="3" fill="#5f6775"/>
+      <text x="494" y="90" font-family="Inter,sans-serif" font-size="17" font-weight="700" fill="#F6EFEA" text-anchor="middle">18/25</text>
+      <rect x="556" y="46" width="150" height="11" rx="3" fill="#F6EFEA"/>
+      <rect x="556" y="66" width="240" height="7" rx="3" fill="#A8999A"/>
       <g>
-        <rect x="556" y="88" width="96" height="44" rx="8" fill="#eef1f7" stroke="#eff2f8"/>
-        <rect x="568" y="98" width="40" height="6" rx="3" fill="#5f6775"/>
-        <text x="568" y="122" font-family="monospace" font-size="14" font-weight="700" fill="#16191f">1.204</text>
-        <rect x="662" y="88" width="96" height="44" rx="8" fill="#eef1f7" stroke="#eff2f8"/>
-        <rect x="674" y="98" width="46" height="6" rx="3" fill="#5f6775"/>
-        <text x="674" y="122" font-family="monospace" font-size="14" font-weight="700" fill="#0c784a">18</text>
-        <rect x="768" y="88" width="96" height="44" rx="8" fill="#eef1f7" stroke="#eff2f8"/>
-        <rect x="780" y="98" width="52" height="6" rx="3" fill="#5f6775"/>
-        <text x="780" y="122" font-family="monospace" font-size="14" font-weight="700" fill="#16191f">4m 12s</text>
+        <rect x="556" y="88" width="96" height="44" rx="8" fill="#1A1517" stroke="#2A2124"/>
+        <rect x="568" y="98" width="40" height="6" rx="3" fill="#A8999A"/>
+        <text x="568" y="122" font-family="monospace" font-size="14" font-weight="700" fill="#F6EFEA">1.204</text>
+        <rect x="662" y="88" width="96" height="44" rx="8" fill="#1A1517" stroke="#2A2124"/>
+        <rect x="674" y="98" width="46" height="6" rx="3" fill="#A8999A"/>
+        <text x="674" y="122" font-family="monospace" font-size="14" font-weight="700" fill="#63C79A">18</text>
+        <rect x="768" y="88" width="96" height="44" rx="8" fill="#1A1517" stroke="#2A2124"/>
+        <rect x="780" y="98" width="52" height="6" rx="3" fill="#A8999A"/>
+        <text x="780" y="122" font-family="monospace" font-size="14" font-weight="700" fill="#F6EFEA">4m 12s</text>
       </g>
       <!-- champion -->
-      <rect x="432" y="162" width="552" height="120" rx="12" fill="#141827" stroke="#5348e8" stroke-opacity=".28"/>
-      <rect x="450" y="180" width="104" height="16" rx="8" fill="#5348e8" fill-opacity=".14" stroke="#5348e8" stroke-opacity=".3"/>
-      <text x="502" y="192" font-family="Inter,sans-serif" font-size="9" font-weight="700" fill="#4338ca" text-anchor="middle">MEJOR ENCONTRADA</text>
-      <text x="450" y="222" font-family="Inter,sans-serif" font-size="19" font-weight="700" fill="#16191f">S-018</text>
-      <rect x="450" y="234" width="188" height="7" rx="3" fill="#4a5262"/>
-      <rect x="450" y="248" width="150" height="6" rx="3" fill="#5f6775"/>
+      <rect x="432" y="162" width="552" height="120" rx="12" fill="#141827" stroke="#EC6A7E" stroke-opacity=".28"/>
+      <rect x="450" y="180" width="104" height="16" rx="8" fill="#EC6A7E" fill-opacity=".14" stroke="#EC6A7E" stroke-opacity=".3"/>
+      <text x="502" y="192" font-family="Inter,sans-serif" font-size="9" font-weight="700" fill="#EC6A7E" text-anchor="middle">MEJOR ENCONTRADA</text>
+      <text x="450" y="222" font-family="Inter,sans-serif" font-size="19" font-weight="700" fill="#F6EFEA">S-018</text>
+      <rect x="450" y="234" width="188" height="7" rx="3" fill="#D3C6C3"/>
+      <rect x="450" y="248" width="150" height="6" rx="3" fill="#A8999A"/>
       <polyline points="450,272 480,266 510,270 540,258 570,262 600,246 630,250 660,238"
-                fill="none" stroke="#0c784a" stroke-width="2" stroke-linejoin="round"/>
+                fill="none" stroke="#63C79A" stroke-width="2" stroke-linejoin="round"/>
       <polygon points="450,272 480,266 510,270 540,258 570,262 600,246 630,250 660,238 660,276 450,276" fill="url(#eq)"/>
       <g font-family="Inter,sans-serif" text-anchor="middle">
-        <text x="730" y="200" font-size="9" fill="#5f6775">ANUAL</text>
-        <text x="730" y="222" font-size="18" font-weight="700" fill="#0c784a">+8.1%</text>
-        <text x="830" y="200" font-size="9" fill="#5f6775">PROFIT FACTOR</text>
-        <text x="830" y="222" font-size="18" font-weight="700" fill="#16191f">1.35</text>
-        <text x="930" y="200" font-size="9" fill="#5f6775">MAX DD</text>
-        <text x="930" y="222" font-size="18" font-weight="700" fill="#bc3934">-37%</text>
+        <text x="730" y="200" font-size="9" fill="#A8999A">ANUAL</text>
+        <text x="730" y="222" font-size="18" font-weight="700" fill="#63C79A">+8.1%</text>
+        <text x="830" y="200" font-size="9" fill="#A8999A">PROFIT FACTOR</text>
+        <text x="830" y="222" font-size="18" font-weight="700" fill="#F6EFEA">1.35</text>
+        <text x="930" y="200" font-size="9" fill="#A8999A">MAX DD</text>
+        <text x="930" y="222" font-size="18" font-weight="700" fill="#E8635C">-37%</text>
       </g>
       <!-- databank rows -->
-      <rect x="432" y="294" width="552" height="204" rx="12" fill="#ffffff" stroke="#e6eaf2"/>
-      <rect x="448" y="310" width="86" height="9" rx="3" fill="#16191f"/>
-      <line x1="448" y1="332" x2="968" y2="332" stroke="#eff2f8"/>
+      <rect x="432" y="294" width="552" height="204" rx="12" fill="#1E181A" stroke="#31262A"/>
+      <rect x="448" y="310" width="86" height="9" rx="3" fill="#F6EFEA"/>
+      <line x1="448" y1="332" x2="968" y2="332" stroke="#2A2124"/>
       <g font-family="monospace" font-size="11">
         <g transform="translate(0,0)">
-          <text x="452" y="356" fill="#5f6775">1</text><text x="480" y="356" fill="#16191f">S-018</text>
-          <polyline points="580,358 600,352 620,356 640,346" fill="none" stroke="#0c784a" stroke-width="1.5"/>
-          <text x="720" y="356" fill="#0c784a" text-anchor="end">+8.1%</text>
-          <text x="800" y="356" fill="#16191f" text-anchor="end">1.35</text>
-          <text x="880" y="356" fill="#bc3934" text-anchor="end">-37%</text>
-          <text x="960" y="356" fill="#4a5262" text-anchor="end">790</text>
+          <text x="452" y="356" fill="#A8999A">1</text><text x="480" y="356" fill="#F6EFEA">S-018</text>
+          <polyline points="580,358 600,352 620,356 640,346" fill="none" stroke="#63C79A" stroke-width="1.5"/>
+          <text x="720" y="356" fill="#63C79A" text-anchor="end">+8.1%</text>
+          <text x="800" y="356" fill="#F6EFEA" text-anchor="end">1.35</text>
+          <text x="880" y="356" fill="#E8635C" text-anchor="end">-37%</text>
+          <text x="960" y="356" fill="#D3C6C3" text-anchor="end">790</text>
         </g>
-        <line x1="448" y1="370" x2="968" y2="370" stroke="#eff2f8"/>
+        <line x1="448" y1="370" x2="968" y2="370" stroke="#2A2124"/>
         <g transform="translate(0,32)">
-          <text x="452" y="356" fill="#5f6775">2</text><text x="480" y="356" fill="#16191f">S-004</text>
-          <polyline points="580,358 600,354 620,350 640,349" fill="none" stroke="#0c784a" stroke-width="1.5"/>
-          <text x="720" y="356" fill="#0c784a" text-anchor="end">+7.4%</text>
-          <text x="800" y="356" fill="#16191f" text-anchor="end">1.28</text>
-          <text x="880" y="356" fill="#bc3934" text-anchor="end">-29%</text>
-          <text x="960" y="356" fill="#4a5262" text-anchor="end">1102</text>
+          <text x="452" y="356" fill="#A8999A">2</text><text x="480" y="356" fill="#F6EFEA">S-004</text>
+          <polyline points="580,358 600,354 620,350 640,349" fill="none" stroke="#63C79A" stroke-width="1.5"/>
+          <text x="720" y="356" fill="#63C79A" text-anchor="end">+7.4%</text>
+          <text x="800" y="356" fill="#F6EFEA" text-anchor="end">1.28</text>
+          <text x="880" y="356" fill="#E8635C" text-anchor="end">-29%</text>
+          <text x="960" y="356" fill="#D3C6C3" text-anchor="end">1102</text>
         </g>
-        <line x1="448" y1="402" x2="968" y2="402" stroke="#eff2f8"/>
+        <line x1="448" y1="402" x2="968" y2="402" stroke="#2A2124"/>
         <g transform="translate(0,64)">
-          <text x="452" y="356" fill="#5f6775">3</text><text x="480" y="356" fill="#16191f">S-011</text>
-          <polyline points="580,356 600,358 620,350 640,352" fill="none" stroke="#0c784a" stroke-width="1.5"/>
-          <text x="720" y="356" fill="#0c784a" text-anchor="end">+6.2%</text>
-          <text x="800" y="356" fill="#16191f" text-anchor="end">1.21</text>
-          <text x="880" y="356" fill="#bc3934" text-anchor="end">-24%</text>
-          <text x="960" y="356" fill="#4a5262" text-anchor="end">964</text>
+          <text x="452" y="356" fill="#A8999A">3</text><text x="480" y="356" fill="#F6EFEA">S-011</text>
+          <polyline points="580,356 600,358 620,350 640,352" fill="none" stroke="#63C79A" stroke-width="1.5"/>
+          <text x="720" y="356" fill="#63C79A" text-anchor="end">+6.2%</text>
+          <text x="800" y="356" fill="#F6EFEA" text-anchor="end">1.21</text>
+          <text x="880" y="356" fill="#E8635C" text-anchor="end">-24%</text>
+          <text x="960" y="356" fill="#D3C6C3" text-anchor="end">964</text>
         </g>
       </g>
     </svg>

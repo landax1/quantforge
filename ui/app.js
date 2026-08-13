@@ -1520,6 +1520,9 @@ PAGES.mining = async (main) => {
     const drivers = checked("#m-drivers");
     if (!drivers.length) { toast("Elegí al menos un disparador de entrada", "err"); return; }
     S.mining = true; S.mineResult = null; S.mineLive = null;
+    // el punto de la barra lateral late mientras haya corrida: es la única
+    // señal de que algo pasa si el usuario se fue a otra pantalla
+    $("#nav [data-page='mining']")?.classList.add("minando");
     $("#m-run").disabled = true;
     $("#m-stop").style.display = "";
     $("#m-runbar")?.classList.add("running");
@@ -1565,6 +1568,7 @@ PAGES.mining = async (main) => {
       else toast(`Se probaron ${fmtInt(result.tested)} y sólo ${kept} pasaron los filtros`, "err");
     } catch (e) { toast(e.message, "err"); hideProgress("m-prog"); }
     S.mining = false; S.mineJobId = null;
+    $("#nav [data-page='mining']")?.classList.remove("minando");
     const run = $("#m-run"), stop = $("#m-stop");
     if (run) run.disabled = false;
     if (stop) stop.style.display = "none";
@@ -2363,11 +2367,9 @@ function applyTheme(theme, redraw) {
 function initTheme() {
   let saved = null;
   try { saved = localStorage.getItem("qf.theme"); } catch (e) { /* noop */ }
-  // Claro por defecto. El oscuro sigue estando entero y a un clic, pero una
-  // herramienta de análisis se mira de día y durante horas: sobre fondo claro
-  // las tablas densas y las curvas se leen mejor, y es lo que hace casi todo
-  // el software de este tipo. El que lo prefiera oscuro lo cambia y se guarda.
-  applyTheme(saved === "dark" ? "dark" : "light", false);
+  // Oscuro por defecto: es el mundo visual que define Botiquant Bordo, y una
+  // herramienta que se mira durante horas seguidas cansa menos así.
+  applyTheme(saved === "light" ? "light" : "dark", false);
   const btn = $("#theme-btn");
   if (btn) btn.onclick = () => {
     const now = document.documentElement.getAttribute("data-theme");
