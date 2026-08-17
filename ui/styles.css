@@ -1378,7 +1378,50 @@ svg.spark { display: block; border-radius: 4px; }
 
 /* ========================================================== Monte Carlo ==
    La pantalla es una sola pregunta —cuál aguanta mejor— así que no lleva
-   pestañas ni filtros: se eligen estrategias arriba y el resultado baja. */
+   pestañas ni filtros: se eligen estrategias arriba y el resultado baja.
+
+   Y una regla de color que vale para toda la sección: el rojo significa
+   "esto es un problema", así que NO puede usarse para los rangos. Que el peor
+   de veinte escenarios cierre en -6% no es una mala noticia, es el borde de
+   abajo de lo normal, y una estrategia sana lo tiene igual. Pintado de rojo,
+   lo que la simulación acababa de demostrar —que aguanta— se leía como una
+   alarma. Verde para lo que salió bien, neutro para los rangos y para lo que
+   hay que bancar, y rojo sólo para el riesgo de ruina alto. */
+.mc-champ { margin-bottom: 18px; }
+.mc-champ h2 { font-size: 22px; font-weight: 650; letter-spacing: -.025em; margin-bottom: 8px; }
+.mc-porque { font-size: 13.5px; line-height: 1.65; color: var(--text-2);
+             max-width: 62ch; margin-top: 11px; }
+.mc-porque b { color: var(--text); font-weight: 640; }
+
+/* El titular: la cifra buena, grande y primera. */
+.mc-titular {
+  display: flex; align-items: center; gap: 16px; margin-top: 14px;
+  padding: 14px 18px; border-radius: var(--r);
+  background: var(--pos-soft); border: 1px solid var(--pos-line);
+}
+.mc-titular.flojo { background: var(--warn-soft); border-color: var(--warn-line); }
+.mc-titular > b {
+  font-size: 38px; font-weight: 700; letter-spacing: -.04em; line-height: 1;
+  color: var(--pos); font-variant-numeric: tabular-nums; flex: none;
+}
+.mc-titular.flojo > b { color: var(--warn); }
+.mc-titular > b u { text-decoration: none; font-size: 19px; margin-left: 1px; }
+.mc-titular > div { font-size: 13px; line-height: 1.55; color: var(--text-2); }
+.mc-titular > div b { color: var(--text); font-weight: 640; }
+.mc-titular span {
+  display: block; font-size: 11px; font-weight: 650; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--pos); margin-bottom: 3px;
+}
+.mc-titular.flojo span { color: var(--warn); }
+
+/* El mismo juicio, en chico, para cada fila de la tabla. */
+.sello {
+  display: inline-block; padding: 2px 9px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 620; white-space: nowrap;
+  background: var(--pos-soft); color: var(--pos); border: 1px solid var(--pos-line);
+}
+.sello.flojo { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
+
 /* Explicación de qué hace la pantalla, antes de los controles. Esto lo va a
    usar gente que nunca oyó "out of sample": si no dice qué es y por qué
    importa, los campos no significan nada. */

@@ -294,6 +294,13 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             out.append({**entry,
                         "dataset_id": have["id"] if have else None,
                         "rows": have["rows"] if have else 0,
+                        # La tarjeta anunciaba "velas M1" siempre, y el número
+                        # que mostraba al lado era el del dataset que hay
+                        # cargado — que en los que trae el instalador son
+                        # horarias. Decía "78.310 velas M1" sobre 78.310 velas
+                        # de una hora: no es un detalle de redacción, cambia
+                        # qué temporalidades se pueden minar con eso.
+                        "timeframe": have["timeframe"] if have else None,
                         "start": have["start"] if have else None,
                         "end": have["end"] if have else None})
         return out

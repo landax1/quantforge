@@ -952,33 +952,59 @@ function pintarMC(host) {
    Junta cuánto gana y cuánto puede salir mal en una sola cifra comprobable,
    sin inventar un puntaje opaco: ordenar por ganancia premiaría a la que tuvo
    suerte, y ordenar sólo por riesgo premiaría a la que no arriesga nada. */
+/* Qué tan bien aguantó, en una palabra.
+
+   El rojo tiene que significar "esto es un problema", y por eso no puede
+   usarse para los rangos. Que el peor de veinte escenarios cierre en -6% no
+   es una mala noticia: es el borde de abajo de lo normal, y una estrategia
+   sana lo tiene igual. Pintarlo de rojo hacía que una estrategia sólida se
+   viera como una alarma, que es exactamente lo contrario de lo que la
+   simulación acababa de demostrar. */
+function juicioMC(m) {
+  const gana = 100 - m.prob_perder;
+  if (m.ruina > 10) return { cls: "flojo", palabra: "Riesgosa",
+    frase: `Aguanta bien en general, pero en ${fmtNum(m.ruina, 1)}% de los escenarios llega a perder mucho. Eso es lo que hay que mirar antes que nada.` };
+  if (gana >= 80) return { cls: "solida", palabra: "Sólida",
+    frase: `Gana en la enorme mayoría de los repartos posibles. Que salga bien no dependió de que las operaciones cayeran en un orden afortunado.` };
+  if (gana >= 60) return { cls: "solida", palabra: "Aguanta",
+    frase: `Gana en la mayoría de los repartos. Depende algo del orden en que salgan las operaciones, pero se sostiene.` };
+  if (gana >= 45) return { cls: "flojo", palabra: "Al filo",
+    frase: `Gana casi tantas veces como pierde. Con esta estrategia el resultado depende bastante de la suerte del orden.` };
+  return { cls: "flojo", palabra: "Frágil",
+    frase: `Pierde en más de la mitad de los repartos posibles: lo que se vio en el backtest fue mayormente un orden afortunado.` };
+}
+
 function campeonMC(m, inicial) {
-  const gana = m.peor_razonable_pct >= 0;
+  const gana = 100 - m.prob_perder;
+  const j = juicioMC(m);
   return `<div class="champ mc-champ">
     <div>
-      <div class="champ-tag">${icono("estrella")} La que más aguanta</div>
+      <div class="champ-tag">${icono("estrella")} La que mejor aguanta</div>
       <h2>${esc(m.nombre)}</h2>
       <div class="champ-blocks">${esc(nombreCorto(m.mercado))} · ${esc(m.timeframe)}</div>
-      <p class="mc-porque">
-        De cada 100 formas en que le podrían haber salido las operaciones,
-        <b>termina ganando en ${fmtNum(100 - m.prob_perder, 0)}</b>.
-        Y en el peor de cada veinte repartos ${gana
-          ? `<b class="pos">igual termina arriba</b>, con ${fmtMoney(m.peor_razonable)}`
-          : `<b class="neg">termina con ${fmtMoney(m.peor_razonable)}</b>`},
-        habiendo empezado con ${fmtMoney(inicial)}.
-      </p>
-      <p class="mc-porque">Quedó primera por la <b>frecuencia con que gana</b>, que es lo
-        que de verdad separa una estrategia de otra. Lo del peor escenario es el precio
-        que tiene: eso es lo que hay que poder bancar sin cerrar todo.</p>
+
+      <div class="mc-titular ${j.cls}">
+        <b>${fmtNum(gana, 0)}<u>%</u></b>
+        <div><span>${esc(j.palabra)}</span>
+          Gana en <b>${fmtNum(gana, 0)} de cada 100</b> formas en que le podrían
+          haber salido las operaciones.</div>
+      </div>
+
+      <p class="mc-porque">${j.frase}</p>
+      <p class="mc-porque">Y lo que hay que estar dispuesto a aguantar para conseguirlo:
+        una caída de hasta <b>${fmtNum(m.dd_p95, 1)}%</b>, y algún tramo en que la cuenta
+        quede en ${fmtMoney(m.peor_razonable)} habiendo empezado con ${fmtMoney(inicial)}.
+        No es lo que va a pasar — es el borde de abajo de lo normal.</p>
+
       <button class="btn small mt" data-ver="${esc(m.id)}">Ver la simulación completa</button>
     </div>
     <div class="champ-metrics">
-      <div><span>Peor de cada 20</span><b class="${gana ? "pos" : "neg"}">${
-        fmtPct(m.peor_razonable_pct)}</b></div>
-      <div><span>Termina ganando</span><b>${fmtNum(100 - m.prob_perder, 0)}%</b></div>
+      <div><span>Gana en</span><b class="pos">${fmtNum(gana, 0)}%</b></div>
+      <div><span>Capital típico</span><b class="${
+        m.final_mediana >= inicial ? "pos" : ""}">${fmtMoney(m.final_mediana)}</b></div>
+      <div><span>Hay que aguantar</span><b>${fmtNum(m.dd_p95, 1)}%</b></div>
       <div><span>Riesgo de ruina</span><b class="${m.ruina > 5 ? "neg" : ""}">${
         fmtNum(m.ruina, 1)}%</b></div>
-      <div><span>Peor caída</span><b class="neg">${fmtNum(m.dd_p95, 1)}%</b></div>
     </div>
   </div>`;
 }
@@ -996,25 +1022,28 @@ function tablaMC(r) {
     <div class="databank-wrap"><table class="banco">
       <thead><tr>
         <th>#</th><th>Estrategia</th>
-        <th class="num" title="Con cuánto terminás en el peor de cada veinte repartos. Es el criterio por el que están ordenadas.">Peor de cada 20</th>
-        <th class="num" title="En cuántos de los mil repartos terminó ganando plata">Termina ganando</th>
-        <th class="num" title="Probabilidad de llegar a perder el 30% del capital en algún momento">Ruina</th>
-        <th class="num" title="La caída máxima del 5% de simulaciones peores. Es lo que hay que poder aguantar.">Peor caída</th>
-        <th class="num">Capital típico</th><th class="num">Ops.</th><th></th>
+        <th class="num" title="En cuántos de los mil repartos posibles terminó ganando plata. Es el criterio por el que están ordenadas.">Gana en</th>
+        <th></th>
+        <th class="num">Capital típico</th>
+        <th class="num" title="La caída del 5% de simulaciones peores. No es lo que va a pasar: es lo que hay que estar dispuesto a bancar.">Hay que aguantar</th>
+        <th class="num" title="En el mal escenario, con cuánto quedás. Es el borde de abajo de lo normal, no una pérdida esperada.">Mal escenario</th>
+        <th class="num" title="Probabilidad de llegar a perder el 30% del capital en algún momento. Esto sí es una alerta.">Ruina</th>
+        <th class="num">Ops.</th><th></th>
       </tr></thead>
       <tbody>${filas.map(x => x.error ? `
         <tr><td class="rank-cell">—</td><td><span class="strat-name">${esc(x.nombre)}</span></td>
-          <td colspan="7" class="muted">${esc(x.error)}</td></tr>` : `
+          <td colspan="8" class="muted">${esc(x.error)}</td></tr>` : `
         <tr class="${x.puesto === 1 ? "tildada" : ""}">
           <td class="rank-cell"><span class="rank">${String(x.puesto).padStart(2, "0")}</span></td>
           <td><span class="strat-name">${esc(x.nombre)}</span>
               <div class="run-sub">${esc(nombreCorto(x.mercado))} · ${esc(x.timeframe)}</div></td>
-          <td class="num ${x.peor_razonable_pct >= 0 ? "pos" : "neg"}">
-            <b>${fmtPct(x.peor_razonable_pct)}</b></td>
-          <td class="num">${fmtNum(100 - x.prob_perder, 0)}%</td>
+          <td class="num pos"><b>${fmtNum(100 - x.prob_perder, 0)}%</b></td>
+          <td><span class="sello ${juicioMC(x).cls}">${esc(juicioMC(x).palabra)}</span></td>
+          <td class="num ${x.final_mediana >= x.mc.initial_capital ? "pos" : ""}">${
+            fmtMoney(x.final_mediana)}</td>
+          <td class="num">${fmtNum(x.dd_p95, 1)}%</td>
+          <td class="num">${fmtPct(x.peor_razonable_pct)}</td>
           <td class="num ${x.ruina > 5 ? "neg" : ""}">${fmtNum(x.ruina, 1)}%</td>
-          <td class="num neg">${fmtNum(x.dd_p95, 1)}%</td>
-          <td class="num">${fmtMoney(x.final_mediana)}</td>
           <td class="num">${fmtInt(x.operaciones)}</td>
           <td class="num"><button class="btn ghost small" data-ver="${esc(x.id)}">Ver</button></td>
         </tr>`).join("")}</tbody></table></div>
@@ -1037,21 +1066,20 @@ function panelMC(mc) {
         ${fmtInt(mc.trades_per_sim)} operaciones</span></h2>
 
     <div class="metrics-grid">
-      <div class="metric"><span>Probabilidad de perder plata</span>
-        <b class="${fe.prob_loss > 30 ? "neg" : ""}">${fmtNum(fe.prob_loss, 1)}%</b></div>
+      <div class="metric"><span>Termina ganando en</span>
+        <b class="pos">${fmtNum(100 - fe.prob_loss, 1)}%</b></div>
+      <div class="metric"><span>Capital final típico</span>
+        <b class="${fe.median >= mc.initial_capital ? "pos" : ""}">${fmtMoney(fe.median)}</b></div>
+      <div class="metric"><span>Hay que aguantar</span>
+        <b>${fmtNum(dd.p95, 1)}%</b></div>
       <div class="metric"><span>Riesgo de ruina (−${fmtNum(mc.ruin_threshold_pct, 0)}%)</span>
         <b class="${ruina > 5 ? "neg" : ""}">${fmtNum(ruina, 1)}%</b></div>
-      <div class="metric"><span>Capital final típico</span>
-        <b>${fmtMoney(fe.median)}</b></div>
-      <div class="metric"><span>Caída en el 5% peor</span>
-        <b class="neg">${fmtNum(dd.p95, 1)}%</b></div>
     </div>
 
     <p class="stage-note mt">De cada 100 veces que corriera este sistema, en 90 el capital
       final caería entre <b>${fmtMoney(fe.ci_90[0])}</b> y <b>${fmtMoney(fe.ci_90[1])}</b>.
-      En el peor caso simulado terminó en ${fmtMoney(fe.worst)} y llegó a caer
-      ${fmtNum(dd.worst, 1)}%. <b>Ese es el número que hay que poder aguantar</b>, no el
-      del backtest.</p>
+      Ese rango es la respuesta honesta a “cuánto puede rendir”: el número único del
+      backtest era sólo uno de los que había adentro.</p>
 
     <div class="chart-box" id="mc-fan"></div>
     <p class="stage-note">La banda muestra dónde cae el capital en el 90% de las
@@ -1092,7 +1120,8 @@ PAGES.data = async (main) => {
       </div>
       <p>${esc(c.full_name)} · ${esc(c.note)}</p>
       ${ready
-        ? `<div class="inst-meta">${icono("tilde")} ${c.rows.toLocaleString()} velas M1<br>
+        ? `<div class="inst-meta">${icono("tilde")} ${c.rows.toLocaleString()} velas de ${
+             esc((c.timeframe || "1h").replace("1h", "1 hora").replace("1m", "1 minuto"))}<br>
              ${esc(String(c.start).slice(0, 10))} → ${esc(String(c.end).slice(0, 10))}</div>
            <button class="btn ghost" data-mine="${c.dataset_id}" data-key="${c.key}">Minar este</button>`
         : `<div class="inst-meta">Historial M1 desde ${esc(c.from)}</div>
@@ -1135,12 +1164,27 @@ PAGES.data = async (main) => {
   <div class="card" id="imp-card">
     <h2>Importar tu propio CSV <span class="hint">MT4/MT5, TradingView, Dukascopy, Binance</span></h2>
     <div class="controls">
-      <label class="fld" style="flex:1; min-width:320px"><span>Ruta del archivo en esta PC</span>
-        <input id="imp-path" type="text" style="width:100%"
-          placeholder="C:\\Users\\...\\Downloads\\SP500_M1.csv"></label>
+      <!-- El selector de archivo primero, que es lo que la gente sabe usar.
+           Antes el campo grande pedía "Ruta del archivo en esta PC" —algo que
+           nadie tiene de memoria— y el selector normal aparecía último y en
+           chico, con el rótulo "…o subir archivo chico", que se lee como si
+           fuera la opción mala. La ruta sigue existiendo porque un histórico
+           M1 de años no entra por el selector del navegador, pero eso es el
+           caso raro y ahora está donde va: guardado. -->
+      <label class="fld" style="flex:1; min-width:280px"><span>Elegí el archivo
+          <span class="hint">CSV de MT4, MT5, TradingView, Dukascopy o Binance</span></span>
+        <input id="up-file" type="file" accept=".csv,.txt"></label>
       <label class="fld"><span>Nombre</span><input id="imp-name" type="text" placeholder="opcional"></label>
-      <button class="btn" id="imp-go">Importar</button>
-      <label class="fld"><span>…o subir archivo chico</span><input id="up-file" type="file" accept=".csv,.txt"></label>
+      <details class="adv" style="flex-basis:100%">
+        <summary><span class="adv-chev">›</span>El archivo pesa más de 100 MB</summary>
+        <div class="fld-pair mt">
+          <label class="fld" style="flex:1; min-width:300px"><span>Pegá su ruta completa
+              <span class="hint">un histórico M1 de años no entra por el selector del navegador</span></span>
+            <input id="imp-path" type="text" style="width:100%"
+              placeholder="C:\Users\...\Downloads\SP500_M1.csv"></label>
+          <button class="btn" id="imp-go">Importar por ruta</button>
+        </div>
+      </details>
     </div>
     ${progressHtml("imp-prog")}
   </div>
