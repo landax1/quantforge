@@ -89,7 +89,7 @@ SOLO_WEB = os.environ.get("BQ_SOLO_WEB", "").strip() not in ("", "0", "false")
 CALCULO = (
     "/api/mine", "/api/backtest", "/api/generate", "/api/evolve",
     "/api/optimize", "/api/walkforward", "/api/montecarlo", "/api/portfolio",
-    "/api/jobs", "/api/export", "/api/validar",
+    "/api/jobs", "/api/export", "/api/validar", "/api/robustez",
     # el banco es la salida del minado: si el servidor público lo sirviera,
     # bastaría con minar una vez para que la web quedara de repositorio
     "/api/banco", "/api/corridas",
@@ -985,6 +985,61 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                              if pf_antes > 1e-9 else None)
             salida.append(fila)
         return {"periodo": {"from": desde, "to": hasta}, "resultados": salida}
+
+    @app.post("/api/robustez")
+    def robustez(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+        """Monte Carlo sobre VARIAS estrategias, para poder compararlas.
+
+        De a una no sirve para decidir: el número solo no dice si está bien o
+        mal. Puestos al lado, se ve cuál de las que uno encontró aguanta mejor
+        una racha mala, que es la pregunta que se está haciendo en realidad.
+        """
+        pedidas = payload.get("estrategias") or []
+        if not pedidas:
+            raise HTTPException(400, "Elegí al menos una estrategia.")
+        dueno = duenio(request)
+        sims = int(min(max(int(payload.get("simulations", 1000)), 100), 5000))
+        umbral = float(payload.get("ruin_threshold_pct", 30.0))
+        semilla = int(payload.get("seed", 42))
+
+        salida = []
+        for p in pedidas[:20]:
+            e = _para_validar(str(p.get("origen") or "banco"), str(p.get("id") or ""), dueno)
+            fila: dict[str, Any] = {"id": e["id"], "origen": e["origen"], "nombre": e["nombre"]}
+            try:
+                if not e["dataset_id"]:
+                    raise ValueError("No sabemos con qué instrumento se encontró.")
+                medido = e["medido"] or {}
+                ajustes = {k: v for k, v in e["settings"].items() if v is not None}
+                df = _load_df({"dataset_id": e["dataset_id"], "timeframe": e["timeframe"],
+                               **({"date_from": medido["from"], "date_to": medido["to"]}
+                                  if medido.get("from") else {})})
+                res = run_backtest(df, StrategySpec.from_dict(e["spec"]),
+                                   BacktestSettings.from_dict(ajustes))
+                pnls = [t["pnl"] for t in res.to_dict().get("trades", [])]
+                mc = monte_carlo(pnls,
+                                 initial_capital=float(ajustes.get("initial_capital") or 10_000.0),
+                                 simulations=sims, ruin_threshold_pct=umbral, seed=semilla)
+            except (ValueError, HTTPException) as exc:
+                fila["error"] = str(getattr(exc, "detail", exc))
+                salida.append(fila)
+                continue
+            fila["mc"] = mc
+            fila["prob_perder"] = mc["final_equity"]["prob_loss"]
+            fila["ruina"] = mc["risk_of_ruin_pct"]
+            fila["dd_p95"] = mc["max_drawdown_pct"]["p95"]
+            fila["final_mediana"] = mc["final_equity"]["median"]
+            fila["operaciones"] = mc["trades_per_sim"]
+            salida.append(fila)
+
+        # Se ordena por probabilidad de perder plata, y a igualdad por riesgo
+        # de ruina. No por cuánto ganó: acá la pregunta no es cuál rindió más
+        # sino cuál depende menos de que las operaciones salgan en buen orden.
+        sanas = [x for x in salida if "mc" in x]
+        sanas.sort(key=lambda x: (x["prob_perder"], x["ruina"]))
+        for i, x in enumerate(sanas):
+            x["puesto"] = i + 1
+        return {"resultados": salida, "simulations": sims, "ruin_threshold_pct": umbral}
 
     # ------------------------------------------------------------- portfolio
     @app.post("/api/portfolio")

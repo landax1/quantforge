@@ -175,3 +175,32 @@ def test_montecarlo_necesita_operaciones_suficientes(minado):
     r = c.post("/api/montecarlo", json={"trade_pnls": [1.0, -2.0]})
     assert r.status_code == 400
     assert "5" in r.json()["detail"]
+
+
+# ------------------------------------------------- robustez comparada
+def test_robustez_corre_sobre_todas_y_las_rankea(minado):
+    """El error que tenía la pantalla: con cuatro seleccionadas simulaba una
+    sola, en silencio. Y de a una el número no sirve para decidir — 12% de
+    probabilidad de perder no es bueno ni malo hasta compararlo."""
+    c, _ds, filas, _r = minado
+    pedidas = [{"origen": "banco", "id": f["banco_id"]} for f in filas[:3]]
+    r = c.post("/api/robustez", json={"estrategias": pedidas, "simulations": 200})
+    assert r.status_code == 200, r.text
+    cuerpo = r.json()
+
+    assert len(cuerpo["resultados"]) == len(pedidas), "tiene que simular TODAS"
+    sanas = [x for x in cuerpo["resultados"] if "mc" in x]
+    assert sanas, "ninguna pudo simularse"
+    # el ranking va de menor a mayor probabilidad de perder plata
+    puestos = sorted(sanas, key=lambda x: x["puesto"])
+    probs = [x["prob_perder"] for x in puestos]
+    assert probs == sorted(probs)
+    assert puestos[0]["puesto"] == 1
+    for x in sanas:
+        assert 0 <= x["prob_perder"] <= 100
+        assert x["operaciones"] >= 5
+
+
+def test_robustez_sin_estrategias_no_corre(minado):
+    c, _ds, _f, _r = minado
+    assert c.post("/api/robustez", json={"estrategias": []}).status_code == 400

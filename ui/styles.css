@@ -1389,6 +1389,42 @@ svg.spark { display: block; border-radius: 4px; }
 .tabs button:hover { color: var(--text-2); }
 .tabs button.on { color: var(--accent-2); border-bottom-color: var(--accent); }
 
+/* Explicación de qué hace la pantalla, antes de los controles. Esto lo va a
+   usar gente que nunca oyó "out of sample": si no dice qué es y por qué
+   importa, los campos no significan nada. */
+.explico {
+  margin: 12px 0 4px; padding: 13px 16px; border-radius: var(--r-sm);
+  background: var(--card-2); border: 1px solid var(--border-soft);
+  font-size: 13px; line-height: 1.6; color: var(--text-2); max-width: 78ch;
+}
+.explico b { color: var(--text); }
+
+/* El estado de la pantalla dicho como una frase, con la acción al lado.
+   Un cartel que sólo explica el problema deja al usuario igual de trabado. */
+.pista {
+  display: grid; grid-template-columns: 18px 1fr; gap: 11px; align-items: start;
+  margin-top: 14px; padding: 13px 16px; border-radius: var(--r-sm);
+  background: var(--bg-soft); border: 1px solid var(--border-soft);
+  font-size: 13px; line-height: 1.6; color: var(--text-2); max-width: 78ch;
+}
+.pista > :first-child { color: var(--text-dim); margin-top: 2px; }
+.pista b { color: var(--text); }
+.pista.ok { background: var(--pos-soft); border-color: var(--pos-line); }
+.pista.ok > :first-child { color: var(--pos); }
+.pista.alerta { background: var(--warn-soft); border-color: var(--warn-line); }
+.pista.alerta > :first-child { color: var(--warn); }
+.pista-accion { display: flex; align-items: center; gap: 9px; margin-top: 11px; flex-wrap: wrap; }
+
+/* La conclusión en palabras, arriba de la tabla: el usuario tiene que poder
+   irse sabiendo qué pasó sin leer una sola columna. */
+.veredicto {
+  margin: 4px 0 16px; padding: 15px 18px; border-radius: var(--r);
+  background: var(--pos-soft); border: 1px solid var(--pos-line);
+  font-size: 14px; line-height: 1.6; color: var(--text-2); max-width: 78ch;
+}
+.veredicto b { color: var(--text); font-weight: 640; }
+.veredicto.flojo { background: var(--warn-soft); border-color: var(--warn-line); }
+
 .val-lista { display: flex; flex-direction: column; gap: 2px; max-height: 260px;
              overflow-y: auto; margin-top: 4px; }
 .val-item {

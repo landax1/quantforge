@@ -782,6 +782,7 @@ const VAL = {
   candidatas: [],          // banco + guardadas, forma común
   resultado: null,
   mc: null,
+  detalle: null,
   corriendo: false,
 };
 
@@ -819,21 +820,48 @@ async function cargarCandidatas() {
 
 /* El tramo que la búsqueda NUNCA vio, si es que quedó alguno.
 
-   Con la ventana de arranque de diez años, un instrumento de veintiuno deja
-   once años sin tocar: ahí sí una validación significa algo. Sin esta
-   sugerencia el usuario elige fechas a ojo y casi siempre cae adentro de lo
-   que ya minó, que es el error que hace que todo dé bien. */
+   Sólo HACIA ADELANTE, y esto es una corrección de algo que estaba mal. Antes
+   también ofrecía el tramo anterior al minado, y validar una estrategia contra
+   años previos a los que se usó para encontrarla no responde la pregunta que
+   uno se hace. Lo que se quiere saber es si va a seguir funcionando, no si
+   habría funcionado en un mercado que ya pasó.
+
+   Cuando no queda nada adelante —porque se minó hasta el final del
+   histórico— no hay validación posible y hay que decirlo, en vez de ofrecer
+   un tramo que devuelve números sin significado. */
 function tramoLibre(cand) {
   const ds = S.datasets.find(d => d.id === cand.dataset_id);
   if (!ds || !cand.medido || !cand.medido.from) return null;
   const b = datasetBounds(ds);
-  const minadoDesde = String(cand.medido.from).slice(0, 10);
-  const minadoHasta = String(cand.medido.to).slice(0, 10);
-  const dias = (a, z) => (new Date(z) - new Date(a)) / 86400000;
-  const antes = dias(b.lo, minadoDesde), despues = dias(minadoHasta, b.hi);
-  if (despues >= 120 && despues >= antes) return { from: minadoHasta, to: b.hi, dias: despues };
-  if (antes >= 120) return { from: b.lo, to: minadoDesde, dias: antes };
-  return null;
+  const hasta = String(cand.medido.to).slice(0, 10);
+  const dias = (new Date(b.hi) - new Date(hasta)) / 86400000;
+  // menos de cuatro meses no alcanza para que las métricas signifiquen algo
+  if (dias < 120) return null;
+  return { from: hasta, to: b.hi, dias, anios: Math.round(dias / 365 * 10) / 10 };
+}
+
+/* Volver a minar dejando el final sin tocar.
+
+   Es la salida real cuando no quedó tramo limpio, y no hace falta nada nuevo:
+   el minado ya sabe reservar un porcentaje final y validar ahí cada candidata
+   que acepta. Lo único que pasaba es que venía apagado y escondido en
+   Avanzado, así que nadie llegaba. */
+function reminarReservando(cand, pct) {
+  const ds = S.datasets.find(d => d.id === cand.dataset_id);
+  if (ds) S.sel.dataset_id = ds.id;
+  if (cand.tf) S.sel.timeframe = cand.tf;
+  if (cand.medido && cand.medido.from) {
+    S.sel.dateFrom = String(cand.medido.from).slice(0, 10);
+    S.sel.dateTo = String(cand.medido.to).slice(0, 10);
+    S.sel.rangoPropio = true;
+  }
+  S.cfg.oosPct = pct;
+  saveCfg();
+  navigate("mining").then(() => {
+    toast(`Configurado para reservar el último ${pct}% — dale a Iniciar`, "ok");
+    const run = $("#m-run");
+    if (run) run.scrollIntoView({ block: "center" });
+  });
 }
 
 PAGES.validacion = async (main) => {
@@ -919,63 +947,73 @@ function pintarCuerpoVal() {
 /* ------------------------------------------------------- fuera de muestra */
 function pintarOOS(host) {
   const elegidas = seleccionadas();
-  const libre = elegidas.length ? tramoLibre(elegidas[0]) : null;
+  const una = elegidas[0];
+  const libre = una ? tramoLibre(una) : null;
   if (libre && !VAL.desde) { VAL.desde = libre.from; VAL.hasta = libre.to; }
-
   const r = VAL.resultado;
+
+  const explico = `<div class="explico">
+    <b>Qué es esto.</b> Para encontrar tu estrategia, la búsqueda probó miles de
+    combinaciones sobre un período. Entre tantas, siempre aparece alguna que se ve
+    bien ahí — a veces por casualidad. La única forma de saber si la ventaja es real
+    es correrla sobre velas <b>posteriores</b>, que la búsqueda nunca miró.
+  </div>`;
+
   host.innerHTML = `<div class="card">
-    <h2>Correr sobre otro período
-      <span class="hint">las mismas reglas, sobre velas que la búsqueda no eligió</span></h2>
+    <h2>Probarla en el futuro que no vio
+      <span class="hint">las mismas reglas, sobre velas que la búsqueda nunca miró</span></h2>
+    ${explico}
 
-    ${!elegidas.length ? `<p class="help-note">Elegí arriba qué estrategias querés probar.</p>` : ""}
+    ${!una ? `<div class="pista">${icono("info","ico-sm")}
+        <div><b>Empezá por arriba:</b> tildá una o varias estrategias en la lista.</div></div>`
+      : libre ? `<div class="pista ok">${icono("tilde","ico-sm")}
+        <div><b>Se puede validar.</b> Esta búsqueda usó hasta ${esc(libre.from)}, así que
+          quedan <b>${libre.anios} años</b> posteriores que nunca miró
+          (${esc(libre.from)} → ${esc(libre.to)}). Ése es el tramo que sirve, y ya está
+          puesto abajo.</div></div>`
+      : `<div class="pista alerta">${icono("alerta","ico-sm")}
+        <div><b>Acá no se puede validar, y conviene saber por qué.</b>
+          La búsqueda usó el historial <i>hasta el final</i>, así que no queda ningún
+          tramo posterior sin mirar. Elegir cualquier período de los que ya usó devuelve
+          los mismos números por construcción: parece una confirmación y no lo es.
+          <div class="pista-accion">
+            La salida es volver a buscar dejando el final sin tocar, y la aplicación ya
+            sabe hacerlo sola:
+            <button class="btn small" data-reminar="20">Minar reservando el último 20%</button>
+            <button class="btn ghost small" data-reminar="30">Reservar 30%</button>
+          </div>
+        </div></div>`}
 
-    ${libre ? `<div class="sugerido">
-      <span class="sg-ok">${icono("idea","ico-sm")}</span>
-      <div>Hay <b>${Math.round(libre.dias / 365 * 10) / 10} años</b> de historia que esta
-        búsqueda nunca miró (${esc(libre.from)} → ${esc(libre.to)}). Es el tramo donde una
-        validación significa algo.
-        <button class="linkbtn" id="val-usar-libre">Usar ese tramo</button></div>
-    </div>` : elegidas.length ? `<div class="sugerido">
-      <span class="sg-ojo">${icono("alerta","ico-sm")}</span>
-      <div>Esta búsqueda usó todo el historial disponible, así que <b>no queda ningún
-        tramo sin ver</b>. Cualquier período que elijas va a devolver los mismos números
-        que ya tenés. Para validar de verdad hay que minar sobre un tramo más corto y
-        dejar el resto libre.</div>
-    </div>` : ""}
-
-    <div class="fld-pair mt">
-      <label class="fld"><span>Desde</span>
-        <input type="date" class="datefld" id="val-desde" value="${esc(VAL.desde || "")}"></label>
-      <label class="fld"><span>Hasta</span>
-        <input type="date" class="datefld" id="val-hasta" value="${esc(VAL.hasta || "")}"></label>
-    </div>
-
-    <button class="btn mt" id="val-correr" ${!elegidas.length || VAL.corriendo ? "disabled" : ""}>
-      ${VAL.corriendo ? "Corriendo…" : `Validar ${elegidas.length} estrategia${elegidas.length === 1 ? "" : "s"}`}
-    </button>
+    ${libre ? `
+      <div class="fld-pair mt">
+        <label class="fld"><span>Desde</span>
+          <input type="date" class="datefld" id="val-desde" value="${esc(VAL.desde || "")}"></label>
+        <label class="fld"><span>Hasta</span>
+          <input type="date" class="datefld" id="val-hasta" value="${esc(VAL.hasta || "")}"></label>
+      </div>
+      <button class="btn mt" id="val-correr" ${VAL.corriendo ? "disabled" : ""}>
+        ${VAL.corriendo ? "Corriendo…"
+          : `Probar ${elegidas.length} estrategia${elegidas.length === 1 ? "" : "s"}`}
+      </button>` : ""}
   </div>
 
   ${r ? tablaOOS(r) : ""}`;
 
-  const usar = $("#val-usar-libre", host);
-  if (usar) usar.onclick = () => {
-    VAL.desde = libre.from; VAL.hasta = libre.to; pintarCuerpoVal();
-  };
+  $$("[data-reminar]", host).forEach(b => b.onclick = () => reminarReservando(una, +b.dataset.reminar));
+
   const d = $("#val-desde", host), h = $("#val-hasta", host);
   if (d) d.onchange = () => { VAL.desde = d.value; };
   if (h) h.onchange = () => { VAL.hasta = h.value; };
 
   const btn = $("#val-correr", host);
   if (btn) btn.onclick = async () => {
-    if (!VAL.desde || !VAL.hasta) { toast("Elegí el período a validar", "err"); return; }
+    if (!VAL.desde || !VAL.hasta) { toast("Elegí el período a probar", "err"); return; }
     VAL.corriendo = true; pintarCuerpoVal();
     try {
       VAL.resultado = await api.post("/api/validar", {
         estrategias: elegidas.map(x => ({ origen: x.origen, id: x.id })),
         date_from: VAL.desde, date_to: VAL.hasta,
       });
-      const sanas = VAL.resultado.resultados.filter(x => !x.error).length;
-      toast(`${sanas} de ${VAL.resultado.resultados.length} corrieron`, "ok");
     } catch (e) { toast(e.message, "err"); }
     VAL.corriendo = false; pintarCuerpoVal();
   };
@@ -997,8 +1035,20 @@ function veredicto(x) {
 function tablaOOS(r) {
   const filas = r.resultados;
   const solapadas = filas.filter(x => x.solapamiento_pct >= 50).length;
+  const sanas = filas.filter(x => !x.error && x.ratio != null && x.solapamiento_pct < 50);
+  const aguantan = sanas.filter(x => x.ratio >= 0.8).length;
   return `<div class="card">
     <h2>Resultado <span class="hint">${esc(r.periodo.from)} → ${esc(r.periodo.to)}</span></h2>
+
+    ${sanas.length ? `<div class="veredicto ${aguantan ? "" : "flojo"}">
+      <b>${aguantan} de ${sanas.length}</b> mantuvieron su ventaja en datos que nunca vieron.
+      ${aguantan === 0
+        ? "Ninguna sobrevivió: lo que encontró la búsqueda describía ese período y no se repitió después. Es el resultado más común, y saberlo ahora vale mucho más que descubrirlo con plata puesta."
+        : aguantan < sanas.length
+          ? "Las que se caen no son errores de la aplicación: es lo que pasa cuando una regla se ajustó al pasado. Quedate con las que aguantaron."
+          : "Buena señal. Aun así, probalas en demo antes de poner plata."}
+    </div>` : ""}
+
     ${solapadas ? `<div class="banner info mt" style="margin-bottom:14px">
       <span class="b-ic">${icono("alerta")}</span><div>
       <b>${solapadas} de ${filas.length} se corrieron sobre datos que la búsqueda ya había
@@ -1032,46 +1082,119 @@ function tablaOOS(r) {
   </div>`;
 }
 
-/* ------------------------------------------------------------ Monte Carlo */
+/* ------------------------------------------------------------ Monte Carlo
+   Corre sobre TODAS las seleccionadas y las pone una al lado de la otra.
+
+   Antes simulaba sólo la primera, que es una elección arbitraria y encima
+   silenciosa. Y de a una el número no sirve para decidir: un 12% de
+   probabilidad de perder no es bueno ni malo hasta que se lo compara con el
+   de las otras que uno encontró. */
 function pintarMC(host) {
   const elegidas = seleccionadas();
-  const una = elegidas[0];
-  const mc = VAL.mc;
+  const r = VAL.mc;
 
   host.innerHTML = `<div class="card">
-    <h2>Rebarajar las operaciones
-      <span class="hint">mismas operaciones, otro orden, mil veces</span></h2>
-    <p class="help-note">Una estrategia que ganó puede haber ganado por el orden en que
-      salieron sus operaciones. Esto vuelve a repartir las mismas operaciones reales miles
-      de veces para ver en qué rango de resultados cae, y cuánto de lo que ves fue suerte.</p>
-    ${elegidas.length > 1 ? `<p class="help-note">Tenés ${elegidas.length} seleccionadas;
-      se simula la primera: <b>${esc(una.nombre)}</b>.</p>` : ""}
-    ${!una ? `<p class="help-note">Elegí una estrategia arriba.</p>` : ""}
-    <button class="btn mt" id="mc-correr" ${!una || VAL.corriendo ? "disabled" : ""}>
-      ${VAL.corriendo ? "Simulando…" : una ? `Simular ${esc(una.nombre)}` : "Simular"}
-    </button>
+    <h2>¿Cuánto de esto fue suerte?
+      <span class="hint">las mismas operaciones, en otro orden, mil veces cada una</span></h2>
+    <div class="explico">
+      <b>Qué es esto.</b> Una estrategia que ganó puede haber ganado por el <i>orden</i> en
+      que le salieron las operaciones: si las tres pérdidas seguidas hubieran caído al
+      principio en vez de al final, la historia era otra. Esto agarra sus operaciones
+      reales y las vuelve a repartir mil veces, para ver en qué rango de resultados cae
+      de verdad — y cuánto del backtest fue puntería.
+    </div>
+
+    ${!elegidas.length
+      ? `<div class="pista">${icono("info","ico-sm")}
+          <div><b>Empezá por arriba:</b> tildá las estrategias que quieras comparar.
+          Podés elegir varias y las simula a todas.</div></div>`
+      : `<button class="btn mt" id="mc-correr" ${VAL.corriendo ? "disabled" : ""}>
+          ${VAL.corriendo ? "Simulando…"
+            : `Simular ${elegidas.length} estrategia${elegidas.length === 1 ? "" : "s"}`}
+        </button>`}
   </div>
-  ${mc ? panelMC(mc) : ""}`;
+  ${r ? tablaMC(r) : ""}
+  ${r && VAL.detalle ? panelMC(VAL.detalle) : ""}`;
 
   const btn = $("#mc-correr", host);
   if (btn) btn.onclick = async () => {
     VAL.corriendo = true; pintarCuerpoVal();
     try {
-      VAL.mc = await api.post("/api/montecarlo", {
-        estrategia: { origen: una.origen, id: una.id }, simulations: 1000, seed: 42,
+      VAL.mc = await api.post("/api/robustez", {
+        estrategias: elegidas.map(x => ({ origen: x.origen, id: x.id })),
+        simulations: 1000, seed: 42,
       });
-      VAL.mc.nombre = una.nombre;
+      // se abre la mejor: es la que el usuario va a querer mirar primero
+      const mejor = VAL.mc.resultados.find(x => x.puesto === 1);
+      VAL.detalle = mejor ? { ...mejor.mc, nombre: mejor.nombre } : null;
     } catch (e) { toast(e.message, "err"); }
     VAL.corriendo = false; pintarCuerpoVal();
-    if (VAL.mc) dibujarMC(VAL.mc);
   };
-  if (mc) dibujarMC(mc);
+
+  $$("[data-ver]", host).forEach(b => b.onclick = () => {
+    const x = VAL.mc.resultados.find(y => y.id === b.dataset.ver);
+    VAL.detalle = x && x.mc ? { ...x.mc, nombre: x.nombre } : null;
+    pintarCuerpoVal();
+    $("#mc-detalle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  if (VAL.detalle) dibujarMC(VAL.detalle);
+}
+
+function tablaMC(r) {
+  const filas = [...r.resultados].sort((a, b) => (a.puesto || 99) - (b.puesto || 99));
+  const mejor = filas.find(x => x.puesto === 1);
+  return `<div class="card">
+    <h2>Cuál aguanta mejor
+      <span class="hint">${fmtInt(r.simulations)} simulaciones de cada una ·
+        ordenadas por la que menos depende de la suerte</span></h2>
+
+    ${mejor ? `<div class="veredicto">
+      La más sólida es <b>${esc(mejor.nombre)}</b>: en ${fmtNum(100 - mejor.prob_perder, 0)}%
+      de los repartos termina ganando, y su peor 5% cae ${fmtNum(mejor.dd_p95, 1)}%.
+      ${mejor.ruina > 5
+        ? `Ojo igual con el riesgo de ruina de ${fmtNum(mejor.ruina, 1)}%.`
+        : `Su riesgo de ruina es ${fmtNum(mejor.ruina, 1)}%.`}
+    </div>` : ""}
+
+    <div class="databank-wrap"><table class="banco">
+      <thead><tr>
+        <th>#</th><th>Estrategia</th>
+        <th class="num" title="En cuántos de los mil repartos terminó perdiendo plata">Pierde en</th>
+        <th class="num" title="Probabilidad de llegar a perder el 30% del capital en algún momento">Ruina</th>
+        <th class="num" title="La caída máxima del 5% de simulaciones peores. Es lo que hay que poder aguantar.">Peor caída</th>
+        <th class="num">Capital típico</th><th class="num">Ops.</th><th></th>
+      </tr></thead>
+      <tbody>${filas.map(x => x.error ? `
+        <tr><td class="rank-cell">—</td><td><span class="strat-name">${esc(x.nombre)}</span></td>
+          <td colspan="6" class="muted">${esc(x.error)}</td></tr>` : `
+        <tr class="${x.puesto === 1 ? "tildada" : ""}">
+          <td class="rank-cell"><span class="rank">${String(x.puesto).padStart(2, "0")}</span></td>
+          <td><span class="strat-name">${esc(x.nombre)}</span></td>
+          <td class="num ${x.prob_perder > 30 ? "neg" : ""}"><b>${fmtNum(x.prob_perder, 1)}%</b></td>
+          <td class="num ${x.ruina > 5 ? "neg" : ""}">${fmtNum(x.ruina, 1)}%</td>
+          <td class="num neg">${fmtNum(x.dd_p95, 1)}%</td>
+          <td class="num">${fmtMoney(x.final_mediana)}</td>
+          <td class="num">${fmtInt(x.operaciones)}</td>
+          <td class="num"><button class="btn ghost small" data-ver="${esc(x.id)}">Ver</button></td>
+        </tr>`).join("")}</tbody></table></div>
+    <p class="stage-note"><b>Pierde en</b> es de cada 100 repartos posibles, en cuántos
+      terminaría en rojo. Cuanto más bajo, menos depende de que las operaciones salgan
+      en buen orden.</p>
+    <div class="explico">
+      <b>Ojo con confundir las dos pestañas.</b> Esto mide si la estrategia depende del
+      orden en que salieron sus operaciones — pero las rebaraja sobre <i>el mismo período
+      donde se la encontró</i>. Una estrategia puede salir primera acá y aun así caerse
+      en <b>Fuera de muestra</b>, que es la que pregunta si la ventaja existe fuera de
+      ese período. Hacen falta las dos, y la que manda es la otra.
+    </div>
+  </div>`;
 }
 
 function panelMC(mc) {
   const fe = mc.final_equity, dd = mc.max_drawdown_pct;
   const ruina = mc.risk_of_ruin_pct;
-  return `<div class="card">
+  return `<div class="card" id="mc-detalle">
     <h2>${esc(mc.nombre || "Simulación")}
       <span class="hint">${fmtInt(mc.simulations)} simulaciones de
         ${fmtInt(mc.trades_per_sim)} operaciones</span></h2>
