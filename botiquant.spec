@@ -35,6 +35,10 @@ FUERA = [
     "matplotlib", "tkinter", "PyQt5", "PyQt6", "PySide2", "PySide6",
     "IPython", "jupyter", "notebook", "pytest", "sphinx",
     "numpy.testing", "pandas.tests", "scipy",
+    # Pillow entró de arrastre al instalarlo para procesar el logo de la marca.
+    # La aplicación no abre imágenes: el pulpo viaja como base64 dentro del CSS.
+    # Son 13 MB en una descarga que el usuario espera.
+    "PIL", "Pillow",
 ]
 
 a = Analysis(

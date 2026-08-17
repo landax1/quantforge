@@ -759,8 +759,361 @@ async function navigate(page) {
 
 const TITULOS = {
   data: "Datos", mining: "Mining", banco: "Databank",
-  saved: "Mis estrategias", results: "Resultados",
+  validacion: "Validación", saved: "Mis estrategias", results: "Resultados",
 };
+
+/* ======================================================== página VALIDACIÓN
+   Las dos preguntas que siguen a "encontré algo": ¿funciona fuera de donde lo
+   busqué, y cuánto de lo que veo es suerte?
+
+   Van juntas porque son la misma pregunta hecha de dos maneras. Fuera de
+   muestra la contesta con datos que la búsqueda no vio; Monte Carlo la
+   contesta sin datos nuevos, rebarajando las operaciones que ya hubo para ver
+   qué tan distinto podría haber salido el mismo sistema por puro orden.
+
+   Lo que decide si esta pantalla sirve o engaña es el SOLAPAMIENTO. Volver a
+   correr una estrategia sobre las mismas velas con las que se la encontró
+   devuelve los mismos números por construcción: no valida nada, y se ve
+   exactamente igual que una validación exitosa. Por eso el solapamiento se
+   mide siempre y se muestra antes que los resultados. */
+const VAL = {
+  sel: new Set(),          // "origen:id" de lo tildado
+  tab: "oos",
+  candidatas: [],          // banco + guardadas, forma común
+  resultado: null,
+  mc: null,
+  corriendo: false,
+};
+
+/** Banco y guardadas en una sola lista con la misma forma. */
+async function cargarCandidatas() {
+  const [banco, guardadas] = await Promise.all([
+    api.get("/api/banco?" + new URLSearchParams({ orden: "score", dir: "desc", limite: "80" })),
+    api.get("/api/strategies"),
+  ]);
+  if (!S.banco.corridas.length) await refreshBancoCount();
+  const porCorrida = Object.fromEntries(S.banco.corridas.map(c => [c.id, c]));
+
+  const deBanco = banco.map(f => {
+    const c = porCorrida[f.corrida_id] || {};
+    return {
+      clave: `banco:${f.banco_id}`, origen: "banco", id: f.banco_id, nombre: f.name,
+      mercado: nombreCorto(c.dataset_name), tf: c.timeframe || "",
+      dataset_id: c.dataset_id, medido: (c.contexto || {}).measured_range || null,
+      metricas: f.metrics || {},
+    };
+  });
+  const deGuardadas = guardadas.map(s => {
+    const m = s.meta || {};
+    return {
+      clave: `guardada:${s.id}`, origen: "guardada", id: s.id, nombre: s.name,
+      mercado: nombreCorto(m.dataset_name), tf: m.timeframe || "",
+      dataset_id: m.dataset_id, medido: m.measured_range || null,
+      metricas: m.metrics || {},
+    };
+  });
+  VAL.candidatas = [...deGuardadas, ...deBanco];
+  const vivas = new Set(VAL.candidatas.map(x => x.clave));
+  [...VAL.sel].forEach(k => { if (!vivas.has(k)) VAL.sel.delete(k); });
+}
+
+/* El tramo que la búsqueda NUNCA vio, si es que quedó alguno.
+
+   Con la ventana de arranque de diez años, un instrumento de veintiuno deja
+   once años sin tocar: ahí sí una validación significa algo. Sin esta
+   sugerencia el usuario elige fechas a ojo y casi siempre cae adentro de lo
+   que ya minó, que es el error que hace que todo dé bien. */
+function tramoLibre(cand) {
+  const ds = S.datasets.find(d => d.id === cand.dataset_id);
+  if (!ds || !cand.medido || !cand.medido.from) return null;
+  const b = datasetBounds(ds);
+  const minadoDesde = String(cand.medido.from).slice(0, 10);
+  const minadoHasta = String(cand.medido.to).slice(0, 10);
+  const dias = (a, z) => (new Date(z) - new Date(a)) / 86400000;
+  const antes = dias(b.lo, minadoDesde), despues = dias(minadoHasta, b.hi);
+  if (despues >= 120 && despues >= antes) return { from: minadoHasta, to: b.hi, dias: despues };
+  if (antes >= 120) return { from: b.lo, to: minadoDesde, dias: antes };
+  return null;
+}
+
+PAGES.validacion = async (main) => {
+  await refreshDatasets();
+  await cargarCandidatas();
+
+  if (!VAL.candidatas.length) {
+    main.innerHTML = pageHead("Validación",
+      "Comprobá si lo que encontraste es real o fue suerte.") +
+      `<div class="card"><div class="empty-state">
+        <div class="big">${icono("diana", "ico-xl")}</div>
+        <b>Todavía no hay nada que validar</b>
+        <p class="mt">Cuando termines una búsqueda, sus estrategias aparecen acá para
+          probarlas sobre datos que no usaste y para simular qué tan repetibles son.</p>
+        <button class="btn mt" id="val-ir">Ir a Mining</button>
+      </div></div>`;
+    $("#val-ir", main).onclick = () => navigate("mining");
+    return;
+  }
+
+  main.innerHTML = pageHead("Validación",
+    "Las dos preguntas que siguen a encontrar algo: ¿funciona fuera de donde lo buscaste, y cuánto de lo que ves es suerte?") +
+    `<div id="val-elegir"></div>
+     <div class="tabs" id="val-tabs">
+       <button data-tab="oos" class="${VAL.tab === "oos" ? "on" : ""}">Fuera de muestra</button>
+       <button data-tab="mc" class="${VAL.tab === "mc" ? "on" : ""}">Monte Carlo</button>
+     </div>
+     <div id="val-cuerpo"></div>`;
+
+  $$("#val-tabs button", main).forEach(b => b.onclick = () => {
+    VAL.tab = b.dataset.tab;
+    $$("#val-tabs button", main).forEach(o => o.classList.toggle("on", o === b));
+    pintarCuerpoVal();
+  });
+
+  pintarElegir();
+  pintarCuerpoVal();
+};
+
+function pintarElegir() {
+  const host = $("#val-elegir");
+  if (!host) return;
+  const n = VAL.sel.size;
+  host.innerHTML = `<div class="card">
+    <h2>Qué validar <span class="hint">${VAL.candidatas.length} disponibles ·
+      de tus estrategias guardadas y del databank</span></h2>
+    <div class="val-lista">
+      ${VAL.candidatas.map(x => `
+        <label class="val-item ${VAL.sel.has(x.clave) ? "on" : ""}">
+          <input type="checkbox" data-cand="${esc(x.clave)}" ${VAL.sel.has(x.clave) ? "checked" : ""}>
+          <span class="vi-nom">${esc(x.nombre)}
+            ${x.origen === "guardada" ? `<em class="vi-tag">guardada</em>` : ""}</span>
+          <span class="vi-ctx">${esc(x.mercado)} · ${esc(x.tf)}</span>
+          <span class="vi-pf">PF ${x.metricas.profit_factor != null
+            ? fmtNum(x.metricas.profit_factor) : "—"}</span>
+        </label>`).join("")}
+    </div>
+    <div class="val-pie">
+      <span><b>${n}</b> seleccionada${n === 1 ? "" : "s"}</span>
+      <button class="linkbtn" id="val-todas">Todas</button>
+      <button class="linkbtn" id="val-nada">Ninguna</button>
+    </div>
+  </div>`;
+
+  $$("[data-cand]", host).forEach(cb => cb.onchange = () => {
+    if (cb.checked) VAL.sel.add(cb.dataset.cand); else VAL.sel.delete(cb.dataset.cand);
+    pintarElegir(); pintarCuerpoVal();
+  });
+  $("#val-todas", host).onclick = () => {
+    VAL.candidatas.forEach(x => VAL.sel.add(x.clave)); pintarElegir(); pintarCuerpoVal();
+  };
+  $("#val-nada", host).onclick = () => { VAL.sel.clear(); pintarElegir(); pintarCuerpoVal(); };
+}
+
+const seleccionadas = () => VAL.candidatas.filter(x => VAL.sel.has(x.clave));
+
+function pintarCuerpoVal() {
+  const host = $("#val-cuerpo");
+  if (!host) return;
+  if (VAL.tab === "oos") pintarOOS(host); else pintarMC(host);
+}
+
+/* ------------------------------------------------------- fuera de muestra */
+function pintarOOS(host) {
+  const elegidas = seleccionadas();
+  const libre = elegidas.length ? tramoLibre(elegidas[0]) : null;
+  if (libre && !VAL.desde) { VAL.desde = libre.from; VAL.hasta = libre.to; }
+
+  const r = VAL.resultado;
+  host.innerHTML = `<div class="card">
+    <h2>Correr sobre otro período
+      <span class="hint">las mismas reglas, sobre velas que la búsqueda no eligió</span></h2>
+
+    ${!elegidas.length ? `<p class="help-note">Elegí arriba qué estrategias querés probar.</p>` : ""}
+
+    ${libre ? `<div class="sugerido">
+      <span class="sg-ok">${icono("idea","ico-sm")}</span>
+      <div>Hay <b>${Math.round(libre.dias / 365 * 10) / 10} años</b> de historia que esta
+        búsqueda nunca miró (${esc(libre.from)} → ${esc(libre.to)}). Es el tramo donde una
+        validación significa algo.
+        <button class="linkbtn" id="val-usar-libre">Usar ese tramo</button></div>
+    </div>` : elegidas.length ? `<div class="sugerido">
+      <span class="sg-ojo">${icono("alerta","ico-sm")}</span>
+      <div>Esta búsqueda usó todo el historial disponible, así que <b>no queda ningún
+        tramo sin ver</b>. Cualquier período que elijas va a devolver los mismos números
+        que ya tenés. Para validar de verdad hay que minar sobre un tramo más corto y
+        dejar el resto libre.</div>
+    </div>` : ""}
+
+    <div class="fld-pair mt">
+      <label class="fld"><span>Desde</span>
+        <input type="date" class="datefld" id="val-desde" value="${esc(VAL.desde || "")}"></label>
+      <label class="fld"><span>Hasta</span>
+        <input type="date" class="datefld" id="val-hasta" value="${esc(VAL.hasta || "")}"></label>
+    </div>
+
+    <button class="btn mt" id="val-correr" ${!elegidas.length || VAL.corriendo ? "disabled" : ""}>
+      ${VAL.corriendo ? "Corriendo…" : `Validar ${elegidas.length} estrategia${elegidas.length === 1 ? "" : "s"}`}
+    </button>
+  </div>
+
+  ${r ? tablaOOS(r) : ""}`;
+
+  const usar = $("#val-usar-libre", host);
+  if (usar) usar.onclick = () => {
+    VAL.desde = libre.from; VAL.hasta = libre.to; pintarCuerpoVal();
+  };
+  const d = $("#val-desde", host), h = $("#val-hasta", host);
+  if (d) d.onchange = () => { VAL.desde = d.value; };
+  if (h) h.onchange = () => { VAL.hasta = h.value; };
+
+  const btn = $("#val-correr", host);
+  if (btn) btn.onclick = async () => {
+    if (!VAL.desde || !VAL.hasta) { toast("Elegí el período a validar", "err"); return; }
+    VAL.corriendo = true; pintarCuerpoVal();
+    try {
+      VAL.resultado = await api.post("/api/validar", {
+        estrategias: elegidas.map(x => ({ origen: x.origen, id: x.id })),
+        date_from: VAL.desde, date_to: VAL.hasta,
+      });
+      const sanas = VAL.resultado.resultados.filter(x => !x.error).length;
+      toast(`${sanas} de ${VAL.resultado.resultados.length} corrieron`, "ok");
+    } catch (e) { toast(e.message, "err"); }
+    VAL.corriendo = false; pintarCuerpoVal();
+  };
+}
+
+/** Cómo leer el ratio: cuánto del profit factor sobrevivió al cambio de datos. */
+function veredicto(x) {
+  if (x.error) return `<span class="oos-tag none">${esc(x.error.slice(0, 40))}</span>`;
+  if (x.ratio == null) return `<span class="muted">—</span>`;
+  if (x.solapamiento_pct >= 50) {
+    return `<span class="oos-tag none" title="Este período ya lo vio la búsqueda: el resultado no valida nada">no cuenta</span>`;
+  }
+  const q = x.ratio;
+  const cls = q >= 0.8 ? "good" : q >= 0.5 ? "mid" : "bad";
+  const et = q >= 0.8 ? "se sostiene" : q >= 0.5 ? "se debilita" : "se cae";
+  return `<span class="oos-tag ${cls}"><b>${fmtNum(q, 2)}×</b><em>${et}</em></span>`;
+}
+
+function tablaOOS(r) {
+  const filas = r.resultados;
+  const solapadas = filas.filter(x => x.solapamiento_pct >= 50).length;
+  return `<div class="card">
+    <h2>Resultado <span class="hint">${esc(r.periodo.from)} → ${esc(r.periodo.to)}</span></h2>
+    ${solapadas ? `<div class="banner info mt" style="margin-bottom:14px">
+      <span class="b-ic">${icono("alerta")}</span><div>
+      <b>${solapadas} de ${filas.length} se corrieron sobre datos que la búsqueda ya había
+      visto.</b> Esos números vuelven parecidos por construcción y no dicen nada nuevo —
+      por eso figuran como “no cuenta”.</div></div>` : ""}
+    <div class="databank-wrap"><table class="banco">
+      <thead><tr>
+        <th>Estrategia</th>
+        <th class="num" title="Qué parte del período elegido ya la había visto la búsqueda">Ya visto</th>
+        <th class="num">PF antes</th><th class="num">PF ahora</th>
+        <th class="num">Anual</th><th class="num">Máx. DD</th><th class="num">Ops.</th>
+        <th class="num">Sobrevive</th>
+      </tr></thead>
+      <tbody>${filas.map(x => {
+        const a = x.antes || {}, d = x.despues || {};
+        return `<tr>
+          <td><span class="strat-name">${esc(x.nombre)}</span></td>
+          <td class="num ${x.solapamiento_pct >= 50 ? "neg" : "muted"}">${fmtNum(x.solapamiento_pct, 0)}%</td>
+          <td class="num">${a.profit_factor != null ? fmtNum(a.profit_factor) : "—"}</td>
+          <td class="num"><b>${d.profit_factor != null ? fmtNum(d.profit_factor) : "—"}</b></td>
+          <td class="num ${(d.cagr_pct ?? 0) >= 0 ? "pos" : "neg"}">${
+            d.cagr_pct != null ? fmtPct(d.cagr_pct) : "—"}</td>
+          <td class="num neg">${d.max_drawdown_pct != null ? fmtNum(d.max_drawdown_pct, 1) + "%" : "—"}</td>
+          <td class="num">${d.trades != null ? fmtInt(d.trades) : "—"}</td>
+          <td class="num">${veredicto(x)}</td>
+        </tr>`;
+      }).join("")}</tbody></table></div>
+    <p class="stage-note">“Sobrevive” es el profit factor de este período dividido por el
+      original. Cerca de 1 la ventaja se mantuvo; cerca de 0 la estrategia describía el
+      tramo en que se la encontró y nada más.</p>
+  </div>`;
+}
+
+/* ------------------------------------------------------------ Monte Carlo */
+function pintarMC(host) {
+  const elegidas = seleccionadas();
+  const una = elegidas[0];
+  const mc = VAL.mc;
+
+  host.innerHTML = `<div class="card">
+    <h2>Rebarajar las operaciones
+      <span class="hint">mismas operaciones, otro orden, mil veces</span></h2>
+    <p class="help-note">Una estrategia que ganó puede haber ganado por el orden en que
+      salieron sus operaciones. Esto vuelve a repartir las mismas operaciones reales miles
+      de veces para ver en qué rango de resultados cae, y cuánto de lo que ves fue suerte.</p>
+    ${elegidas.length > 1 ? `<p class="help-note">Tenés ${elegidas.length} seleccionadas;
+      se simula la primera: <b>${esc(una.nombre)}</b>.</p>` : ""}
+    ${!una ? `<p class="help-note">Elegí una estrategia arriba.</p>` : ""}
+    <button class="btn mt" id="mc-correr" ${!una || VAL.corriendo ? "disabled" : ""}>
+      ${VAL.corriendo ? "Simulando…" : una ? `Simular ${esc(una.nombre)}` : "Simular"}
+    </button>
+  </div>
+  ${mc ? panelMC(mc) : ""}`;
+
+  const btn = $("#mc-correr", host);
+  if (btn) btn.onclick = async () => {
+    VAL.corriendo = true; pintarCuerpoVal();
+    try {
+      VAL.mc = await api.post("/api/montecarlo", {
+        estrategia: { origen: una.origen, id: una.id }, simulations: 1000, seed: 42,
+      });
+      VAL.mc.nombre = una.nombre;
+    } catch (e) { toast(e.message, "err"); }
+    VAL.corriendo = false; pintarCuerpoVal();
+    if (VAL.mc) dibujarMC(VAL.mc);
+  };
+  if (mc) dibujarMC(mc);
+}
+
+function panelMC(mc) {
+  const fe = mc.final_equity, dd = mc.max_drawdown_pct;
+  const ruina = mc.risk_of_ruin_pct;
+  return `<div class="card">
+    <h2>${esc(mc.nombre || "Simulación")}
+      <span class="hint">${fmtInt(mc.simulations)} simulaciones de
+        ${fmtInt(mc.trades_per_sim)} operaciones</span></h2>
+
+    <div class="metrics-grid">
+      <div class="metric"><span>Probabilidad de perder plata</span>
+        <b class="${fe.prob_loss > 30 ? "neg" : ""}">${fmtNum(fe.prob_loss, 1)}%</b></div>
+      <div class="metric"><span>Riesgo de ruina (−${fmtNum(mc.ruin_threshold_pct, 0)}%)</span>
+        <b class="${ruina > 5 ? "neg" : ""}">${fmtNum(ruina, 1)}%</b></div>
+      <div class="metric"><span>Capital final típico</span>
+        <b>${fmtMoney(fe.median)}</b></div>
+      <div class="metric"><span>Caída en el 5% peor</span>
+        <b class="neg">${fmtNum(dd.p95, 1)}%</b></div>
+    </div>
+
+    <p class="stage-note mt">De cada 100 veces que corriera este sistema, en 90 el capital
+      final caería entre <b>${fmtMoney(fe.ci_90[0])}</b> y <b>${fmtMoney(fe.ci_90[1])}</b>.
+      En el peor caso simulado terminó en ${fmtMoney(fe.worst)} y llegó a caer
+      ${fmtNum(dd.worst, 1)}%. <b>Ese es el número que hay que poder aguantar</b>, no el
+      del backtest.</p>
+
+    <div class="chart-box" id="mc-fan"></div>
+    <p class="stage-note">La banda muestra dónde cae el capital en el 90% de las
+      simulaciones. La línea del medio es el recorrido típico.</p>
+
+    <h2 class="mt">Cómo se reparten los finales</h2>
+    <div class="chart-box short" id="mc-hist"></div>
+
+    <h2 class="mt">Y las caídas máximas</h2>
+    <div class="chart-box short" id="mc-dd"></div>
+  </div>`;
+}
+
+function dibujarMC(mc) {
+  const fan = $("#mc-fan");
+  if (fan) Charts.fan(fan, mc.bands, mc.initial_capital);
+  const h = $("#mc-hist");
+  if (h) Charts.histogram(h, mc.final_equity.histogram, mc.initial_capital);
+  const d = $("#mc-dd");
+  if (d) Charts.histogram(d, mc.max_drawdown_pct.histogram, mc.max_drawdown_pct.median);
+}
+
 
 /* ============================================================ página DATOS */
 PAGES.data = async (main) => {

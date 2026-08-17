@@ -89,7 +89,7 @@ SOLO_WEB = os.environ.get("BQ_SOLO_WEB", "").strip() not in ("", "0", "false")
 CALCULO = (
     "/api/mine", "/api/backtest", "/api/generate", "/api/evolve",
     "/api/optimize", "/api/walkforward", "/api/montecarlo", "/api/portfolio",
-    "/api/jobs", "/api/export",
+    "/api/jobs", "/api/export", "/api/validar",
     # el banco es la salida del minado: si el servidor público lo sirviera,
     # bastaría con minar una vez para que la web quedara de repositorio
     "/api/banco", "/api/corridas",
@@ -832,13 +832,31 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     @app.post("/api/montecarlo")
     def run_montecarlo(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
         rid = payload.get("result_id")
-        if rid:
+        initial = float(payload.get("initial_capital", 10_000.0))
+        if payload.get("estrategia"):
+            # Una estrategia del banco o de las guardadas: hay que correrle el
+            # backtest para tener sus operaciones. El Monte Carlo no simula
+            # precios, rebaraja las operaciones REALES que dio la estrategia.
+            p = payload["estrategia"]
+            e = _para_validar(str(p.get("origen") or "banco"), str(p.get("id") or ""),
+                              duenio(request))
+            if not e["dataset_id"]:
+                raise HTTPException(400, "No sabemos con qué instrumento se encontró.")
+            medido = e["medido"] or {}
+            ajustes = {k: v for k, v in e["settings"].items() if v is not None}
+            df = _load_df({"dataset_id": e["dataset_id"], "timeframe": e["timeframe"],
+                           **({"date_from": medido["from"], "date_to": medido["to"]}
+                              if medido.get("from") else {})})
+            res = run_backtest(df, StrategySpec.from_dict(e["spec"]),
+                               BacktestSettings.from_dict(ajustes))
+            pnls = [t["pnl"] for t in res.to_dict().get("trades", [])]
+            if ajustes.get("initial_capital"):
+                initial = float(ajustes["initial_capital"])
+        elif rid:
             row = db.get_result(rid, duenio(request))
             pnls = [t["pnl"] for t in row["payload"].get("trades", [])]
-            initial = float(payload.get("initial_capital", 10_000.0))
         else:
             pnls = [float(x) for x in payload.get("trade_pnls", [])]
-            initial = float(payload.get("initial_capital", 10_000.0))
         try:
             return monte_carlo(
                 pnls, initial_capital=initial,
@@ -848,6 +866,125 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             )
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+
+    # ------------------------------------------------------------ validación
+    def _para_validar(origen: str, ident: str, dueno: str | None) -> dict[str, Any]:
+        """Una estrategia lista para volver a correr, venga de donde venga.
+
+        El banco y Mis estrategias guardan lo mismo con distinta forma: el
+        banco tiene la fila y el contexto en su corrida, y una guardada lo
+        lleva todo en su `meta`. Unificarlo acá evita que cada validación
+        tenga que saber de dónde salió lo que está evaluando.
+        """
+        if origen == "banco":
+            filas = db.get_banco([ident], dueno)
+            if not filas:
+                raise HTTPException(404, "Esa estrategia ya no está en el banco.")
+            f = filas[0]
+            ctx = f["contexto"]
+            return {
+                "id": ident, "origen": origen, "nombre": f["nombre"],
+                "spec": f["fila"].get("spec") or {},
+                "dataset_id": f["dataset_id"] or "", "timeframe": f["timeframe"] or "",
+                "settings": ctx.get("settings") or {},
+                "medido": ctx.get("measured_range") or {},
+                "metricas": (f["fila"].get("metrics") or {}),
+            }
+        try:
+            s = db.get_strategy(ident, dueno)
+        except KeyError as exc:
+            raise HTTPException(404, "Esa estrategia no existe.") from exc
+        m = s.get("meta") or {}
+        return {
+            "id": ident, "origen": "guardada", "nombre": s["name"],
+            "spec": s["spec"],
+            "dataset_id": m.get("dataset_id") or "", "timeframe": m.get("timeframe") or "",
+            "settings": {"initial_capital": m.get("capital"), "spread": m.get("spread"),
+                         "slippage": m.get("slippage"), "commission_pct": m.get("commission")},
+            "medido": m.get("measured_range") or {},
+            "metricas": m.get("metrics") or {},
+        }
+
+    def _se_solapa(medido: dict[str, Any], desde: str, hasta: str) -> float:
+        """Qué porcentaje del período pedido ya lo vio la búsqueda.
+
+        Es la comprobación que decide si una validación significa algo. Volver
+        a correr una estrategia sobre las mismas velas con las que se la
+        encontró no la valida: devuelve los mismos números por construcción, y
+        confirma nada más que la aritmética funciona. Como el error se ve
+        idéntico a un éxito, hay que medirlo y decirlo.
+        """
+        if not medido.get("from") or not medido.get("to"):
+            return 0.0
+        try:
+            mi, mf = pd.Timestamp(medido["from"]), pd.Timestamp(medido["to"])
+            pi, pf = pd.Timestamp(desde), pd.Timestamp(hasta)
+        except (ValueError, TypeError):
+            return 0.0
+        cruce = (min(mf, pf) - max(mi, pi)).total_seconds()
+        total = (pf - pi).total_seconds()
+        if total <= 0 or cruce <= 0:
+            return 0.0
+        return round(min(cruce / total, 1.0) * 100.0, 1)
+
+    @app.post("/api/validar")
+    def validar(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+        """Corre estrategias ya encontradas sobre un período que elige el usuario.
+
+        La diferencia con la validación del minado es cuándo se decide el
+        tramo. Ahí se reserva ANTES de buscar; acá se elige después, y eso
+        permite preguntar algo que antes no se podía: cómo le fue a esto en el
+        último año, o durante un año concreto.
+        """
+        desde = str(payload.get("date_from") or "").strip()
+        hasta = str(payload.get("date_to") or "").strip()
+        if not desde or not hasta:
+            raise HTTPException(400, "Hace falta el período sobre el que validar.")
+        pedidas = payload.get("estrategias") or []
+        if not pedidas:
+            raise HTTPException(400, "Elegí al menos una estrategia.")
+        dueno = duenio(request)
+
+        salida = []
+        for p in pedidas[:30]:
+            e = _para_validar(str(p.get("origen") or "banco"), str(p.get("id") or ""), dueno)
+            fila: dict[str, Any] = {
+                "id": e["id"], "origen": e["origen"], "nombre": e["nombre"],
+                "antes": e["metricas"],
+                "solapamiento_pct": _se_solapa(e["medido"], desde, hasta),
+            }
+            if not e["dataset_id"]:
+                fila["error"] = "No sabemos con qué instrumento se encontró."
+                salida.append(fila)
+                continue
+            try:
+                df = _load_df({"dataset_id": e["dataset_id"], "timeframe": e["timeframe"],
+                               "date_from": desde, "date_to": hasta})
+                res = run_backtest(df, StrategySpec.from_dict(e["spec"]),
+                                   BacktestSettings.from_dict(
+                                       {k: v for k, v in e["settings"].items() if v is not None}))
+            except HTTPException as exc:
+                fila["error"] = str(exc.detail)
+                salida.append(fila)
+                continue
+            except ValueError as exc:
+                fila["error"] = str(exc)
+                salida.append(fila)
+                continue
+            d = res.to_dict()
+            fila["despues"] = d["metrics"]
+            fila["score"] = bq_score(d["metrics"])
+            fila["equity"] = d.get("equity", [])
+            fila["timestamps"] = d.get("timestamps", [])
+            # cuánto sobrevive la ventaja: profit factor de afuera sobre el de
+            # adentro. Se usa el PF y no la ganancia porque no depende de
+            # cuántos años tenga cada tramo.
+            pf_antes = float(e["metricas"].get("profit_factor") or 0.0)
+            pf_ahora = float(d["metrics"].get("profit_factor") or 0.0)
+            fila["ratio"] = (round(min(pf_ahora / pf_antes, 9.99), 3)
+                             if pf_antes > 1e-9 else None)
+            salida.append(fila)
+        return {"periodo": {"from": desde, "to": hasta}, "resultados": salida}
 
     # ------------------------------------------------------------- portfolio
     @app.post("/api/portfolio")

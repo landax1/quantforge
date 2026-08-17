@@ -46,6 +46,13 @@ def web(tmp_path, monkeypatch):
     cliente.cookies.set("bq_session", sign({"uid": u["id"]}, SECRET))
     with cliente:
         yield cliente
+    # El orden acá importa y no es obvio. `SOLO_WEB` se lee UNA vez, al
+    # importar el módulo, así que para volver al modo normal hay que
+    # recargarlo — pero recargarlo con las variables todavía puestas lo deja
+    # otra vez en modo web, y esta vez para el resto de la sesión de tests.
+    # pytest deshace el monkeypatch recién DESPUÉS del fixture, así que hay
+    # que deshacerlo a mano antes de recargar.
+    monkeypatch.undo()
     importlib.reload(appmod)
 
 
