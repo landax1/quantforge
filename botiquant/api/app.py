@@ -886,6 +886,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "id": ident, "origen": origen, "nombre": f["nombre"],
                 "spec": f["fila"].get("spec") or {},
                 "dataset_id": f["dataset_id"] or "", "timeframe": f["timeframe"] or "",
+                "dataset_name": f["dataset_name"] or "",
                 "settings": ctx.get("settings") or {},
                 "medido": ctx.get("measured_range") or {},
                 "metricas": (f["fila"].get("metrics") or {}),
@@ -899,6 +900,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             "id": ident, "origen": "guardada", "nombre": s["name"],
             "spec": s["spec"],
             "dataset_id": m.get("dataset_id") or "", "timeframe": m.get("timeframe") or "",
+            "dataset_name": m.get("dataset_name") or "",
             "settings": {"initial_capital": m.get("capital"), "spread": m.get("spread"),
                          "slippage": m.get("slippage"), "commission_pct": m.get("commission")},
             "medido": m.get("measured_range") or {},
@@ -1005,7 +1007,12 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         salida = []
         for p in pedidas[:20]:
             e = _para_validar(str(p.get("origen") or "banco"), str(p.get("id") or ""), dueno)
-            fila: dict[str, Any] = {"id": e["id"], "origen": e["origen"], "nombre": e["nombre"]}
+            fila: dict[str, Any] = {
+                "id": e["id"], "origen": e["origen"], "nombre": e["nombre"],
+                # dos corridas distintas nombran S-001 a su primera estrategia:
+                # sin el mercado, la tabla muestra dos filas idénticas
+                "mercado": e["dataset_name"], "timeframe": e["timeframe"],
+            }
             try:
                 if not e["dataset_id"]:
                     raise ValueError("No sabemos con qué instrumento se encontró.")
@@ -1024,19 +1031,34 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 fila["error"] = str(getattr(exc, "detail", exc))
                 salida.append(fila)
                 continue
+            inicial = mc["initial_capital"]
             fila["mc"] = mc
             fila["prob_perder"] = mc["final_equity"]["prob_loss"]
             fila["ruina"] = mc["risk_of_ruin_pct"]
             fila["dd_p95"] = mc["max_drawdown_pct"]["p95"]
             fila["final_mediana"] = mc["final_equity"]["median"]
             fila["operaciones"] = mc["trades_per_sim"]
+            # El capital con el que se termina en el peor de cada veinte
+            # repartos. Es el número por el que se elige: junta cuánto gana y
+            # cuánto puede salir mal en una sola cifra que se entiende sola,
+            # sin inventar un puntaje que nadie pueda comprobar. Ordenar por
+            # ganancia premiaría a la que tuvo suerte; ordenar sólo por riesgo
+            # premiaría a la que no arriesga y no gana nada.
+            fila["peor_razonable"] = mc["final_equity"]["ci_90"][0]
+            fila["peor_razonable_pct"] = round(
+                (fila["peor_razonable"] / inicial - 1.0) * 100.0, 2) if inicial else 0.0
             salida.append(fila)
 
-        # Se ordena por probabilidad de perder plata, y a igualdad por riesgo
-        # de ruina. No por cuánto ganó: acá la pregunta no es cuál rindió más
-        # sino cuál depende menos de que las operaciones salgan en buen orden.
+        # Ordena por con qué frecuencia termina ganando, y desempata por lo que
+        # queda en el peor escenario.
+        #
+        # Se probó al revés —primero el peor escenario— y elegía mal: ponía
+        # arriba una que gana el 67% de las veces sobre otra que gana el 89%,
+        # por una diferencia de medio punto en el peor caso que es ruido. La
+        # frecuencia con que gana es lo que de verdad separa a una de otra, y
+        # además es lo único que alguien puede leer sin que se lo expliquen.
         sanas = [x for x in salida if "mc" in x]
-        sanas.sort(key=lambda x: (x["prob_perder"], x["ruina"]))
+        sanas.sort(key=lambda x: (x["prob_perder"], -x["peor_razonable"]))
         for i, x in enumerate(sanas):
             x["puesto"] = i + 1
         return {"resultados": salida, "simulations": sims, "ruin_threshold_pct": umbral}

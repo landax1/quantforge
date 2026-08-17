@@ -1376,19 +1376,9 @@ svg.spark { display: block; border-radius: 4px; }
 .score-detail .score-bars { margin-top: 0; }
 .score-detail .sb-row { grid-template-columns: 1fr 150px 48px; }
 
-/* ========================================================== validación ==
-   Las pestañas separan dos preguntas distintas sobre lo mismo, así que van
-   arriba del contenido y no como filtros dentro de una tabla. */
-.tabs { display: flex; gap: 4px; margin: 22px 0 18px; border-bottom: 1px solid var(--border); }
-.tabs button {
-  padding: 10px 18px; background: none; border: none; cursor: pointer;
-  font-size: 13.5px; font-weight: 580; color: var(--text-dim);
-  border-bottom: 2px solid transparent; margin-bottom: -1px;
-  transition: color .14s var(--ease), border-color .14s var(--ease);
-}
-.tabs button:hover { color: var(--text-2); }
-.tabs button.on { color: var(--accent-2); border-bottom-color: var(--accent); }
-
+/* ========================================================== Monte Carlo ==
+   La pantalla es una sola pregunta —cuál aguanta mejor— así que no lleva
+   pestañas ni filtros: se eligen estrategias arriba y el resultado baja. */
 /* Explicación de qué hace la pantalla, antes de los controles. Esto lo va a
    usar gente que nunca oyó "out of sample": si no dice qué es y por qué
    importa, los campos no significan nada. */
@@ -1414,16 +1404,6 @@ svg.spark { display: block; border-radius: 4px; }
 .pista.alerta { background: var(--warn-soft); border-color: var(--warn-line); }
 .pista.alerta > :first-child { color: var(--warn); }
 .pista-accion { display: flex; align-items: center; gap: 9px; margin-top: 11px; flex-wrap: wrap; }
-
-/* La conclusión en palabras, arriba de la tabla: el usuario tiene que poder
-   irse sabiendo qué pasó sin leer una sola columna. */
-.veredicto {
-  margin: 4px 0 16px; padding: 15px 18px; border-radius: var(--r);
-  background: var(--pos-soft); border: 1px solid var(--pos-line);
-  font-size: 14px; line-height: 1.6; color: var(--text-2); max-width: 78ch;
-}
-.veredicto b { color: var(--text); font-weight: 640; }
-.veredicto.flojo { background: var(--warn-soft); border-color: var(--warn-line); }
 
 .val-lista { display: flex; flex-direction: column; gap: 2px; max-height: 260px;
              overflow-y: auto; margin-top: 4px; }
