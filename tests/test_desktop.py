@@ -116,3 +116,40 @@ def test_importing_desktop_clears_the_web_credentials(var):
     import os
 
     assert os.environ.get(var) in (None, "")
+
+
+# --------------------------------------------------------------- la marca
+def test_el_ejecutable_lleva_su_icono():
+    """El icono del ARCHIVO no es el favicon: son dos cosas distintas y sólo
+    estaba puesta la segunda. Sin `icon=` en el spec, Windows le pone el
+    genérico a la ventana, a la barra de tareas y al Explorador — el usuario se
+    baja la aplicación y en su escritorio ve un icono de sistema."""
+    import pathlib
+
+    spec = pathlib.Path(__file__).resolve().parent.parent / "botiquant.spec"
+    assert 'icon="botiquant.ico"' in spec.read_text(encoding="utf-8")
+
+    ico = spec.parent / "botiquant.ico"
+    assert ico.exists(), "el spec apunta a un icono que no está"
+    assert ico.stat().st_size > 5_000, "un .ico de una sola resolución no alcanza"
+
+
+def test_el_icono_trae_los_tamanos_que_windows_pide():
+    """Windows elige la resolución según dónde lo muestre: 16 en la barra de
+    título, 32 en el Explorador, 48 en la barra de tareas. Con una sola, la
+    reescala él y a 16 píxeles el pulpo queda hecho un borrón."""
+    import pathlib
+    import struct
+
+    ico = pathlib.Path(__file__).resolve().parent.parent / "botiquant.ico"
+    crudo = ico.read_bytes()
+    # cabecera ICO: reservado(2) tipo(2) cantidad(2), y después una entrada de
+    # 16 bytes por imagen que arranca con ancho y alto (0 significa 256)
+    _, tipo, cantidad = struct.unpack("<HHH", crudo[:6])
+    assert tipo == 1, "no es un icono"
+    lados = set()
+    for i in range(cantidad):
+        ancho = crudo[6 + i * 16]
+        lados.add(ancho or 256)
+    for necesario in (16, 32, 48):
+        assert necesario in lados, f"le falta la resolución de {necesario}px: {sorted(lados)}"

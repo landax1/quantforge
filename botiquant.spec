@@ -70,6 +70,16 @@ exe = EXE(
     # Sin consola: es una aplicación de ventana. Los errores de arranque se
     # muestran en la propia ventana, no en una terminal negra que asusta.
     console=False,
+    # El icono del ARCHIVO, que no es el favicon: son dos cosas distintas y
+    # sólo estaba puesta la segunda. Sin esto Windows le pone el genérico a la
+    # ventana, a la barra de tareas y al Explorador — el usuario se baja la
+    # aplicación y en su escritorio ve un icono de sistema, no su marca.
+    #
+    # Lleva siete resoluciones porque Windows elige según dónde lo muestre:
+    # 16 en la barra de título, 32 en el Explorador, 48 en la barra de tareas,
+    # 256 en vista grande. Con una sola, Windows la reescala y a 16 píxeles el
+    # pulpo se convierte en un borrón.
+    icon="botiquant.ico",
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
