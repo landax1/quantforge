@@ -931,14 +931,14 @@ function pintarMC(host) {
       });
       // se abre la mejor: es la que el usuario va a querer mirar primero
       const mejor = VAL.mc.resultados.find(x => x.puesto === 1);
-      VAL.detalle = mejor ? { ...mejor.mc, nombre: mejor.nombre } : null;
+      VAL.detalle = mejor ? { ...mejor.mc, nombre: mejor.nombre, id: mejor.id } : null;
     } catch (e) { toast(e.message, "err"); }
     VAL.corriendo = false; pintarCuerpoVal();
   };
 
   $$("[data-ver]", host).forEach(b => b.onclick = () => {
     const x = VAL.mc.resultados.find(y => y.id === b.dataset.ver);
-    VAL.detalle = x && x.mc ? { ...x.mc, nombre: x.nombre } : null;
+    VAL.detalle = x && x.mc ? { ...x.mc, nombre: x.nombre, id: x.id } : null;
     pintarCuerpoVal();
     $("#mc-detalle")?.scrollIntoView({ behavior: "smooth", block: "start" });
   });
@@ -1017,7 +1017,7 @@ function tablaMC(r) {
   <div class="card">
     <h2>Todas, una al lado de la otra
       <span class="hint">${fmtInt(r.simulations)} simulaciones de cada una ·
-        ordenadas por lo que queda en el peor escenario</span></h2>
+        clic en cualquiera para ver su simulación completa</span></h2>
 
     <div class="databank-wrap"><table class="banco">
       <thead><tr>
@@ -1028,12 +1028,13 @@ function tablaMC(r) {
         <th class="num" title="La caída del 5% de simulaciones peores. No es lo que va a pasar: es lo que hay que estar dispuesto a bancar.">Hay que aguantar</th>
         <th class="num" title="En el mal escenario, con cuánto quedás. Es el borde de abajo de lo normal, no una pérdida esperada.">Mal escenario</th>
         <th class="num" title="Probabilidad de llegar a perder el 30% del capital en algún momento. Esto sí es una alerta.">Ruina</th>
-        <th class="num">Ops.</th><th></th>
+        <th class="num">Ops.</th>
       </tr></thead>
       <tbody>${filas.map(x => x.error ? `
         <tr><td class="rank-cell">—</td><td><span class="strat-name">${esc(x.nombre)}</span></td>
-          <td colspan="8" class="muted">${esc(x.error)}</td></tr>` : `
-        <tr class="${x.puesto === 1 ? "tildada" : ""}">
+          <td colspan="7" class="muted">${esc(x.error)}</td></tr>` : `
+        <tr class="clickable ${VAL.detalle && VAL.detalle.id === x.id ? "abierta" : ""}"
+            data-ver="${esc(x.id)}" title="Ver la simulación completa de ${esc(x.nombre)}">
           <td class="rank-cell"><span class="rank">${String(x.puesto).padStart(2, "0")}</span></td>
           <td><span class="strat-name">${esc(x.nombre)}</span>
               <div class="run-sub">${esc(nombreCorto(x.mercado))} · ${esc(x.timeframe)}</div></td>
@@ -1045,7 +1046,6 @@ function tablaMC(r) {
           <td class="num">${fmtPct(x.peor_razonable_pct)}</td>
           <td class="num ${x.ruina > 5 ? "neg" : ""}">${fmtNum(x.ruina, 1)}%</td>
           <td class="num">${fmtInt(x.operaciones)}</td>
-          <td class="num"><button class="btn ghost small" data-ver="${esc(x.id)}">Ver</button></td>
         </tr>`).join("")}</tbody></table></div>
     <div class="explico">
       <b>Qué NO contesta esto.</b> Las operaciones se rebarajan sobre el mismo período
