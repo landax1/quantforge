@@ -112,6 +112,41 @@ const STR = {
   "auth.expired": ["Your session ended", "Se cerró tu sesión"],
   "auth.expired_sub": ["Sign in again and we pick up where you were.",
                        "Volvé a entrar y seguimos donde estabas."],
+  /* La licencia, en el escritorio.
+
+     El texto no promete nada que no cumpla. La aplicacion funciona completa
+     sin licencia y eso se dice con esas palabras: la alternativa —"activá tu
+     licencia"— hace creer que algo se desbloquea y despues no pasa nada. Lo
+     que se ofrece es lo que de verdad da. */
+  "lic.title": ["Your licence", "Tu licencia"],
+  "lic.sub": ["Checked here on your machine, without asking any server.",
+              "Se comprueba acá en tu máquina, sin preguntarle a ningún servidor."],
+  "lic.poner": ["Add your licence", "Poné tu licencia"],
+  "lic.ver": ["View", "Ver"],
+  "lic.plan": ["Plan", "Plan"],
+  "lic.plan_free": ["Free", "Gratis"],
+  "lic.plan_pago": ["Full", "Completo"],
+  "lic.fundador": ["founding member", "socio fundador"],
+  "lic.de": ["Issued to", "A nombre de"],
+  "lic.desde": ["With us since", "Con nosotros desde"],
+  "lic.vence": ["Expires in", "Vence en"],
+  "lic.dias": ["{n} days", "{n} días"],
+  "lic.explica": [
+    "Botiquant works in full without a licence — nothing here is locked. Bringing yours lets the app know who you are and since when, and leaves this copy recognised for the day there are paid features. You get it from your account at <b>botiquant.com</b>.",
+    "Botiquant funciona completo sin licencia — acá no hay nada bloqueado. Traer la tuya hace que la aplicación sepa quién sos y desde cuándo, y deja esta copia reconocida para el día que haya funciones de pago. La sacás de tu cuenta en <b>botiquant.com</b>."],
+  "lic.pegar": ["Paste your licence", "Pegá tu licencia"],
+  "lic.reemplazar": ["Replace it with another one", "Reemplazarla por otra"],
+  "lic.placeholder": ["Paste the whole text, in one line",
+                      "Pegá el texto entero, en una sola línea"],
+  "lic.guardar": ["Save licence", "Guardar licencia"],
+  "lic.sacar": ["Remove it", "Sacarla"],
+  "lic.vacio": ["There is nothing pasted in there yet.", "Todavía no pegaste nada ahí."],
+  "lic.puesta_ok": ["Licence saved", "Licencia guardada"],
+  "lic.sacada": ["Licence removed from this machine",
+                 "Licencia sacada de esta máquina"],
+  "lic.confirmar_sacar": [
+    "Remove the licence from this machine? The app keeps working exactly the same.",
+    "¿Sacar la licencia de esta máquina? La aplicación sigue funcionando exactamente igual."],
   "auth.sign_in": ["Sign in with Google", "Entrar con Google"],
   "auth.sign_out": ["Sign out", "Salir"],
   "auth.signed_out": ["Signed out", "Sesión cerrada"],

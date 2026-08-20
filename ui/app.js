@@ -8,6 +8,9 @@
 const S = {
   meta: null,
   auth: null,           // {configurado, usuario} — ver refreshAuth()
+  // La licencia de esta máquina, comprobada sin red. null en un servidor
+  // web, donde las licencias se emiten en vez de guardarse.
+  licencia: null,       // {situacion, plan, email, alta, fundador} — ver refreshLicencia()
   datasets: [],
   catalog: [],
   page: "data",
@@ -4798,6 +4801,123 @@ function initTheme() {
    arrancar y sólo se usa para dos cosas, mostrar quién sos y explicar el
    candado cuando lo tocás. */
 
+/* ═══════════════════════════════════════════════════ LA LICENCIA ══════
+   En el escritorio no hay login: la identidad la da un archivo firmado que el
+   usuario baja de su cuenta y trae a la maquina. Se comprueba aca adentro, sin
+   red — por eso la aplicacion sigue andando con el wifi cortado o el dia que
+   el servidor se caiga.
+
+   HOY NO HABILITA NI BLOQUEA NADA. La aplicacion funciona igual con licencia y
+   sin ella, y el texto lo dice con esas palabras. Esta puesto desde el
+   principio porque una version publicada que no mira la licencia la va a
+   ignorar para siempre: no hay forma de agregarle el control despues a las
+   copias que ya estan instaladas. */
+async function refreshLicencia() {
+  try { S.licencia = await api.get("/api/licencia/local"); }
+  catch (e) { S.licencia = null; }      // servidor web: no existe el endpoint
+  renderLicencia();
+}
+
+function renderLicencia() {
+  const caja = $("#acct");
+  // Si hay login configurado manda la cuenta: es un servidor web y ahi la
+  // licencia se emite, no se guarda.
+  if (!caja || !S.licencia || (S.auth && S.auth.configurado)) return;
+  caja.hidden = false;
+  const l = S.licencia;
+  const puesta = l.situacion === "valida";
+
+  caja.innerHTML = puesta
+    ? `<div class="acct-chip lic">
+         <div class="acct-txt">
+           <b>${esc(l.email)}</b>
+           <span>${esc(l.plan === "free" ? t("lic.plan_free") : t("lic.plan_pago"))}${
+             l.fundador ? ` · ${esc(t("lic.fundador"))}` : ""}</span>
+         </div>
+         <button class="acct-out" id="lic-abrir">${esc(t("lic.ver"))}</button>
+       </div>`
+    : `<button class="acct-in" id="lic-abrir">
+         ${icono("marcador", "ico-sm")}<span>${esc(t("lic.poner"))}</span>
+       </button>`;
+  $("#lic-abrir", caja).onclick = abrirLicencia;
+}
+
+function abrirLicencia() {
+  const l = S.licencia || { situacion: "sin_licencia", plan: "free" };
+  const puesta = l.situacion === "valida";
+  const host = document.createElement("div");
+  host.className = "overlay";
+  host.innerHTML = `<div class="sheet estrecha">
+    <div class="sheet-head">
+      <div><h2>${esc(t("lic.title"))}</h2>
+        <p>${esc(t("lic.sub"))}</p></div>
+      <button class="sheet-close" aria-label="${esc(t("ui.close"))}">${icono("cerrar")}</button>
+    </div>
+    <div class="sheet-body">
+      ${puesta ? `<div class="lic-puesta">
+          <div class="lic-fila"><span>${esc(t("lic.de"))}</span><b>${esc(l.email)}</b></div>
+          <div class="lic-fila"><span>${esc(t("lic.plan"))}</span><b>${
+            /* la clave entera y no armada por concatenación: así se puede
+               buscar con grep y el test que detecta claves faltantes no lee
+               "lic.plan_" suelto como si fuera una clave */
+            esc(l.plan === "free" ? t("lic.plan_free") : t("lic.plan_pago"))}${
+            /* la marca de fundador va también acá: la barra lateral la muestra
+               y esta es la vista detallada — que diga menos que el resumen
+               hace dudar de las dos */
+            l.fundador ? ` · ${esc(t("lic.fundador"))}` : ""}</b></div>
+          ${l.alta ? `<div class="lic-fila"><span>${esc(t("lic.desde"))}</span><b>${
+            esc(new Date(l.alta * 1000).toLocaleDateString(localeNum(),
+                { year: "numeric", month: "long" }))}</b></div>` : ""}
+          ${l.dias_restantes != null ? `<div class="lic-fila"><span>${
+            esc(t("lic.vence"))}</span><b>${esc(t("lic.dias", { n: l.dias_restantes }))}</b></div>` : ""}
+        </div>` : ""}
+
+      <p class="help-note">${t("lic.explica")}</p>
+
+      <div class="stage-sub">${esc(t(puesta ? "lic.reemplazar" : "lic.pegar"))}</div>
+      <textarea id="lic-txt" class="nota-campo" rows="4"
+        placeholder="${esc(t("lic.placeholder"))}" spellcheck="false"></textarea>
+      <div class="controls">
+        <button class="btn" id="lic-guardar">${esc(t("lic.guardar"))}</button>
+        ${puesta ? `<button class="btn ghost" id="lic-sacar">${esc(t("lic.sacar"))}</button>` : ""}
+      </div>
+      <p class="stage-note" id="lic-estado"></p>
+    </div>
+  </div>`;
+  document.body.appendChild(host);
+  const cerrar = () => host.remove();
+  $(".sheet-close", host).onclick = cerrar;
+  host.onclick = (e) => { if (e.target === host) cerrar(); };
+
+  $("#lic-guardar", host).onclick = async () => {
+    const texto = $("#lic-txt", host).value.trim();
+    if (!texto) { $("#lic-estado", host).textContent = t("lic.vacio"); return; }
+    const btn = $("#lic-guardar", host);
+    btn.disabled = true;
+    try {
+      S.licencia = await api.post("/api/licencia/local", { texto });
+      renderLicencia();
+      toast(t("lic.puesta_ok"), "ok");
+      cerrar();
+    } catch (e) {
+      // el servidor ya explica por que no sirve, en castellano
+      $("#lic-estado", host).innerHTML = `<span class="neg">${esc(e.message)}</span>`;
+      btn.disabled = false;
+    }
+  };
+
+  const sacar = $("#lic-sacar", host);
+  if (sacar) sacar.onclick = async () => {
+    if (!confirm(t("lic.confirmar_sacar"))) return;
+    try {
+      S.licencia = await api.del("/api/licencia/local");
+      renderLicencia();
+      toast(t("lic.sacada"), "ok");
+      cerrar();
+    } catch (e) { toast(e.message, "err"); }
+  };
+}
+
 async function refreshAuth() {
   try { S.auth = await api.get("/api/auth/me"); }
   catch (e) { S.auth = { configurado: false, usuario: null }; }
@@ -4809,7 +4929,12 @@ function renderAuth() {
   if (!caja) return;
   // Sin login configurado (instalación local) no se menciona el tema: ofrecer
   // una cuenta que no existe sólo confunde.
-  if (!S.auth || !S.auth.configurado) { caja.hidden = true; return; }
+  if (!S.auth || !S.auth.configurado) {
+    // Sin login es el escritorio: el hueco lo ocupa la licencia.
+    caja.hidden = true;
+    renderLicencia();
+    return;
+  }
   caja.hidden = false;
   caja.replaceChildren();
 
@@ -4900,6 +5025,9 @@ function pedirCuenta(status) {
   } catch (e) { toast(`${t("err.no_backend")}: ${e.message}`, "err"); }
   pintarChrome();
   refreshAuth();
+  // en el escritorio ocupa el hueco de la cuenta; en la web no existe el
+  // endpoint y queda en null sin molestar
+  refreshLicencia();
   initTheme();
   refreshSavedCount();
   refreshBancoCount();

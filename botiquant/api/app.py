@@ -49,6 +49,7 @@ from botiquant.data.semilla import sembrar
 from botiquant.data.store import DataStore
 from botiquant.database.db import Database
 from botiquant.licencia import firmar
+from botiquant.licencia import local as licencia_en_disco
 from botiquant.generator.generator import generate_strategies
 from botiquant.generator.templates import template_catalog
 from botiquant.genetic.evolution import evolve
@@ -178,6 +179,34 @@ def traducir_error(detalle: str, idioma: str) -> str:
         if detalle.startswith(es):
             return en + detalle[len(es):]
     return detalle
+
+
+#: Por que una licencia no sirve, en las palabras del usuario y no en las de
+#: la biblioteca. "la firma no corresponde" es cierto y no le dice nada a nadie.
+_POR_QUE_NO_SIRVE = {
+    "vencida": "Esa licencia venció. Entrá a tu cuenta en botiquant.com y bajate la nueva.",
+    "invalida": "Ese texto no es una licencia de Botiquant. Copialo de nuevo desde tu cuenta, entero.",
+    "sin_licencia": "No pegaste nada.",
+}
+
+
+def _epoch_de(valor: Any) -> int:
+    """La fecha de alta de la base, en segundos.
+
+    La columna `created` viene como texto ISO en unas filas y como numero en
+    otras segun quien la escribio. Devolver 0 ante algo que no se entiende es
+    preferible a romper la emision de la licencia por una fecha rara: el alta
+    es un dato lindo de mostrar, no un requisito.
+    """
+    if isinstance(valor, (int, float)):
+        return int(valor)
+    if isinstance(valor, str) and valor.strip():
+        try:
+            return int(datetime.fromisoformat(
+                valor.strip().replace("Z", "+00:00")).timestamp())
+        except ValueError:
+            return 0
+    return 0
 
 
 def _entero(nombre: str) -> int | None:
@@ -1856,6 +1885,14 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     #: servidor en cada backtest.
     LICENCIA_DIAS = _entero("BQ_LICENCIA_DIAS") or 90
 
+    #: Hasta cuando se considera fundador a quien se dio de alta, en epoch.
+    #: Vacio = todavia no se reconoce a nadie, que es lo correcto mientras no
+    #: haya nada que cobrar. No se pierde nada por dejarlo asi: la fecha de
+    #: alta vive en la base desde siempre y la licencia se vuelve a emitir cada
+    #: vez que alguien entra a su cuenta, asi que la decision de a quien
+    #: reconocer se puede tomar dentro de un anio con la misma informacion.
+    FUNDADORES_HASTA = _entero("BQ_FUNDADORES_HASTA") or 0
+
     @app.get("/api/licencia")
     def emitir_licencia(request: Request, descargar: int = 0) -> Response:
         """Emite la licencia del usuario, firmada.
@@ -1872,18 +1909,68 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             raise HTTPException(
                 503, "Este servidor todavía no tiene configurada la firma de licencias.")
 
-        expira = int(time.time()) + LICENCIA_DIAS * 86400
+        plan = str(u.get("plan") or "free")
+        # El plan gratuito NO vence. Una licencia gratis que caduca a los tres
+        # meses manda a todo el mundo a re-descargar la aplicacion justo cuando
+        # se habia acostumbrado a usarla, y no protege nada: lo gratis ya es
+        # gratis. La fecha existe para lo que se cobre.
+        expira = 0 if plan == "free" else int(time.time()) + LICENCIA_DIAS * 86400
+
+        # La fecha de alta viaja en la licencia para que la aplicacion pueda
+        # decir "con nosotros desde marzo" sin preguntarle a ningun servidor.
+        alta = _epoch_de(u.get("created"))
         token = firmar({"user_id": str(u["id"]), "email": str(u["email"]),
-                        "plan": str(u.get("plan") or "free"), "expira": expira}, privada)
+                        "plan": plan, "expira": expira, "alta": alta,
+                        "fundador": bool(FUNDADORES_HASTA and alta
+                                         and alta <= FUNDADORES_HASTA)}, privada)
         if descargar:
             return PlainTextResponse(
                 token, media_type="text/plain",
                 headers={"Content-Disposition": 'attachment; filename="botiquant.licencia"'})
         return JSONResponse({
-            "token": token, "plan": str(u.get("plan") or "free"),
-            "expira": expira,
-            "dias_restantes": LICENCIA_DIAS,
+            "token": token, "plan": plan, "expira": expira, "alta": alta,
+            # None y no un numero cuando no vence: "0 dias restantes" se lee
+            # como vencida, que es exactamente lo contrario
+            "dias_restantes": None if expira == 0 else LICENCIA_DIAS,
         })
+
+    #: La licencia del lado de la maquina del usuario.
+    #:
+    #: Solo en modo escritorio. En un servidor compartido no tiene sentido: ahi
+    #: las licencias se emiten, no se guardan, y un archivo unico en disco seria
+    #: de todos y de nadie.
+    #:
+    #: Hoy no habilita ni bloquea nada — la aplicacion funciona igual con
+    #: licencia y sin ella. Esta puesto desde el principio porque una version
+    #: publicada que no mira la licencia la va a ignorar para siempre, y no hay
+    #: forma de agregarle el control despues a las copias ya instaladas.
+    if not MULTIUSER:
+
+        @app.get("/api/licencia/local")
+        def licencia_local() -> dict[str, Any]:
+            """Quien esta usando la aplicacion, comprobado sin red."""
+            return licencia_en_disco.leer().to_dict()
+
+        @app.post("/api/licencia/local")
+        def poner_licencia(payload: dict[str, Any]) -> dict[str, Any]:
+            """Importar una licencia pegada o traida de un archivo.
+
+            Comprueba antes de escribir: pegar una licencia equivocada no puede
+            dejar al usuario sin la que ya tenia puesta.
+            """
+            texto = str(payload.get("texto") or "").strip()
+            if not texto:
+                raise HTTPException(400, "Pegá el texto de tu licencia.")
+            estado = licencia_en_disco.guardar(texto)
+            if estado.situacion != "valida":
+                raise HTTPException(400, _POR_QUE_NO_SIRVE.get(
+                    estado.situacion, "Esa licencia no se pudo comprobar."))
+            return estado.to_dict()
+
+        @app.delete("/api/licencia/local")
+        def sacar_licencia() -> dict[str, Any]:
+            """Sacarla de la maquina. Es de quien la usa."""
+            return licencia_en_disco.borrar().to_dict()
 
     @app.get("/descargar", include_in_schema=False)
     def descargar(request: Request) -> Response:

@@ -36,9 +36,16 @@ class Licencia:
     user_id: str
     email: str
     plan: str
-    #: epoch en segundos; 0 = no vence (lifetime)
+    #: epoch en segundos; 0 = no vence (lifetime, y también el plan gratuito)
     expira: int
     emitida: int
+    #: Cuándo se dio de alta la cuenta. Sale de la base, que lo guarda desde
+    #: siempre, y viaja en la licencia para que la aplicación pueda decir
+    #: "con nosotros desde marzo" sin preguntarle a ningún servidor.
+    alta: int = 0
+    #: Marca de quien llegó temprano. La decide el servidor al emitir. Está acá
+    #: para poder reconocer a los primeros el día que haya algo que cobrar.
+    fundador: bool = False
 
     @property
     def vencida(self) -> bool:
@@ -52,7 +59,8 @@ class Licencia:
 
     def to_dict(self) -> dict[str, Any]:
         return {"user_id": self.user_id, "email": self.email, "plan": self.plan,
-                "expira": self.expira, "emitida": self.emitida}
+                "expira": self.expira, "emitida": self.emitida,
+                "alta": self.alta, "fundador": self.fundador}
 
 
 def _b64(raw: bytes) -> str:
@@ -132,6 +140,10 @@ def verificar(token: str, clave_publica_b64: str) -> Licencia:
             user_id=str(datos["user_id"]), email=str(datos["email"]),
             plan=str(datos["plan"]), expira=int(datos["expira"]),
             emitida=int(datos.get("emitida", 0)),
+            # con valor por omisión: una licencia emitida antes de que estos
+            # campos existieran tiene que seguir verificando, no romperse
+            alta=int(datos.get("alta", 0)),
+            fundador=bool(datos.get("fundador", False)),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise LicenciaError("faltan campos en la licencia") from exc

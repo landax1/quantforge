@@ -2577,3 +2577,29 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 }
 .listo-mt5 li:last-child { margin-bottom: 0; }
 .listo-mt5 b { color: var(--text); font-weight: 600; }
+
+/* La licencia en la barra lateral y su hoja.
+   Ocupa el hueco donde en la web va la cuenta de Google: en el escritorio no
+   hay login y la identidad la da un archivo firmado. */
+.acct-chip.lic .acct-txt b { font-size: 12px; }
+.acct-in .ico-sm { flex: none; }
+
+.sheet.estrecha { max-width: 520px; }
+.sheet-body { padding: 0 24px 24px; }
+.lic-puesta {
+  margin-bottom: 20px;
+  padding: 16px 20px;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: 12px;
+  background: var(--card);
+}
+.lic-fila {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+.lic-fila span { color: var(--text-dim); }
+.lic-fila b { color: var(--text); font-weight: 600; }

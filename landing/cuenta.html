@@ -215,7 +215,13 @@ const kb = (n) => n >= 1e6 ? (n/1e6).toFixed(0) + " MB" : (n/1e3).toFixed(0) + "
         <button class="btn ghost" id="copiar">Copiar</button>
         <a class="btn ghost" href="/api/licencia?descargar=1" download="botiquant.licencia">Bajar archivo</a>
       </div>
-      <p class="mini">La aplicación la pide una sola vez, la primera que abrís.</p>`;
+      <!-- Decía "La aplicación la pide una sola vez, la primera que abrís", y
+           eso es falso: la aplicación funciona completa sin licencia y nunca
+           la pide. Prometer un paso que no existe hace que el usuario espere
+           una pantalla que no va a aparecer, y ahí duda de todo lo demás. -->
+      <p class="mini">Guardala. En la aplicación, <b>Poné tu licencia</b> abajo a la
+        izquierda: pegás este texto o abrís el archivo. Botiquant funciona completo
+        sin ella — sirve para que la aplicación sepa quién sos.</p>`;
     document.getElementById("copiar").onclick = async (ev) => {
       try {
         await navigator.clipboard.writeText(lic.token);
