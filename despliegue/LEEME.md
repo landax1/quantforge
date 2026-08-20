@@ -12,7 +12,30 @@ archivo. Eso corre en el VPS más barato que exista.
 La cuenta de tráfico: el ZIP son ~54 MB. Mil descargas son 54 GB, y cualquier
 VPS incluye entre 1 y 8 TB por mes. Diez mil descargas siguen entrando.
 
-## El camino corto
+## El repositorio es privado
+
+Eso cambia el primer paso y conviene saberlo antes de empezar: el servidor **no
+puede clonar el repositorio ni bajar el instalador**. GitHub le contesta 404 sin
+autenticación, sin decir siquiera que existe.
+
+El código sube desde la máquina de desarrollo, en un solo comando:
+
+    git archive HEAD | ssh root@<IP> "mkdir -p /opt/botiquant && tar -x -C /opt/botiquant"
+
+`git archive` manda **exactamente el árbol de un commit** — nada sin versionar,
+y lo que esté en el `.gitignore` queda afuera solo, incluido el `.env`. Es más
+seguro que copiar la carpeta entera y además hace que lo que corre en el
+servidor corresponda a un commit identificable.
+
+La alternativa sería dejar una credencial de GitHub en el servidor. No vale la
+pena: un token con acceso al repositorio, guardado en una máquina expuesta a
+internet, es peor riesgo que copiar los archivos a mano.
+
+Después se corre el instalador desde ahí:
+
+    ssh root@<IP> "bash /opt/botiquant/despliegue/instalar.sh botiquant.com tu@correo.com"
+
+## El camino corto (sólo si el repositorio fuera público)
 
 En el servidor recién creado, un solo comando:
 

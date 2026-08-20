@@ -26,8 +26,21 @@ apt-get install -y -qq python3-venv python3-pip git nginx certbot python3-certbo
 id -u botiquant &>/dev/null || adduser --system --group --no-create-home botiquant
 
 # ---------------------------------------------------------------- código
+# Tres situaciones, y la del medio es la que hacía falta: el repositorio es
+# PRIVADO, así que el servidor no puede clonarlo ni bajar este script — GitHub
+# le contesta 404 sin autenticación. El código sube desde la máquina de
+# desarrollo con `git archive`, que manda exactamente el árbol de un commit y
+# deja afuera lo que esté en el .gitignore (el .env, entre otras cosas):
+#
+#   git archive HEAD | ssh root@<IP> "mkdir -p /opt/botiquant && tar -x -C /opt/botiquant"
+#
+# La alternativa sería poner una credencial de GitHub en el servidor. No vale
+# la pena: guardar un token con acceso al repositorio en una máquina expuesta a
+# internet es un riesgo mayor que copiar los archivos a mano.
 if [ -d "$DESTINO/.git" ]; then
   git -C "$DESTINO" pull --ff-only
+elif [ -f "$DESTINO/requirements.txt" ]; then
+  echo "==> El código ya está en $DESTINO. No se toca."
 else
   git clone --depth 1 "$REPO" "$DESTINO"
 fi
