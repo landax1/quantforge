@@ -78,6 +78,34 @@ WORK_DIR = carpeta_de_trabajo()
 #: endpoint lee cualquier archivo del servidor: se apaga con BQ_MULTIUSER=1.
 MULTIUSER = os.environ.get("BQ_MULTIUSER", "").strip() not in ("", "0", "false")
 
+#: Prefijo interno de nginx para entregar el instalador sin pasar por Python.
+#:
+#: El ZIP son cincuenta megas. Servirlo desde acá ata el proceso a esa conexión
+#: mientras dura la bajada, y el servicio corre con UN worker a propósito —el
+#: estado de los logins de Google vive en memoria del proceso, con dos falla
+#: uno de cada dos—. O sea que las descargas compiten con los logins.
+#:
+#: Con esto, Python decide si tenés cuenta y contesta con una cabecera; nginx
+#: lee esa cabecera y manda el archivo él. El control queda donde tiene que
+#: estar y el trabajo pesado donde corresponde.
+#:
+#: Vacío fuera del servidor: en el escritorio y en desarrollo no hay ningún
+#: nginx que interprete la cabecera, y la respuesta llegaría vacía.
+XACCEL = os.environ.get("BQ_XACCEL", "").strip()
+
+#: Dónde queda el instalador que produce el empaquetado. No está en el
+#: repositorio: son cientos de megabytes que no tienen por qué versionarse. Vive
+#: junto al proyecto y no dentro de él, por la misma razón.
+#:
+#: A nivel de módulo y no adentro de la función que arma la aplicación porque
+#: es una constante, y porque ahí adentro no había forma de probar la entrega
+#: del archivo sin levantar el servidor entero.
+BUILD_DIR = Path(__file__).resolve().parent.parent.parent / "dist"
+
+#: Un ZIP y no un instalador todavía. Se descomprime y se ejecuta; cuando haya
+#: un instalador de verdad cambia sólo este nombre.
+INSTALADOR = "Botiquant-Windows.zip"
+
 #: El servidor público sirve portada, cuentas, licencias y descarga. Nada más.
 #:
 #: Sin esto, el mismo proceso sigue exponiendo /app y los endpoints de cálculo:
@@ -1850,15 +1878,6 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         return {"carpeta": str(carpeta)}
 
     # ------------------------------------------------------- descarga y cuenta
-    #: Dónde queda el instalador que produce el empaquetado. No está en el
-    #: repositorio: son cientos de megabytes que no tienen por qué versionarse.
-    #: El empaquetado vive junto al proyecto y no dentro de él: son ~100 MB
-    #: regenerables que no tienen por qué versionarse ni viajar en el .exe.
-    BUILD_DIR = Path(__file__).resolve().parent.parent.parent / "dist"
-    #: Un ZIP y no un instalador todavía. Se descomprime y se ejecuta; cuando
-    #: haya un instalador de verdad cambia sólo este nombre.
-    INSTALADOR = "Botiquant-Windows.zip"
-
     def _instalador() -> Path | None:
         """El instalador, si ya se generó.
 
@@ -1981,6 +2000,16 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         if ruta is None:
             raise HTTPException(
                 503, "La aplicación de escritorio todavía no está publicada.")
+        if XACCEL:
+            # Cuerpo vacío a propósito: nginx lo reemplaza por el archivo. El
+            # Content-Disposition sí viaja, para que el navegador lo guarde con
+            # su nombre en vez de mostrarlo.
+            return Response(
+                headers={
+                    "X-Accel-Redirect": f"{XACCEL.rstrip('/')}/{ruta.name}",
+                    "Content-Disposition": f'attachment; filename="{INSTALADOR}"',
+                    "Content-Type": "application/octet-stream",
+                })
         return FileResponse(ruta, filename=INSTALADOR,
                             media_type="application/octet-stream")
 

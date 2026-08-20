@@ -53,6 +53,7 @@ ventanas, no tiene sentido instalarle una biblioteca de interfaz gráfica.
 
     BQ_SOLO_WEB=1
     BQ_MULTIUSER=1
+    BQ_XACCEL=/interno/
     OAUTH_REDIRECT_URI=https://botiquant.com/api/auth/google/callback
     SESSION_SECRET=<uno nuevo, generado en el servidor>
     GOOGLE_CLIENT_ID=<el mismo>
@@ -64,9 +65,29 @@ La clave de licencias tiene que ser la misma que está incrustada en el
 ejecutable publicado. Si se genera una nueva, las licencias que emita el
 servidor no las va a poder verificar ninguna aplicación ya descargada.
 
+**Si alguna vez se rota el par**, son tres pasos y ninguno se puede saltear:
+
+1. `BQ_LICENCIA_PRIVADA` y `BQ_LICENCIA_PUBLICA` en el `.env` del servidor;
+2. `CLAVE_PUBLICA` en `botiquant/licencia/clave.py`, que es la que viaja dentro
+   del ejecutable — ahí no hay `.env` que leer;
+3. recompilar y volver a publicar el ZIP.
+
+Hacer sólo el primero deja al servidor emitiendo licencias que ninguna
+aplicación instalada puede verificar, y no hay ninguna señal: el servidor firma
+sin problema y la aplicación rechaza. `tests/test_licencia_local.py` compara la
+constante contra la privada del `.env` justamente para que eso salga en rojo y
+no en producción.
+
 `BQ_MULTIUSER=1` apaga la importación por ruta y el borrado de instrumentos
 compartidos. En un servidor abierto, ese endpoint lee cualquier archivo del
 disco.
+
+`BQ_XACCEL=/interno/` hace que el ZIP lo entregue nginx y no Python. El
+servicio corre con **un solo worker** a propósito —el estado de los logins de
+Google vive en memoria del proceso, y con dos falla uno de cada dos sin patrón
+aparente—, así que sin esto cada descarga de cincuenta megas compite con los
+logins. El valor tiene que coincidir con el bloque `location /interno/` de
+`nginx.conf`; hay una prueba que comprueba que los dos archivos digan lo mismo.
 
 **5. El ejecutable.** Se compila en Windows —PyInstaller no hace binarios de
 Windows desde Linux— y se sube el ZIP a `/opt/botiquant/dist/`.

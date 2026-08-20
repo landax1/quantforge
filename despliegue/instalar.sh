@@ -54,6 +54,12 @@ if [ ! -f "$DESTINO/.env" ]; then
 BQ_SOLO_WEB=1
 BQ_MULTIUSER=1
 
+# El ZIP lo entrega nginx, no Python: la aplicación comprueba que tengas cuenta
+# y contesta con una cabecera; nginx lee esa cabecera y manda el archivo. Sin
+# esto, cada descarga de cincuenta megas ocupa al único worker que atiende los
+# logins. Tiene que coincidir con el bloque `location /interno/` de nginx.
+BQ_XACCEL=/interno/
+
 # --- Google ---------------------------------------------------------------
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
