@@ -93,6 +93,9 @@ const DEFAULT_CFG = {
   // % final del período que la búsqueda no ve. Desactivada por defecto: la
   // decisión de partir el período es del usuario, no del programa.
   oosPct: 0,
+  // cuánto había elegido la última vez que estuvo prendida, para que apagarla
+  // y volver a prenderla no lo mande siempre al 30
+  oosUltimo: 30,
   fitness: "composite",
   // Cómo se dimensiona la posición. "risk" ajusta el tamaño para que tocar el
   // stop cueste un % fijo; "lots" manda siempre el mismo volumen — hay brokers
@@ -1623,9 +1626,23 @@ async function refreshBancoCount() {
     S.banco.corridas = r.corridas;
     S.banco.total = r.total;
     S.banco.tope = r.tope;
-    const el = $("#banco-count");
-    if (el) el.textContent = r.total || "";
+    pintarNavBanco(r.total);
   } catch (e) { /* ídem */ }
+}
+
+/* El numero pegado a "Minado" en la barra lateral.
+
+   Es el total del Databank sumando TODAS las corridas, no lo que encontro la
+   ultima. Pegado a la palabra "Minado" y sin nada mas se lee como "91
+   minados", que no es lo que dice: por eso ahora lleva el rotulo entero
+   encima y para el lector de pantalla. */
+function pintarNavBanco(total) {
+  const el = $("#banco-count");
+  if (!el) return;
+  el.textContent = total || "";
+  const rotulo = t("nav.bank_count", { n: fmtInt(total || 0) });
+  el.title = rotulo;
+  el.setAttribute("aria-label", rotulo);
 }
 
 /* ================================================ ESTADO DE UNA ESTRATEGIA ==
@@ -1910,6 +1927,10 @@ async function openSaved(s) {
     // el veredicto guardado: sin esto la ficha no puede mostrar el estado ni
     // saber si ofrecer "poner a prueba" o "volver a probar"
     validacion: s.validacion || {},
+    /* El corte con el que se mino, para las tres vistas de la curva. Las
+       guardadas antes de que esto se registrara no lo tienen y las pestanias
+       simplemente no aparecen, como antes: no hay forma de reconstruirlo. */
+    split: meta.split || null,
     settings: { spread: meta.spread, slippage: meta.slippage,
                 commission_pct: meta.commission, initial_capital: meta.capital },
   });
@@ -1993,7 +2014,7 @@ const ORDEN_NATURAL = (todas) => todas
   ? { key: "score", dir: -1 }
   : { key: "puesto", dir: 1 };
 
-async function cargarBanco({ corridas = true } = {}) {
+async function cargarBanco({ corridas = true, mas = false } = {}) {
   if (corridas) {
     const r = await api.get("/api/corridas");
     S.banco.corridas = r.corridas;
@@ -2007,13 +2028,34 @@ async function cargarBanco({ corridas = true } = {}) {
     }
   }
   const s = S.bancoSort;
-  S.banco.filas = await api.get("/api/banco?" + new URLSearchParams({
+  /* El servidor manda de a doscientas y acepta `desde` para seguir. Esto no
+     lo usaba: pedia la primera pagina y dibujaba eso, asi que con el banco
+     por encima de doscientas filas el resto quedaba invisible — y el
+     encabezado seguia diciendo el total, que era justamente el numero que no
+     coincidia con nada. */
+  const desde = mas ? S.banco.filas.length : 0;
+  const pagina = await api.get("/api/banco?" + new URLSearchParams({
     corrida: S.banco.corrida, orden: s.key, dir: s.dir === 1 ? "asc" : "desc",
+    desde: String(desde),
   }));
+  S.banco.filas = mas ? S.banco.filas.concat(pagina) : pagina;
   // lo tildado que ya no está (borrado, podado, o de otra corrida) se suelta:
   // si no, el contador diría "5 seleccionadas" con tres filas a la vista
   const vivos = new Set(S.banco.filas.map(f => f.banco_id));
   [...S.banco.sel].forEach(id => { if (!vivos.has(id)) S.banco.sel.delete(id); });
+}
+
+/* Cuantas filas hay de verdad para la vista actual.
+
+   No es `filas.length`: eso es lo que llego en las paginas pedidas hasta
+   ahora. Y no es siempre el total del banco: con una corrida elegida, la
+   poblacion es la de esa corrida. Sin esta distincion no hay forma de saber
+   si falta traer mas ni de rotular honestamente el encabezado. */
+function poblacionBanco() {
+  const b = S.banco;
+  if (!b.corrida) return b.total;
+  const c = b.corridas.find(x => x.id === b.corrida);
+  return c ? c.n : b.filas.length;
 }
 
 const vistaResultados = async (main) => {
@@ -2051,14 +2093,19 @@ function pintarCabecera() {
   if (!host) return;
   const b = S.banco;
   const lleno = b.tope ? b.total / b.tope : 0;
+  /* El subtitulo tiene que hablar de la misma poblacion que la tabla de
+     abajo. Decia siempre el total del banco, asi que al elegir una corrida el
+     encabezado decia noventa y uno con ocho filas debajo. */
+  const activa = b.corridas.find(c => c.id === b.corrida);
   host.innerHTML = pageHead(t("mine.tab_results"),
-    esc(t("bank.count", { n: fmtInt(b.total), corridas: b.corridas.length })),
+    esc(activa
+      ? t("bank.count_run", { n: fmtInt(activa.n), total: fmtInt(b.total) })
+      : t("bank.count", { n: fmtInt(b.total), corridas: b.corridas.length })),
     `<div class="ph-pill ${lleno > 0.85 ? "alerta" : ""}">
        <b>${fmtInt(b.total)}</b><u>/${fmtInt(b.tope)}</u>
        <em>${esc(lleno > 0.85 ? t("bank.almost_full") : t("bank.capacity"))}</em></div>`);
   // y el de la barra lateral, que es el mismo dato en otro lado
-  const nav = $("#banco-count");
-  if (nav) nav.textContent = b.total || "";
+  pintarNavBanco(b.total);
 }
 
 /* Las corridas como una lista, no como pestañas: son hasta cuarenta y cada
@@ -2113,6 +2160,10 @@ function pintarCorridas() {
     S.banco.sel.clear();
     S.bancoSort = ORDEN_NATURAL(!S.banco.corrida);
     await cargarBanco({ corridas: false });
+    /* La cabecera tambien. Sin esto seguia diciendo el total del banco entero
+       con la tabla filtrada debajo: "38 estrategias de 4 corridas" arriba de
+       ocho filas. Es el numero que no coincidia con nada. */
+    pintarCabecera();
     pintarCorridas();
     pintarBanco();
   });
@@ -2148,6 +2199,8 @@ function pintarBanco() {
   // columnas de rendimiento y caída significan lo mismo de una fila a otra.
   const riesgos = new Set(b.filas.map(f => riesgoDe(porId[f.corrida_id] || {})));
   const mezcla = todas && riesgos.size > 1;
+  // cuantas hay de verdad, contra cuantas llegaron en las paginas pedidas
+  const hay = poblacionBanco();
 
   const th = (key, label, ayuda) => {
     const activa = s.key === key;
@@ -2161,7 +2214,9 @@ function pintarBanco() {
 
   host.innerHTML = `<div class="card">
     <h2>${todas ? esc(t("bank.all_strategies")) : etiquetaCorrida(porId[b.corrida] || {})}
-      <span class="hint">${esc(t("bank.in_view", { n: b.filas.length }))}</span></h2>
+      <span class="hint">${esc(hay > b.filas.length
+        ? t("bank.in_view_of", { n: b.filas.length, hay: fmtInt(hay) })
+        : t("bank.in_view", { n: b.filas.length }))}</span></h2>
 
     ${mezcla ? `<div class="banner info mt" style="margin-bottom:14px">
       <span class="b-ic">${icono("info")}</span><div>${t("bank.mixed_risk", {
@@ -2206,11 +2261,30 @@ function pintarBanco() {
           <td class="num">${fmtNum(m.months_positive_pct ?? 0, 0)}%</td>
           <td class="num">${oosCell(f)}</td>
         </tr>`;
-      }).join("")}</tbody></table></div>`
+      }).join("")}</tbody></table></div>
+      ${hay > b.filas.length ? `<div class="banco-mas">
+        <button class="btn ghost" id="banco-mas">${esc(t("bank.load_more"))}</button>
+        <span class="muted">${esc(t("bank.in_view_of", {
+          n: b.filas.length, hay: fmtInt(hay) }))}</span>
+      </div>` : ""}`
       : bancoVacioHtml(porId[b.corrida])}
   </div>`;
 
   cablearBanco(host);
+
+  const mas = $("#banco-mas", host);
+  if (mas) mas.onclick = async () => {
+    mas.disabled = true;
+    mas.textContent = t("ui.loading");
+    try {
+      await cargarBanco({ corridas: false, mas: true });
+      pintarBanco();
+    } catch (e) {
+      toast(e.message, "err");
+      mas.disabled = false;
+      mas.textContent = t("bank.load_more");
+    }
+  };
 }
 
 /* Una corrida sin filas puede serlo por dos motivos opuestos, y confundirlos
@@ -2376,6 +2450,22 @@ function abrirDelBanco(f) {
     // el corte, para poder mirar cada mitad por separado y las dos juntas
     split: ctx.split || null,
     settings: ctx.settings || {},
+    /* Con que guardarla si sale de aca. Tiene que salir de la corrida y no de
+       la pantalla: esta fila puede ser de otro instrumento, de otra
+       temporalidad y de otro riesgo que lo que este configurado ahora. */
+    guardar: {
+      dataset_id: c.dataset_id, dataset_name: c.dataset_name || "",
+      timeframe: c.timeframe || "1h", direction: ctx.direction || "both",
+      spread: (ctx.settings || {}).spread,
+      slippage: (ctx.settings || {}).slippage,
+      commission: (ctx.settings || {}).commission_pct,
+      capital: (ctx.settings || {}).initial_capital,
+      sizing: (ctx.risk || {}).size_mode === "fixed_units" ? "lots" : "risk",
+      riskPct: (ctx.risk || {}).size_value,
+      lots: (ctx.risk || {}).size_value,
+      rr: (ctx.risk || {}).reward_ratio,
+      measured_range: rango || null, split: ctx.split || null,
+    },
     // decir de qué corrida salió, no "guardada": todavía no lo está, y
     // confundir las dos cosas hace creer que ya se rescató algo que no
     etiqueta: `del banco · ${etiquetaCorrida(c)} · riesgo ${riesgoDe(c)}`,
@@ -2536,19 +2626,6 @@ const vistaBuscar = async (main) => {
             </div>
             <p class="help-note" id="m-sesnote"></p>
 
-            <details class="adv" id="m-adv-oos">
-              <summary><span class="adv-chev">›</span>${esc(t("ui.advanced"))}<em id="sum-oos"></em></summary>
-              <div class="adv-body">
-                <label class="fld"><span>${esc(t("mine.oos"))}</span>
-                  <select data-cfg="oosPct">
-                    ${opt(0, +c.oosPct, esc(t("mine.oos_off")))}
-                    ${opt(30, +c.oosPct, esc(t("mine.oos_split", { mina: 70, valida: 30 })) + ` (${esc(t("ui.recommended"))})`)}
-                    ${opt(20, +c.oosPct, esc(t("mine.oos_split", { mina: 80, valida: 20 })))}
-                    ${opt(40, +c.oosPct, esc(t("mine.oos_split", { mina: 60, valida: 40 })))}
-                  </select></label>
-                <p class="help-note">${t("mine.oos_help")}</p>
-              </div>
-            </details>
           </div>
         </details>
 
@@ -2676,8 +2753,39 @@ const vistaBuscar = async (main) => {
           </div>
         </details>
 
-        <details class="sect">
+        <details class="sect" id="m-sect-oos">
           <summary><span class="sect-num">6</span>
+            <span class="sect-t"><b>${esc(t("mine.oos"))}</b><em id="sum-oos">—</em></span>
+            <span class="chev">›</span></summary>
+          <div class="sect-body">
+            <div class="seg full" id="m-oos-sw">
+              <button data-oos="0" class="${+c.oosPct ? "" : "on"}"
+                >${esc(t("oos.off"))}</button>
+              <button data-oos="30" class="${+c.oosPct ? "on" : ""}"
+                >${esc(t("oos.on"))}</button>
+            </div>
+            <p class="help-note mt">${t("oos.what", { pct: 30 })}</p>
+
+            <div id="m-oos-detalle" ${+c.oosPct ? "" : "hidden"}>
+              <div class="stage-sub">${esc(t("oos.how_much"))}</div>
+              <!-- Solo el porcentaje en el boton. Con la frase entera
+                   ("Minar 70% · validar 30% (recomendado)") las tres opciones
+                   no entran a lo ancho de la columna y se rompen en cuatro
+                   renglones cada una: ilegible. Lo que significa el numero lo
+                   dice la linea de abajo, que ademas cambia con la eleccion. -->
+              <div class="seg full" id="m-oos-pct">
+                ${[20, 30, 40].map(v => `<button data-pct="${v}"
+                  class="${+c.oosPct === v ? "on" : ""}">${v}%</button>`).join("")}
+              </div>
+              <p class="stage-note" id="m-oos-nota"></p>
+              <p class="help-note mt">${t("mine.oos_help")}</p>
+              <p class="stage-note">${esc(t("oos.informa"))}</p>
+            </div>
+          </div>
+        </details>
+
+        <details class="sect">
+          <summary><span class="sect-num">7</span>
             <span class="sect-t"><b>${esc(t("ui.advanced"))}</b><em id="sum-adv">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -2775,6 +2883,45 @@ const vistaBuscar = async (main) => {
   bindKnob("rk-lots", "rk-lots-presets", "lots", 0.01, 100);
 
   /* riesgo % vs lotes fijos: sólo se muestra el campo del modo elegido */
+  /* El paso de validacion fuera de muestra.
+
+     Dos controles y no uno: prender/apagar es la decision, y cuanto reservar
+     es un ajuste que solo tiene sentido una vez prendido. Ponerlos juntos en
+     un desplegable de cuatro opciones —que es como estaba— mezclaba las dos
+     cosas y dejaba "Desactivada" como si fuera un porcentaje mas. */
+  const pintarOos = () => {
+    const on = +S.cfg.oosPct > 0;
+    $$("#m-oos-sw button", main).forEach(b =>
+      b.classList.toggle("on", (b.dataset.oos !== "0") === on));
+    $$("#m-oos-pct button", main).forEach(b =>
+      b.classList.toggle("on", +b.dataset.pct === +S.cfg.oosPct));
+    const det = $("#m-oos-detalle", main);
+    if (det) det.hidden = !on;
+    const nota = $("#m-oos-nota", main);
+    if (nota) {
+      const v = +S.cfg.oosPct;
+      nota.textContent = t("mine.oos_split", { mina: 100 - v, valida: v })
+        + (v === 30 ? ` · ${t("ui.recommended")}` : "");
+    }
+    updateNotes();
+  };
+  $$("#m-oos-sw button", main).forEach(b => b.onclick = () => {
+    // apagar no olvida cuanto habia elegido: volver a prender restituye ese
+    // valor en vez de mandarlo siempre al 30
+    if (b.dataset.oos === "0") { S.cfg.oosUltimo = +S.cfg.oosPct || 30; S.cfg.oosPct = 0; }
+    else S.cfg.oosPct = +S.cfg.oosUltimo || 30;
+    saveCfg();
+    pintarOos();
+  });
+  $$("#m-oos-pct button", main).forEach(b => b.onclick = () => {
+    S.cfg.oosPct = +b.dataset.pct;
+    saveCfg();
+    pintarOos();
+  });
+  // y una vez al dibujar: la linea que explica el porcentaje se arma aca, asi
+  // que sin esta llamada el paso abre en blanco justo debajo de los botones
+  pintarOos();
+
   $$("#rk-sizing button", main).forEach(b => b.onclick = () => {
     S.cfg.sizing = b.dataset.v;
     $$("#rk-sizing button", main).forEach(x => x.classList.toggle("on", x === b));
@@ -3043,9 +3190,12 @@ const vistaBuscar = async (main) => {
       // completo lo que la búsqueda puede encontrar, y no se ve sin abrirlo
       + (ses.length === 1 && ses[0] !== "todo" ? ` · ${nombreSesion(ses[0])}`
          : ses.length > 1 ? ` · ${t("sum.sessions", { n: ses.length })}` : "")
-      + (+S.cfg.oosPct ? ` · ${t("sum.oos_short", { pct: S.cfg.oosPct })}` : ""));
+      );
+    /* El paso cerrado tiene que decir si esta prendido. Antes decia el corte
+       o nada, y "nada" al lado de un titulo se lee como "todavia no lo
+       configure" en vez de "esta apagado", que es una decision. */
     set("sum-oos", +S.cfg.oosPct
-      ? t("mine.oos_split", { mina: 100 - +S.cfg.oosPct, valida: S.cfg.oosPct }).toLowerCase() : "");
+      ? t("oos.sum_on", { pct: S.cfg.oosPct }) : t("oos.off").toLowerCase());
 
     const drv = $$("#m-drivers .blockitem input", main).filter(x => x.checked).length;
     const flt = $$("#m-filters .blockitem input", main).filter(x => x.checked).length;
@@ -3705,7 +3855,7 @@ function renderMining(snap, finished) {
     if (caja) Charts.line(caja, { series: [{ values: snap.best_history, fill: true }], height: 170 });
   }
   const champCard = $("#champ-card");
-  if (champCard) champCard.onclick = () => openInspector(champ);
+  if (champCard) champCard.onclick = () => openInspector(champ, ctxDeLaCorrida(snap));
 
   const splitNote = snap.split ? `
     <div class="banner info mt" style="margin-bottom:14px">
@@ -3790,7 +3940,10 @@ function renderMining(snap, finished) {
     const nuevo = $(".databank-wrap", bankBox);
     if (nuevo && (x || y)) { nuevo.scrollLeft = x; nuevo.scrollTop = y; }
 
-    $$("[data-row]", bankBox).forEach(tr => tr.onclick = () => openInspector(bank[+tr.dataset.row]));
+    // con el contexto de ESTA corrida: sin el no salian las tres vistas de la
+    // curva, que es lo que se acaba de pedir al reservar un tramo de validacion
+    $$("[data-row]", bankBox).forEach(tr =>
+      tr.onclick = () => openInspector(bank[+tr.dataset.row], ctxDeLaCorrida(snap)));
     cablearOrden(bankBox);
 
     /* Las estrategias que llegaron en esta vuelta entran con un desliz.
@@ -3859,6 +4012,61 @@ function renderMining(snap, finished) {
   };
 }
 
+/* El contexto de la corrida que se acaba de terminar.
+
+   Los resultados recien minados abrian el inspector sin contexto, y entonces
+   se caia al respaldo: leer la pantalla. Funcionaba de casualidad —la
+   pantalla todavia tiene la configuracion con la que se mino— pero no traia
+   el corte in/out, asi que las tres vistas de la curva no aparecian justo
+   donde el usuario acababa de pedir la validacion. */
+function ctxDeLaCorrida(snap) {
+  const cfg = S.cfg;
+  const r = (snap && snap.measured_range) || null;
+  return {
+    dataset_id: S.sel.dataset_id, timeframe: S.sel.timeframe || "1h",
+    date_from: r ? r.from : undefined,
+    date_to: r ? r.to : undefined,
+    split: (snap && snap.split) || null,
+    settings: { spread: cfg.spread, slippage: cfg.slippage,
+                commission_pct: cfg.commission, initial_capital: cfg.capital },
+    // con que datos guardarla si el usuario aprieta Guardar desde la ficha
+    guardar: {
+      dataset_id: S.sel.dataset_id,
+      dataset_name: (S.datasets.find(d => d.id === S.sel.dataset_id) || {}).name || "",
+      timeframe: S.sel.timeframe || "1h", direction: cfg.direction,
+      spread: cfg.spread, slippage: cfg.slippage,
+      commission: cfg.commission, capital: cfg.capital,
+      sizing: cfg.sizing, riskPct: cfg.riskPct, lots: cfg.lots, rr: cfg.rr,
+      measured_range: r, split: (snap && snap.split) || null,
+    },
+  };
+}
+
+/* Lo que hay que saber antes de llevarlo a MetaTrader.
+
+   Tres cosas, y las tres salieron de correr el EA de verdad en el tester y
+   comparar: el nombre del simbolo cambia de broker en broker, el historico del
+   broker no es el mismo dato, y por eso conviene correr el tester antes de
+   operar. Ninguna se sabia mirando el codigo. */
+function avisoExportacion(ctx) {
+  const dsId = (ctx && (ctx.dataset_id || (ctx.guardar || {}).dataset_id))
+    || S.sel.dataset_id;
+  const ds = S.datasets.find(d => d.id === dsId);
+  const alias = (ds && ds.aliases) || [];
+  // solo si hay mas de un nombre posible: en EURUSD la linea sobraria
+  const otros = alias.slice(1);
+  return `<section class="listo-mt5">
+    <h3>${icono("info", "ico-sm")} ${esc(t("mt5.title"))}</h3>
+    <ul>
+      ${otros.length ? `<li>${t("mt5.symbol", {
+        nuestro: `<b>${esc(alias[0])}</b>`,
+        otros: otros.map(a => `<b>${esc(a)}</b>`).join(", ") })}</li>` : ""}
+      <li>${t("mt5.feed")}</li>
+      <li>${t("mt5.test_first")}</li>
+    </ul>
+  </section>`;
+}
+
 function panelNota(ctx) {
   if (!ctx || !ctx.strategy_id) return "";
   return `<section id="insp-nota">
@@ -3889,9 +4097,20 @@ function cablearMuestras(box, row, ctx) {
     { id: "oos",   desde: sp.oos_from, hasta: sp.oos_to },
     { id: "todo",  desde: sp.is_from,  hasta: sp.oos_to },
   ];
+  /* Abre en "donde se busco" y no en "las dos juntas".
+
+     El bloque de metricas de arriba describe el tramo medido, que es el de
+     adentro: 148 operaciones. La curva abria en "las dos juntas" y su pie
+     decia 204. Dos numeros que se contradicen a diez centimetros uno del
+     otro, sin nada que explique por que — es la misma clase de confusion que
+     el encabezado del Databank diciendo el total con la tabla filtrada.
+
+     Ademas es el orden en que se lee: primero lo que la busqueda encontro,
+     despues si aguanto afuera. Las otras dos vistas siguen a un clic. */
+  const INICIAL = 0;
   host.innerHTML = `<div class="muestras" role="tablist">
       ${VISTAS.map((v, i) => `<button role="tab" data-m="${v.id}"
-        class="${i === 2 ? "on" : ""}" aria-selected="${i === 2}">
+        class="${i === INICIAL ? "on" : ""}" aria-selected="${i === INICIAL}">
         ${esc(t("ms." + v.id))}</button>`).join("")}
     </div>
     <p class="ms-pie" id="ms-pie"></p>`;
@@ -3942,7 +4161,9 @@ function cablearMuestras(box, row, ctx) {
   };
 
   $$("[data-m]", host).forEach(b => b.onclick = () => pintar(b.dataset.m));
-  pintar("todo");
+  // la misma vista que quedo marcada arriba, o el marcado y la curva
+  // arrancarian discrepando
+  pintar(VISTAS[INICIAL].id);
 }
 
 function cablearNota(box, ctx) {
@@ -4067,9 +4288,11 @@ async function openInspector(row, ctx) {
   host.className = "overlay";
   host.innerHTML = `<div class="sheet">
     <div class="sheet-head">
-      <div><h2>${esc(row.name)} ${ctx
-        ? `<span class="badge">${esc(ctx.etiqueta || t("nav.saved"))}</span>`
-        : `<span class="badge">fitness ${fmtNum(row.fitness, 3)}</span>`}</h2>
+      <div><h2>${esc(row.name)} ${ctx && ctx.etiqueta
+        ? `<span class="badge">${esc(ctx.etiqueta)}</span>`
+        : ctx && ctx.strategy_id
+          ? `<span class="badge">${esc(t("nav.saved"))}</span>`
+          : `<span class="badge">fitness ${fmtNum(row.fitness, 3)}</span>`}</h2>
         <p>${esc(row.blocks || "")}</p>
         <p class="sh-salidas">${salidasEnCastellano(row)}</p></div>
       <button class="sheet-close" aria-label="${esc(t("ui.close"))}">${icono("cerrar")}</button>
@@ -4228,6 +4451,8 @@ function renderInspector(box, row, res, ctx) {
 
   ${panelNota(ctx)}
 
+  ${avisoExportacion(ctx)}
+
   <div class="controls">
     <button class="btn" id="insp-mql5">${icono("bajar")} MetaTrader 5 (.mq5)</button>
     <button class="btn ghost" id="insp-pine">${icono("bajar")} TradingView (.pine)</button>
@@ -4260,20 +4485,38 @@ function renderInspector(box, row, res, ctx) {
     const btn = $("#insp-save", box);
     btn.disabled = true;
     try {
-      // se guarda con todo su contexto: sin el instrumento, el timeframe y los
-      // costos, dentro de un mes la estrategia no se puede volver a exportar
-      const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
+      /* Se guarda con el contexto de la CORRIDA de la que salio la fila, no
+         con lo que este en pantalla.
+
+         Salia de `S.sel` y `S.cfg`. Mientras la unica forma de abrir una
+         estrategia fuera la corrida recien terminada eso coincidia, pero
+         desde el Databank se abre una fila de hace tres semanas sobre otro
+         instrumento — y se guardaba como el instrumento de ahora, con los
+         costos de ahora y el tramo de ahora. La tabla de Mis estrategias
+         muestra justamente esos campos, asi que quedaba una fila que mentia
+         sobre su propio origen y que al reabrirse daba otros numeros. */
+      const g = (ctx && ctx.guardar) || null;
+      const dsId = g ? g.dataset_id : S.sel.dataset_id;
+      const ds = S.datasets.find(d => d.id === dsId);
       await api.post("/api/strategies", {
         spec: row.spec, name: row.name,
-        dataset_id: S.sel.dataset_id,
+        dataset_id: dsId,
         notes: t("saved.mined_on", { fecha: new Date().toLocaleDateString(localeNum()) }),
         meta: {
-          dataset_name: ds ? ds.name : "",
-          timeframe: S.sel.timeframe || "1h",
-          direction: S.cfg.direction,
-          spread: S.cfg.spread, slippage: S.cfg.slippage,
-          commission: S.cfg.commission, capital: S.cfg.capital,
-          sizing: S.cfg.sizing, riskPct: S.cfg.riskPct, lots: S.cfg.lots, rr: S.cfg.rr,
+          dataset_name: ds ? ds.name : (g ? g.dataset_name : ""),
+          timeframe: g ? g.timeframe : (S.sel.timeframe || "1h"),
+          direction: g ? g.direction : S.cfg.direction,
+          spread: g ? g.spread : S.cfg.spread,
+          slippage: g ? g.slippage : S.cfg.slippage,
+          commission: g ? g.commission : S.cfg.commission,
+          capital: g ? g.capital : S.cfg.capital,
+          sizing: g ? g.sizing : S.cfg.sizing,
+          riskPct: g ? g.riskPct : S.cfg.riskPct,
+          lots: g ? g.lots : S.cfg.lots,
+          rr: g ? g.rr : S.cfg.rr,
+          // el corte, para que al reabrirla desde Mis estrategias vuelvan a
+          // aparecer las tres vistas de la curva
+          split: g ? g.split : ((S.mineResult || S.mineLive || {}).split || null),
           stop_mult: row.stop_mult ?? null,
           blocks: row.blocks || "", genes_label: row.genes_label || "",
           score: row.score ?? null,
@@ -4289,7 +4532,8 @@ function renderInspector(box, row, res, ctx) {
              siendo el tramo de la corrida, no el que esté elegido ahora. Y
              cuando hubo división in/out, es el tramo de adentro — que es
              sobre el que se midieron estas métricas. */
-          measured_range: (S.mineResult || S.mineLive || {}).measured_range || null,
+          measured_range: g ? g.measured_range
+            : ((S.mineResult || S.mineLive || {}).measured_range || null),
           saved_at: new Date().toISOString(),
         },
       });

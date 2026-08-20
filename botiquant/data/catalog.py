@@ -20,6 +20,11 @@ El oro y el Bitcoin tambien subieron estos diez anios, asi que shortearlos es
 pelear contra la tendencia de fondo. El unico sin deriva es el par de divisas,
 y ahi permitir cortos sube el techo de 1.92% a 4.05% anual.
 
+``aliases`` son los nombres con los que uno se puede encontrar este mismo
+mercado en la lista de simbolos de un broker. No es cosmetico: al probar
+el EA del S&P en el tester, MetaTrader contesto "symbol SP500 not exist"
+porque ese servidor lo llama US500. El bot estaba bien y no operaba nunca.
+
 ``contract_size`` y ``min_lot`` son REFERENCIAS, igual que el spread: cada
 broker define las suyas y la pantalla dice que hay que comprobarlas. Existen
 para poder contestar la unica pregunta que el capital inicial deberia contestar
@@ -58,6 +63,7 @@ CATALOG: list[dict[str, Any]] = [
         "target_points": 80.0,
         "contract_size": 100,
         "min_lot": 0.1,
+        "aliases": ["SP500", "US500", "SPX500", "S&P500", "USA500", "US500Cash"],
         "direction": "long",
         "mejor_rendimiento": True,
     },
@@ -74,6 +80,7 @@ CATALOG: list[dict[str, Any]] = [
         "target_points": 0.0120,
         "contract_size": 100000,
         "min_lot": 0.01,
+        "aliases": ["EURUSD"],
         "direction": "both",
     },
     {
@@ -89,6 +96,7 @@ CATALOG: list[dict[str, Any]] = [
         "target_points": 36.0,
         "contract_size": 100,
         "min_lot": 0.01,
+        "aliases": ["XAUUSD", "GOLD", "XAUUSD.spot"],
         "direction": "long",
     },
     {
@@ -104,6 +112,7 @@ CATALOG: list[dict[str, Any]] = [
         "target_points": 1800.0,
         "contract_size": 1,
         "min_lot": 0.01,
+        "aliases": ["BTCUSD", "BTCUSDT", "Bitcoin"],
         "direction": "long",
     },
 ]

@@ -356,7 +356,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                         # qué dirección conviene buscar acá: un índice sube solo
                         # y un par de divisas no va a ninguna parte
                         "suggested_direction": (entry.get("direction") if entry
-                                                else None) or "both"})
+                                                else None) or "both",
+                        # como lo puede llamar el broker: hace falta al
+                        # exportar, para enganchar el bot al grafico correcto
+                        "aliases": (entry.get("aliases") if entry else None) or []})
         return out
 
     @app.post("/api/datasets/upload")

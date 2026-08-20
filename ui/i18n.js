@@ -27,6 +27,10 @@ const STR = {
   "nav.section": ["Workspace", "Trabajo"],
   "nav.data": ["Data", "Datos"],
   "nav.mining": ["Mining", "Minado"],
+  // el numero de al lado cuenta TODO el Databank, no la ultima corrida:
+  // pegado a la palabra "Minado" y solo, se leia como "91 minados"
+  "nav.bank_count": ["{n} strategies in the Databank",
+    "{n} estrategias en el Databank"],
   "nav.bank": ["Databank", "Databank"],
   "nav.montecarlo": ["Monte Carlo", "Monte Carlo"],
   "nav.walkforward": ["Walk-forward", "Walk-forward"],
@@ -228,6 +232,19 @@ const STR = {
   "mine.use_all": ["Use all {total} years", "Usar los {total} años"],
   "mine.oos": ["Out-of-sample check", "Validación fuera de muestra"],
   "mine.oos_off": ["Off", "Desactivada"],
+  // El paso 6. Apagado de fabrica: reservar un tramo significa minar sobre
+  // menos historia, y eso hace salir menos estrategias. La decision es del
+  // usuario y por eso la explicacion vive adentro del paso, no en un tooltip.
+  "oos.off": ["Off", "Desactivada"],
+  "oos.on": ["On", "Activada"],
+  "oos.sum_on": ["last {pct}% reserved", "último {pct}% reservado"],
+  "oos.how_much": ["How much to set aside", "Cuánto reservar"],
+  "oos.what": [
+    "With this on, the last <b>{pct}%</b> of the period you chose in step 1 is <b>set aside</b>: the search never sees it. Every strategy that passes is then re-run on that final stretch, and the results table gains a column saying whether the edge held there.",
+    "Activándolo, el último <b>{pct}%</b> del período que elegiste en el paso 1 queda <b>reservado</b>: la búsqueda no lo ve nunca. Después, cada estrategia que pasa se vuelve a correr sobre ese tramo final, y la tabla de resultados suma una columna que dice si la ventaja se sostuvo ahí."],
+  "oos.informa": [
+    "It reports, it does not discard: nothing is thrown out for failing there. Bear in mind the search is left with less history, so fewer strategies come out.",
+    "Informa, no descarta: nada se tira por fallar ahí. Tené en cuenta que la búsqueda queda con menos historia, así que salen menos estrategias."],
   "mine.oos_split": ["Search {mina}% · check {valida}%", "Minar {mina}% · validar {valida}%"],
   "mine.oos_help": [
     "Splits the period in two: the search only sees the first stretch, and every accepted strategy is re-run on the end, on data it <b>never saw</b>. The databank gains a column saying how much of the edge holds there — the best reference you have for what to expect from the strategy going forward.",
@@ -464,6 +481,8 @@ const STR = {
     "Every search that finishes leaves its strategies here with the instrument, the timeframe and the filters they were found under. They accumulate: searching again no longer wipes what came before.",
     "Cada búsqueda que termina deja acá sus estrategias con el instrumento, la temporalidad y los filtros con los que se encontraron. Se acumulan: minar de nuevo ya no borra lo anterior."],
   "bank.count": ["{n} strategies from {corridas} runs.", "{n} estrategias de {corridas} corridas."],
+  "bank.count_run": ["{n} strategies in this run · {total} in the whole Databank.",
+    "{n} estrategias en esta corrida · {total} en todo el Databank."],
   "bank.almost_full": ["almost full", "casi lleno"],
   "bank.capacity": ["capacity", "capacidad"],
   "bank.runs": ["Runs", "Corridas"],
@@ -473,6 +492,9 @@ const STR = {
   "bank.all": ["All", "Todas"],
   "bank.all_strategies": ["Every strategy", "Todas las estrategias"],
   "bank.in_view": ["{n} in view · click a row to analyse it", "{n} a la vista · clic en una fila para analizarla"],
+  "bank.in_view_of": ["{n} of {hay} in view · click a row to analyse it",
+    "{n} de {hay} a la vista · clic en una fila para analizarla"],
+  "bank.load_more": ["Show more", "Ver más"],
   "bank.risk": ["risk", "riesgo"],
   "bank.no_results": ["no results", "sin resultados"],
   "bank.no_filters": ["no filters", "sin filtros"],
@@ -594,6 +616,23 @@ const STR = {
   "insp.export_note": [
     "The <b>.mq5</b> compiles in MetaEditor (F7) and runs in the Strategy Tester. The <b>.pine</b> goes into TradingView's Pine Editor and onto the chart. In both cases, use the same spread you used here.",
     "El <b>.mq5</b> se compila en MetaEditor (F7) y se prueba en el Strategy Tester. El <b>.pine</b> se pega en el Pine Editor de TradingView y se agrega al gráfico. En los dos casos, poné el mismo spread que usaste acá."],
+  /* Lo que hay que saber antes de llevar el bot a MetaTrader.
+
+     Las tres lineas salieron de correr el EA exportado en el Strategy Tester y
+     comparar con el backtest propio: 147 operaciones contra 145, profit factor
+     1.13 contra 1.14, aciertos 38.1% contra 40.7% — pero solo el 5% de las
+     entradas en la misma hora, porque los dos historicos difieren 18 puntos en
+     promedio sobre el S&P. */
+  "mt5.title": ["Before you take it to MetaTrader", "Antes de llevarlo a MetaTrader"],
+  "mt5.symbol": [
+    "We call this market {nuestro}. Your broker may list it as {otros}. Attach the bot to that chart — on the wrong one it will not place a single trade.",
+    "Acá este mercado se llama {nuestro}. Tu bróker puede tenerlo como {otros}. Enganchá el bot a ese gráfico — en el equivocado no va a operar ni una vez."],
+  "mt5.feed": [
+    "Your broker's price history is not the same data this was mined on, so the bot <b>will not repeat these trades one by one</b>. What carries over is the behaviour: how often it trades, how often it is right, and how much it gives back on the way.",
+    "El histórico de precios de tu bróker no es el mismo dato con el que se minó, así que el bot <b>no va a repetir estas operaciones una por una</b>. Lo que se conserva es el comportamiento: cada cuánto opera, con qué proporción de aciertos, y cuánto devuelve en el camino."],
+  "mt5.test_first": [
+    "Run it in MetaTrader's Strategy Tester over the same period before putting money on it. That is the number your broker will actually give you.",
+    "Correlo en el Strategy Tester de MetaTrader sobre el mismo período antes de ponerle plata. Ese es el número que te va a dar tu bróker de verdad."],
   "insp.recalculating": ["Recalculating the full backtest…", "Recalculando el backtest completo…"],
   "insp.failed": ["Could not recalculate", "No se pudo recalcular"],
   "tr.in": ["Entry", "Entrada"],
