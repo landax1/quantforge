@@ -4,4 +4,11 @@ pandas>=2.2
 numpy>=1.26
 openpyxl>=3.1
 python-multipart>=0.0.9
+# El cliente HTTP con el que se le habla a Google durante el login. Estaba
+# instalado de arrastre en la máquina de desarrollo —lo trae el TestClient de
+# FastAPI— y por eso nadie lo notó hasta el primer despliegue en una máquina
+# limpia, donde el servicio no arrancó: ModuleNotFoundError: No module named
+# 'httpx'. Hay una prueba que compara los import del paquete contra este
+# archivo para que no vuelva a pasar.
+httpx>=0.27
 cryptography>=42

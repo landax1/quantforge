@@ -141,9 +141,14 @@ cargadas como de prueba.
 
 ## Comprobar antes de publicar el video
 
-    curl -I https://botiquant.com                    # 200
-    curl -s https://botiquant.com/api/descarga       # disponible: true
-    curl -I https://botiquant.com/descargar          # 401 sin cuenta
+    curl -s -o /dev/null -w "%{http_code}
+" https://botiquant.com       # 200
+    curl -s https://botiquant.com/api/descarga                           # disponible: true
+    curl -s -o /dev/null -w "%{http_code}
+" https://botiquant.com/descargar   # 401 sin cuenta
+
+No con `curl -I`: eso manda un HEAD y la aplicación contesta 405, que parece un
+problema y no lo es. Hay que pedir con GET y mirar sólo el código.
 
 Y entrar con una cuenta que no sea la tuya: es el único modo de ver el flujo
 como lo va a ver alguien que llega del video.
