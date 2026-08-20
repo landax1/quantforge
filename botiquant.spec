@@ -12,7 +12,18 @@ no adivina solo y que, si faltan, fallan recién al ejecutar y no al compilar:
   ejecutable se va a más de 400 MB.
 """
 
+import sys
+
 from PyInstaller.utils.hooks import collect_submodules
+
+# `botiquant` no esta instalado en el entorno: se importa porque la raiz del
+# proyecto esta en sys.path. Con `python -m PyInstaller` eso pasa solo, porque
+# sys.path[0] es el directorio actual; con `pyinstaller.exe` NO, porque
+# sys.path[0] es `.venv/Scripts`. Sin esta linea, el collect_submodules de mas
+# abajo devuelve una lista vacia — no falla, devuelve vacia — y el ejecutable
+# sale sin la aplicacion adentro.
+if SPECPATH not in sys.path:                                   # noqa: F821
+    sys.path.insert(0, SPECPATH)                               # noqa: F821
 
 RECURSOS = [
     ("ui", "ui"),                 # la aplicación
@@ -28,6 +39,22 @@ OCULTOS = [
     "uvicorn.lifespan", "uvicorn.lifespan.on",
     *collect_submodules("botiquant"),
 ]
+
+# Un empaquetado roto que se publica es peor que uno que no se genera.
+#
+# Esto ya paso: `collect_submodules` no encontro el paquete, devolvio vacio, y
+# PyInstaller construyo un .exe de 6 MB sin la aplicacion ni pandas, con cero
+# errores y cero advertencias. Se descubrio comparando el tamanio con el
+# anterior. Sin este corte se descubre cuando lo abre un usuario.
+_DEL_PAQUETE = [m for m in OCULTOS if m.startswith("botiquant")]
+if len(_DEL_PAQUETE) < 20:
+    raise SystemExit(
+        f"Empaquetado abortado: solo se encontraron {len(_DEL_PAQUETE)} modulos "
+        "de botiquant (tendrian que ser unos cincuenta).\n"
+        "El paquete no es importable desde aca, asi que el ejecutable saldria "
+        "sin la aplicacion adentro.\n"
+        "Correlo desde la raiz del proyecto."
+    )
 
 # Sin esto entran matplotlib, tkinter y las pruebas de scipy: cientos de
 # megabytes que la aplicación no usa nunca.
