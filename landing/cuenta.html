@@ -138,8 +138,13 @@ const kb = (n) => n >= 1e6 ? (n/1e6).toFixed(0) + " MB" : (n/1e3).toFixed(0) + "
         y llevarte tu licencia.</p>
       <div class="card">
         <h2>Continuar con Google</h2>
-        <p>No vas a escribir ninguna contraseña acá. Google nos da tu nombre, tu correo
-           y tu foto; nada más.</p>
+        <!-- Decía "No vas a escribir ninguna contraseña acá". Abrir con una
+             negación planta justo la idea que venía a descartar: quien lo lee
+             piensa en contraseñas y en riesgo antes que en entrar. El dato de
+             qué comparte Google se queda —es información que le corresponde al
+             usuario— pero contado como lo que es: rápido y sin trámite. -->
+        <p>Un clic y estás adentro. Google nos pasa tu nombre, tu correo y tu
+           foto, y con eso alcanza.</p>
         <div class="row">
           <a class="btn lg" href="/api/auth/google/start?next=/cuenta">Continuar con Google</a>
           <a class="btn ghost" href="/">Volver</a>

@@ -22,32 +22,35 @@
       <span class="logo-mark" aria-hidden="true">
         <i class="pulpo"></i>
       </span>
-      <span class="logo-text">Botiquant<em>strategy miner</em></span>
+      <span class="logo-text">Botiquant<em data-i18n="nav.tagline"></em></span>
     </div>
 
-    <div class="nav-rotulo">Trabajo</div>
+    <!-- los rótulos los pone app.js: dependen del idioma elegido -->
+    <div class="nav-rotulo" id="nav-rotulo"></div>
     <nav id="nav">
       <button data-page="data">
         <span class="punto" aria-hidden="true"></span>
-        <span>Datos</span>
+        <span data-i18n="nav.data"></span>
       </button>
+      <!-- Los tres pasos, numerados y en el orden en que se usan.
+           Antes había siete entradas sin orden, y tres de ellas —Monte Carlo,
+           Walk-forward, Portafolio— eran la MISMA pantalla con otro verbo: el
+           mismo selector de estrategias repetido tres veces. No son lugares a
+           los que ir: son cosas que se le hacen a una estrategia, y ahora
+           viven dentro de ella. -->
       <button data-page="mining">
         <span class="punto" aria-hidden="true"></span>
-        <span>Mining</span>
-      </button>
-      <button data-page="banco">
-        <span class="punto" aria-hidden="true"></span>
-        <span>Databank</span>
+        <span data-i18n="nav.mining"></span>
         <span class="nav-count" id="banco-count"></span>
-      </button>
-      <button data-page="robustez">
-        <span class="punto" aria-hidden="true"></span>
-        <span>Monte Carlo</span>
       </button>
       <button data-page="saved">
         <span class="punto" aria-hidden="true"></span>
-        <span>Mis estrategias</span>
+        <span data-i18n="nav.saved"></span>
         <span class="nav-count" id="saved-count"></span>
+      </button>
+      <button data-page="consejos">
+        <span class="punto" aria-hidden="true"></span>
+        <span data-i18n="nav.tips"></span>
       </button>
     </nav>
 
@@ -57,11 +60,22 @@
     <!-- lo llena app.js; vacío si este servidor no tiene login configurado -->
     <div class="acct" id="acct" hidden></div>
 
+    <!-- Idioma: fila propia y con rótulo, no una sigla en la franja de estado.
+         Estaba metido en el pie junto al estado y el tema, en dos botones de
+         25x16 px que decían EN y ES: existía y no se encontraba. Alguien que
+         abre la aplicación en inglés y no lee inglés tiene que poder ver desde
+         donde está parado que se puede cambiar. -->
+    <div class="lang-box">
+      <span class="lang-rot" id="lang-rotulo"></span>
+      <!-- lo llena app.js con los idiomas de i18n.js -->
+      <div class="lang-sw" id="lang-sw"></div>
+    </div>
+
     <div class="sidebar-foot">
       <span class="status-dot" id="conn-dot"></span>
-      <span id="conn-text">offline · local</span>
+      <span id="conn-text"></span>
       <span id="version"></span>
-      <button class="theme-btn" id="theme-btn" title="Cambiar tema" aria-label="Cambiar tema">
+      <button class="theme-btn" id="theme-btn">
         <svg class="ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="1.8" stroke-linecap="round">
           <circle cx="12" cy="12" r="4"/>
@@ -78,6 +92,7 @@
   <main id="main"><!-- pages render here --></main>
 </div>
 <div id="toast-host"></div>
+<script src="/static/i18n.js"></script>
 <script src="/static/charts.js"></script>
 <script src="/static/app.js"></script>
 </body>

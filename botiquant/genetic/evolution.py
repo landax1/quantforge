@@ -18,18 +18,23 @@ from botiquant.core.models import BacktestSettings, RiskConfig
 from botiquant.generator.generator import (
     STOP_ATR_MAX, STOP_ATR_MIN, STOP_ATR_STEP,
     Genome, build_spec, random_genes, random_genome,
-    random_max_bars, random_trail_mult,
+    random_max_bars, random_session, random_trail_mult,
 )
 from botiquant.generator.templates import TEMPLATES
 from botiquant.indicators.base import IndicatorCache
 
 
 def _mutate(g: Genome, drivers: list[str], filters: list[str],
-            max_filters: int, rng: np.random.Generator, rate: float) -> Genome:
+            max_filters: int, rng: np.random.Generator, rate: float,
+            sessions: list[str] | None = None) -> Genome:
     genome = Genome(driver=g.driver, filters=tuple(g.filters),
                     genes={t: dict(v) for t, v in g.genes.items()},
                     stop_mult=g.stop_mult, trail_mult=g.trail_mult,
-                    max_bars=g.max_bars)
+                    max_bars=g.max_bars, session=g.session)
+    # la franja horaria salta entre opciones con nombre; entre "Londres" y
+    # "Nueva York" no hay punto medio que tenga sentido recorrer de a poco
+    if sessions and len(sessions) > 1 and rng.random() < rate:
+        genome.session = random_session(sessions, rng)
     # el stop evoluciona como cualquier otro parámetro: se corre un paso o dos
     if genome.stop_mult is not None and rng.random() < rate:
         delta = STOP_ATR_STEP * int(rng.integers(-2, 3))
@@ -85,6 +90,7 @@ def _crossover(a: Genome, b: Genome, rng: np.random.Generator) -> Genome:
         stop_mult=a.stop_mult if rng.random() < 0.5 else b.stop_mult,
         trail_mult=a.trail_mult if rng.random() < 0.5 else b.trail_mult,
         max_bars=a.max_bars if rng.random() < 0.5 else b.max_bars,
+        session=a.session if rng.random() < 0.5 else b.session,
     )
 
 
@@ -104,6 +110,7 @@ def evolve(
     fitness_mode: str = "composite",
     min_trades: int = 20,
     seed: int = 42,
+    sessions: list[str] | None = None,
     progress: Callable[[float, str], None] | None = None,
 ) -> dict[str, Any]:
     """Run the GA and return the hall of fame plus per-generation history."""
@@ -124,7 +131,8 @@ def evolve(
         eval_cache[key] = (score, m)
         return score, m
 
-    pop = [random_genome(drivers, filters, max_filters, rng) for _ in range(population)]
+    pop = [random_genome(drivers, filters, max_filters, rng, sessions=sessions)
+           for _ in range(population)]
     history: list[dict[str, float]] = []
     total_evals = population * generations
 
@@ -157,7 +165,8 @@ def evolve(
                 best = min(idxs, key=lambda j: -scored[j][0])
                 return scored[best][2]
             child = _crossover(pick(), pick(), rng)
-            child = _mutate(child, drivers, filters, max_filters, rng, mutation_rate)
+            child = _mutate(child, drivers, filters, max_filters, rng, mutation_rate,
+                            sessions=sessions)
             next_pop.append(child)
         pop = next_pop
 
@@ -176,7 +185,7 @@ def evolve(
             "metrics": m,
             "fitness": round(score, 4),
             "genome": {"driver": genome.driver, "filters": list(genome.filters),
-                       "genes": genome.genes},
+                       "genes": genome.genes, "session": genome.session},
         })
         if len(hall) >= 10:
             break

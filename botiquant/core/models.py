@@ -11,11 +11,16 @@ from dataclasses import dataclass, field, asdict
 from typing import Any, Literal
 
 OperandType = Literal["indicator", "price", "const"]
-Operator = Literal[">", "<", ">=", "<=", "cross_above", "cross_below", "rising", "falling"]
+Operator = Literal[">", "<", ">=", "<=", "==", "!=",
+                   "cross_above", "cross_below", "rising", "falling"]
 Direction = Literal["long", "short", "both"]
 
+# ``==`` y ``!=`` existen para las magnitudes que son categorías y no escalas:
+# el día de la semana, la dirección de un Supertrend. Sobre un precio no
+# tendrían sentido —dos floats nunca son exactamente iguales—, pero sobre un
+# valor discreto son la única forma honesta de decir "los lunes no".
 OPERATORS: tuple[str, ...] = (
-    ">", "<", ">=", "<=", "cross_above", "cross_below", "rising", "falling",
+    ">", "<", ">=", "<=", "==", "!=", "cross_above", "cross_below", "rising", "falling",
 )
 
 PRICE_FIELDS: tuple[str, ...] = ("open", "high", "low", "close", "volume")
@@ -95,6 +100,7 @@ class Condition:
         pretty = {
             "cross_above": "crosses above", "cross_below": "crosses below",
             "rising": "is rising", "falling": "is falling",
+            "==": "is", "!=": "is not",
         }
         op = pretty.get(self.op, self.op)
         if self.op in ("rising", "falling"):

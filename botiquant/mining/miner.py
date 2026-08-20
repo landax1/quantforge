@@ -18,6 +18,7 @@ import pandas as pd
 
 from botiquant.backtesting.engine import run_backtest
 from botiquant.backtesting.metrics import fitness, bq_score, score_breakdown
+from botiquant.core import sesiones
 from botiquant.core.jobs import JobHandle
 from botiquant.core.models import BacktestSettings, RiskConfig
 from botiquant.genetic.evolution import _crossover, _mutate
@@ -52,6 +53,9 @@ def _gene_summary(genome: Genome) -> str:
         parts.append(f"trail={genome.trail_mult:g}×ATR")
     if genome.max_bars:
         parts.append(f"máx {genome.max_bars} velas")
+    if genome.session and genome.session != sesiones.SIN_RESTRICCION:
+        horas = sesiones.horario(genome.session)
+        parts.append(sesiones.etiqueta(genome.session) + (f" ({horas})" if horas else ""))
     return " · ".join(parts)
 
 
@@ -82,6 +86,12 @@ def _row(genome: Genome, spec, m: dict[str, float], score: float,
         "stop_mult": genome.stop_mult,
         "trail_mult": genome.trail_mult,
         "max_bars": genome.max_bars,
+        # la franja viaja como id y como etiquetas: el banco tiene que poder
+        # mostrar y ordenar por horario sin volver a consultar el catálogo
+        "session": genome.session,
+        "session_label": sesiones.etiqueta(genome.session),
+        "session_label_en": sesiones.etiqueta(genome.session, "en"),
+        "session_hours": sesiones.horario(genome.session),
         "metrics": {k: m[k] for k in _ROW_METRICS},
         "fitness": round(float(score), 4),
         # el score y su desglose viajan siempre, aunque se esté ordenando por
@@ -155,6 +165,7 @@ def mine(
     method: str = "random",
     population: int = 40,
     oos_pct: float = 0.0,
+    sessions: list[str] | None = None,
     handle: JobHandle | None = None,
 ) -> dict[str, Any]:
     """Mining loop over the strategy space.
@@ -173,6 +184,11 @@ def mine(
     """
     if not drivers:
         raise ValueError("At least one driver template is required")
+    # Con una sola franja, todas las candidatas operan ahí y el horario deja de
+    # ser un gen. Con varias, la búsqueda lo elige por candidata — que es más
+    # potente y también más fácil de sobreajustar: cuantas más franjas se
+    # habiliten, más probable es que alguna se vea bien por casualidad.
+    sessions = sesiones.normalizar(sessions)
 
     # ---------------------------------------------------------- in / out of sample
     # Con oos_pct > 0 la búsqueda sólo ve el tramo inicial y el final queda
@@ -258,6 +274,30 @@ def mine(
         pf_in = max(row["metrics"]["profit_factor"], 1e-9)
         return round(min(oos["profit_factor"] / pf_in, 9.99), 3)
 
+    def _ponderar_por_oos(row: dict[str, Any]) -> None:
+        """Baja el score de lo que no sobrevivio al tramo reservado.
+
+        Sin esto, el score que ordena el databank y elige el campeon mira solo
+        el tramo con el que se busco. La mitad que de verdad dice algo estaba
+        calculada y no pesaba: una estrategia que rendia adentro y se caia
+        afuera quedaba arriba de otra que sostenia en las dos.
+
+        Se castiga en proporcion a lo que sobrevivio y no se premia por encima
+        de 1: que el tramo reservado haya salido MEJOR que el de busqueda es
+        casi siempre ruido de un tramo corto, no una virtud.
+        """
+        q = row.get("oos_ratio")
+        row["score_is"] = row["score"]
+        if q is None:
+            # sin operaciones afuera no hay nada que medir, y no medir no es
+            # aprobar: se castiga como una supervivencia a medias
+            row["score"] = round(row["score"] * 0.5, 1)
+            row["oos_penal"] = 0.5
+            return
+        factor = min(float(q), 1.0)
+        row["score"] = round(row["score"] * factor, 1)
+        row["oos_penal"] = round(factor, 3)
+
     def _note_best(m: dict[str, float]) -> None:
         for key, metric, kind, _label in _CRITERIA:
             v = m[metric]
@@ -324,19 +364,27 @@ def mine(
             "rejected": tested - passed,
             "kept": len(bank),
             "accept": accept,
-            # Por qué se cae lo que se cae, en cuentas y con el nombre que ve
-            # el usuario. Mientras el databank está vacío es lo único que
-            # distingue una búsqueda trabajando de una colgada, y dice qué
-            # filtro aflojar: un rechazo por pocas operaciones se arregla
-            # distinto que uno por profit factor.
+            # Por qué se cae lo que se cae, en cuentas. Mientras el databank
+            # está vacío es lo único que distingue una búsqueda trabajando de
+            # una colgada, y dice qué filtro aflojar: un rechazo por pocas
+            # operaciones se arregla distinto que uno por profit factor.
+            #
+            # Van por CLAVE y no por etiqueta: la interfaz existe en dos
+            # idiomas y el nombre de cada criterio lo pone ella. Mandar el
+            # texto ya armado obligaría al servidor a saber en qué idioma está
+            # mirando cada quien, que es justo lo que no puede saber.
             "rechazos": {
-                **({"pocas operaciones": too_few_trades} if too_few_trades else {}),
-                **{_CRIT_BY_KEY[k][2]: n for k, n in blocked_by.items() if n},
+                **({"min_trades": too_few_trades} if too_few_trades else {}),
+                **{k: n for k, n in blocked_by.items() if n},
             },
             # el mínimo de operaciones se pasa aparte de `accept`, pero para
             # quien mira los resultados es un filtro más: sin él, la pantalla no
             # puede decir la vara completa que se aplicó
             "min_trades": min_trades,
+            # las franjas horarias que se habilitaron: es parte de la vara con
+            # la que se buscó, y sin ella una corrida archivada no se puede
+            # repetir ni interpretar
+            "sessions": list(sessions),
             "best_fitness": bank[0]["fitness"] if bank else 0.0,
             "elapsed_s": round(_transcurrido(), 1),
             "pausado_s": round(pausa_total, 1),
@@ -361,9 +409,16 @@ def mine(
         if bank or tested == 0:
             return {}
         if too_few_trades == tested:
-            return {"reason": "trades",
-                    "text": f"Ninguna de las {tested} llegó a {min_trades} operaciones. "
-                            f"Bajá el mínimo de trades o probá un timeframe más chico."}
+            # Una franja horaria estrecha es la primera sospechosa: recorta las
+            # oportunidades disponibles en la misma proporción en que recorta
+            # las horas, y quien la acaba de activar no relaciona una cosa con
+            # la otra. Sin nombrarla, el consejo manda a bajar el mínimo de
+            # operaciones, que es exactamente lo que no hay que hacer.
+            estrechas = [s for s in sessions if s != sesiones.SIN_RESTRICCION]
+            return {"reason": "trades", "tested": tested, "min_trades": min_trades,
+                    # las franjas activas van con el diagnóstico para que la
+                    # pantalla pueda nombrarlas en el idioma del usuario
+                    "sessions": estrechas if len(estrechas) == len(sessions) else []}
         worst = max(blocked_by.items(), key=lambda kv: kv[1], default=None)
         if worst is None:
             return {}
@@ -479,6 +534,7 @@ def mine(
                 if cache_oos is not None:
                     row.update(_validate_oos(spec))
                     row["oos_ratio"] = _oos_ratio(row)
+                    _ponderar_por_oos(row)
                 bank.append(row)
                 bank.sort(key=lambda r: r["fitness"], reverse=True)
                 del bank[keep_top:]
@@ -524,7 +580,7 @@ def mine(
         """A genome not tried yet, or None once the space looks exhausted."""
         nonlocal dupes
         for _ in range(_EXHAUSTED_AFTER):
-            g = random_genome(drivers, filters, max_filters, rng)
+            g = random_genome(drivers, filters, max_filters, rng, sessions=sessions)
             if g.key() not in seen:
                 seen.add(g.key())
                 dupes = 0
@@ -554,7 +610,8 @@ def mine(
 
             while len(children) < pop_size and keep_going():
                 child = _mutate(_crossover(pick(), pick(), rng),
-                                drivers, filters, max_filters, rng, 0.3)
+                                drivers, filters, max_filters, rng, 0.3,
+                                sessions=sessions)
                 if child.key() in seen:
                     alt = fresh_genome()
                     if alt is None:
@@ -582,6 +639,7 @@ def mine(
     out["hit_cap"] = (target_keep is not None and not out["reached_goal"]
                       and not out["stopped"] and not out["exhausted"])
     out["method"] = method
+    out["sessions"] = list(sessions)
     out["too_few_trades"] = too_few_trades
     out["blocked_by"] = blocked_by
     out["best_seen"] = {k: round(v, 3) for k, v in best_seen.items()}

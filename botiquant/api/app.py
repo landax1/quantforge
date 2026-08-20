@@ -10,6 +10,7 @@ from __future__ import annotations
 import dataclasses
 import hmac
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -35,6 +36,7 @@ from botiquant.analysis.montecarlo import monte_carlo
 from botiquant.analysis.walkforward import walk_forward
 from botiquant.backtesting.engine import run_backtest
 from botiquant.backtesting.metrics import SCORE_PARTS, bq_score, score_breakdown
+from botiquant.core import sesiones
 from botiquant.core.jobs import DemasiadoTrabajo, JobManager
 from botiquant.core.models import (
     OPERATORS, PRICE_FIELDS, BacktestSettings, RiskConfig, StrategySpec, TimeFilter,
@@ -92,8 +94,90 @@ CALCULO = (
     "/api/jobs", "/api/export", "/api/validar", "/api/robustez",
     # el banco es la salida del minado: si el servidor público lo sirviera,
     # bastaría con minar una vez para que la web quedara de repositorio
-    "/api/banco", "/api/corridas",
+    "/api/banco", "/api/corridas", "/api/probar",
 )
+
+
+#: Los mensajes de error del servidor, en ingles.
+#:
+#: La clave es el texto en espanol tal como se escribe en el `raise`. Los que
+#: llevan datos adentro se listan por su comienzo y se traduce solo esa parte:
+#: el resto —fechas, rutas, cantidades— son numeros y nombres propios, que
+#: no se traducen.
+ERRORES_EN: dict[str, str] = {
+    # --- rango de fechas y datos
+    "La fecha 'desde' tiene que ser anterior a la de 'hasta'":
+        "The 'from' date has to come before the 'to' date",
+    "dataset_id is required": "dataset_id is required",
+    # --- estrategias y validacion
+    "No sabemos con qu\u00e9 instrumento se encontr\u00f3.":
+        "We do not know which instrument this was found on.",
+    "Esa estrategia ya no est\u00e1 en el banco.":
+        "That strategy is no longer in the databank.",
+    "Esas estrategias ya no est\u00e1n en el banco.":
+        "Those strategies are no longer in the databank.",
+    "Esa estrategia no existe.": "That strategy does not exist.",
+    "Hace falta el per\u00edodo sobre el que validar.":
+        "A period to validate over is required.",
+    "Eleg\u00ed al menos una estrategia.": "Pick at least one strategy.",
+    "Falta la estrategia.": "The strategy is missing.",
+    # --- trabajos
+    "Ese trabajo ya no est\u00e1 corriendo.": "That job is no longer running.",
+    "No est\u00e1.": "Not found.",
+    # --- cuentas y licencias
+    "Entr\u00e1 con tu cuenta para descargar la estrategia.":
+        "Sign in to download the strategy.",
+    "Entr\u00e1 con tu cuenta para obtener tu licencia.":
+        "Sign in to get your licence.",
+    "El inicio de sesi\u00f3n no est\u00e1 configurado en este servidor.":
+        "Sign-in is not configured on this server.",
+    "Este servidor todav\u00eda no tiene configurada la firma de licencias.":
+        "This server has no licence signing configured yet.",
+    "La aplicaci\u00f3n de escritorio todav\u00eda no est\u00e1 publicada.":
+        "The desktop application has not been published yet.",
+    # --- archivos
+    "Nombre de archivo inv\u00e1lido.": "Invalid file name.",
+    "Ruta inv\u00e1lida.": "Invalid path.",
+    "S\u00f3lo se abren estrategias exportadas.":
+        "Only exported strategies can be opened.",
+    "Ese archivo no lo export\u00f3 Botiquant.": "Botiquant did not export that file.",
+    "El archivo ya no est\u00e1 ah\u00ed.": "The file is no longer there.",
+    "Esa carpeta no es de Botiquant.": "That folder does not belong to Botiquant.",
+    "Ese MetaTrader ya no est\u00e1 en esta m\u00e1quina.":
+        "That MetaTrader is no longer on this machine.",
+    "No disponible.": "Not available.",
+    "Formato desconocido.": "Unknown format.",
+    # --- instrumentos
+    "Este instrumento es compartido y no se puede borrar. ":
+        "This instrument is shared and cannot be deleted. ",
+}
+
+#: Los que llevan datos adentro: se compara el comienzo y se cambia solo eso.
+ERRORES_EN_PREFIJO: tuple[tuple[str, str], ...] = (
+    ("Fecha inv\u00e1lida:", "Invalid date:"),
+    ("No existe el archivo:", "No such file:"),
+    ("No se pudo escribir en", "Could not write to"),
+    ("No se pudo abrir la carpeta:", "Could not open the folder:"),
+    ("No se pudo abrir:", "Could not open:"),
+)
+
+
+def traducir_error(detalle: str, idioma: str) -> str:
+    """El mismo mensaje en el idioma pedido, o tal cual si no esta en la tabla.
+
+    Nunca falla ni oculta el original: un mensaje sin traduccion se ve en
+    espanol, que es peor que en ingles pero infinitamente mejor que un error
+    generico o que ninguno.
+    """
+    if idioma != "en" or not detalle:
+        return detalle
+    exacto = ERRORES_EN.get(detalle)
+    if exacto:
+        return exacto
+    for es, en in ERRORES_EN_PREFIJO:
+        if detalle.startswith(es):
+            return en + detalle[len(es):]
+    return detalle
 
 
 def _entero(nombre: str) -> int | None:
@@ -224,6 +308,9 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             "operators": list(OPERATORS),
             "price_fields": list(PRICE_FIELDS),
             "timeframes": ["native", "15m", "30m", "1h", "4h", "1d"],
+            # las franjas horarias las define el servidor para que la pantalla
+            # no pueda ofrecer una que el minero después rechace
+            "sessions": sesiones.catalogo(),
             # la UI lo necesita para no ofrecer botones que van a dar 403
             "multiuser": MULTIUSER,
             # el desglose del QF Score se define en un solo lugar
@@ -257,7 +344,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 stop, target = default_stop_points(d.get("last_close") or 0.0)
             out.append({**d, "suggested_stop": stop, "suggested_target": target,
                         "suggested_spread": entry["spread"] if entry else None,
-                        "suggested_slippage": entry["slippage"] if entry else None})
+                        "suggested_slippage": entry["slippage"] if entry else None,
+                        # Con qué unidad opera el bróker este instrumento. Sin
+                        # esto la pantalla no puede contestar si la posición que
+                        # sale del capital y el riesgo es siquiera operable: en
+                        # un índice 1 lote son 100 unidades y en divisas 100.000,
+                        # así que el mismo número de unidades es un volumen
+                        # aceptable o cien veces menos que el mínimo.
+                        "contract_size": entry.get("contract_size") if entry else None,
+                        "min_lot": entry.get("min_lot") if entry else None,
+                        # qué dirección conviene buscar acá: un índice sube solo
+                        # y un par de divisas no va a ninguna parte
+                        "suggested_direction": (entry.get("direction") if entry
+                                                else None) or "both"})
         return out
 
     @app.post("/api/datasets/upload")
@@ -404,7 +503,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         # inspector can re-run a mined strategy under different exit settings
         if payload.get("risk"):
             spec.risk = _risk(payload)
-        result = run_backtest(df, spec, _settings(payload)).to_dict()
+        ajustes = _settings(payload)
+        result = run_backtest(df, spec, ajustes).to_dict()
         result["score"] = bq_score(result["metrics"])
         result["score_parts"] = {k: round(v, 3)
                                  for k, v in score_breakdown(result["metrics"]).items()}
@@ -644,6 +744,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         flt = payload.get("filters")
         if flt is None:
             flt = [f.id for f in all_filters()]
+        ses = sesiones.normalizar(payload.get("sessions"))
         raw_seed = payload.get("seed")
         seed = int(raw_seed) if raw_seed not in (None, "") else None
 
@@ -705,6 +806,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "method": out.get("method"), "fitness": payload.get("fitness", "composite"),
                 "min_trades": out.get("min_trades"), "accept": out.get("accept") or {},
                 "target_keep": out.get("target_keep"),
+                "sessions": out.get("sessions") or [],
                 "risk": dataclasses.asdict(risk), "settings": dataclasses.asdict(settings),
                 "measured_range": out.get("measured_range"), "range": out.get("range"),
                 "split": out.get("split"), "exhausted": out.get("exhausted"),
@@ -738,6 +840,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 target_keep=target_keep,
                 keep_top=int(min(max(int(payload.get("keep_top", 100)), 10), 1000)),
                 oos_pct=float(min(max(float(payload.get("oos_pct") or 0.0), 0.0), 80.0)),
+                sessions=ses,
                 method="evolution" if payload.get("method") == "evolution" else "random",
                 population=int(min(max(int(payload.get("population", 40)), 8), 200)),
                 seed=seed,
@@ -818,21 +921,60 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     @app.post("/api/walkforward")
     def start_walkforward(request: Request, payload: dict[str, Any]) -> dict[str, str]:
-        df = _load_df(payload)
-        spec = _spec(payload)
-        settings = _settings(payload)
+        """Walk-forward sobre una estrategia ya encontrada.
+
+        Acepta las dos formas de decir cuál. Un ``spec`` suelto con su dataset
+        —que es como nació este endpoint— o una referencia a algo del banco o
+        de Mis estrategias, que es como lo usa la pantalla: ahí el instrumento,
+        el timeframe y los costos salen de la propia estrategia y no de lo que
+        esté configurado en Mining, que puede ser otro mercado por completo.
+        """
+        etiqueta = ""
+        if payload.get("estrategia"):
+            p = payload["estrategia"]
+            e = _para_validar(str(p.get("origen") or "banco"), str(p.get("id") or ""),
+                              duenio(request))
+            if not e["dataset_id"]:
+                raise HTTPException(400, "No sabemos con qué instrumento se encontró.")
+            spec = StrategySpec.from_dict(e["spec"])
+            settings = BacktestSettings.from_dict(
+                {k: v for k, v in e["settings"].items() if v is not None})
+            # El período: el que se pida, y si no, TODO el histórico del
+            # instrumento. A propósito no se limita al tramo medido — el sentido
+            # del walk-forward es tener tramos consecutivos, y cuanto más
+            # histórico haya, más honesto es el corte.
+            df = _load_df({"dataset_id": e["dataset_id"], "timeframe": e["timeframe"],
+                           "date_from": payload.get("date_from"),
+                           "date_to": payload.get("date_to")})
+            etiqueta = f"{e['nombre']} · {e['dataset_name']} {e['timeframe']}".strip()
+        else:
+            df = _load_df(payload)
+            spec = _spec(payload)
+            settings = _settings(payload)
+
+        rango = {"from": str(df.index[0])[:10], "to": str(df.index[-1])[:10],
+                 "bars": int(len(df))}
 
         def work(progress):
-            return walk_forward(
-                df, spec,
-                folds=int(payload.get("folds", 4)),
-                train_pct=float(payload.get("train_pct", 70.0)),
-                optimize_budget=int(payload.get("budget", 40)),
-                settings=settings,
-                fitness_mode=payload.get("fitness", "composite"),
-                seed=int(payload.get("seed", 42)),
-                progress=progress,
-            )
+            try:
+                out = walk_forward(
+                    df, spec,
+                    folds=int(payload.get("folds", 4)),
+                    train_pct=float(payload.get("train_pct", 70.0)),
+                    optimize_budget=int(payload.get("budget", 40)),
+                    settings=settings,
+                    fitness_mode=payload.get("fitness", "composite"),
+                    seed=int(payload.get("seed", 42)),
+                    progress=progress,
+                )
+            except ValueError as exc:
+                # "no alcanza el histórico para tantos tramos" es una elección
+                # corregible del usuario, no una falla: viaja como resultado
+                # para que la pantalla pueda explicar qué cambiar
+                return {"error": str(exc), "rango": rango, "etiqueta": etiqueta}
+            out["rango"] = rango
+            out["etiqueta"] = etiqueta
+            return out
         return {"job_id": jobs.submit("walkforward", work, duenio(request))}
 
     # ----------------------------------------------------------- monte carlo
@@ -1070,28 +1212,202 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             x["puesto"] = i + 1
         return {"resultados": salida, "simulations": sims, "ruin_threshold_pct": umbral}
 
+    # --------------------------------------------------------- poner a prueba
+    #: Los valores con los que corren las pruebas. Estaban como perillas en la
+    #: pantalla y se sacaron: elegir "4 tramos" o "6 tramos" es una decisión que
+    #: quien usa esto no puede tomar con fundamento, y ofrecerla sólo consigue
+    #: que la pantalla parezca difícil. Cuatro tramos con 70% de ajuste es el
+    #: estándar de la industria y aguanta cualquier histórico de los que se
+    #: minan acá.
+    PRUEBA = {"folds": 4, "train_pct": 70.0, "budget": 40,
+              "simulations": 1000, "ruin_threshold_pct": 30.0}
+
+    #: Veredicto del walk-forward -> estado que muestra la lista de estrategias.
+    #: Cuatro estados y no dos porque "a medias" es un resultado real y muy
+    #: común: decir "no pasó" de algo que sobrevivió en la mitad de los tramos
+    #: sería mentir en la dirección contraria.
+    ESTADOS = {"robust": "aprobada", "acceptable": "aceptable",
+               "overfitted": "no_paso"}
+
+    def _resumen_mc(mc: dict[str, Any]) -> dict[str, Any]:
+        """Lo poco de Monte Carlo que hay que mirar, sin la distribución entera.
+
+        Monte Carlo no dice si la estrategia sirve —rebaraja SUS operaciones,
+        así que la ganancia total sale igual en las mil simulaciones y no puede
+        detectar sobreajuste. Lo que sí mide es el camino: qué caída podrías
+        haber tenido que aguantar si las pérdidas te hubieran caído juntas.
+        Por eso de acá sólo salen dos números y no un tablero.
+        """
+        return {
+            "dd_tipico_pct": mc["max_drawdown_pct"]["median"],
+            "dd_malo_pct": mc["max_drawdown_pct"]["p95"],
+            "ruina_pct": mc["risk_of_ruin_pct"],
+            "prob_perder_pct": mc["final_equity"]["prob_loss"],
+            "peor_razonable": mc["final_equity"]["ci_90"][0],
+            "simulaciones": mc.get("simulations", PRUEBA["simulations"]),
+            "operaciones": mc.get("trades_per_sim"),
+        }
+
+    @app.post("/api/probar")
+    def probar(request: Request, payload: dict[str, Any]) -> dict[str, str]:
+        """Corre las dos pruebas sobre una estrategia GUARDADA y archiva el veredicto.
+
+        Una sola acción y no dos botones: son dos preguntas distintas sobre la
+        misma estrategia —¿sobrevive fuera de los datos donde la encontré? y
+        ¿qué se siente operarla?— y ninguna de las dos se entiende sola. Además,
+        pedirle a alguien que elija entre "walk-forward" y "Monte Carlo" es
+        pedirle que sepa la respuesta antes de la pregunta.
+
+        Sólo sobre guardadas: validar filas sueltas de un databank de novecientas
+        no significa nada y llena la pantalla de trabajo inútil. Guardar es el
+        gesto que dice "esta me interesa en serio", y es el que habilita esto.
+        """
+        sid = str(payload.get("strategy_id") or "").strip()
+        if not sid:
+            raise HTTPException(400, "Falta la estrategia.")
+        dueno = duenio(request)
+        e = _para_validar("guardada", sid, dueno)
+        if not e["dataset_id"]:
+            raise HTTPException(400, "No sabemos con qué instrumento se encontró.")
+
+        spec = StrategySpec.from_dict(e["spec"])
+        ajustes = {k: v for k, v in e["settings"].items() if v is not None}
+        settings = BacktestSettings.from_dict(ajustes)
+        medido = e["medido"] or {}
+        df = _load_df({"dataset_id": e["dataset_id"], "timeframe": e["timeframe"],
+                       **({"date_from": medido["from"], "date_to": medido["to"]}
+                          if medido.get("from") else {})})
+
+        def work(progress):
+            progress(0.02, "Preparando")
+            wf = walk_forward(
+                df, spec, folds=int(PRUEBA["folds"]),
+                train_pct=float(PRUEBA["train_pct"]),
+                optimize_budget=int(PRUEBA["budget"]), settings=settings,
+                progress=lambda f, m: progress(0.02 + f * 0.88, m),
+            )
+            # Monte Carlo va después y sobre el backtest COMPLETO, no sobre los
+            # tramos: rebaraja las operaciones que la estrategia hizo de verdad
+            # en todo el período, que es la muestra más grande disponible.
+            progress(0.92, "Rebarajando las operaciones")
+            res = run_backtest(df, spec, settings)
+            pnls = [t.pnl for t in res.trades]
+            mc = None
+            if len(pnls) >= 5:
+                mc = monte_carlo(
+                    pnls, initial_capital=float(ajustes.get("initial_capital") or 10_000.0),
+                    simulations=int(PRUEBA["simulations"]),
+                    ruin_threshold_pct=float(PRUEBA["ruin_threshold_pct"]))
+
+            resumen = wf["summary"]
+            salida = {
+                "estado": ESTADOS.get(resumen["verdict"], "no_paso"),
+                "veredicto": resumen["verdict"],
+                "tramos": resumen["folds"],
+                "tramos_ganadores": resumen["profitable_folds"],
+                "eficiencia": resumen["wf_efficiency"],
+                "consistencia_pct": resumen["consistency_pct"],
+                "retorno_fuera_pct": resumen["total_oos_return_pct"],
+                "probada": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                "periodo": {"from": str(df.index[0])[:10], "to": str(df.index[-1])[:10]},
+                "mc": _resumen_mc(mc) if mc else None,
+            }
+            try:
+                db.guardar_validacion(sid, salida, dueno)
+            except (KeyError, sqlite3.Error):
+                # que falle el archivado no puede tirar el resultado: la prueba
+                # ya tardó sus minutos y está en pantalla
+                traceback.print_exc()
+            # el detalle viaja para dibujar, pero NO se guarda: son cientos de
+            # puntos de curva por estrategia y lo que hace falta después es el
+            # veredicto, no el gráfico
+            return {**salida, "detalle": {"folds": wf["folds"],
+                                          "oos_equity": wf["oos_equity"],
+                                          "oos_timestamps": wf["oos_timestamps"]}}
+
+        return {"job_id": jobs.submit("probar", work, dueno)}
+
+    @app.delete("/api/probar/{sid}")
+    def olvidar_prueba(request: Request, sid: str) -> dict[str, bool]:
+        """Vuelve una estrategia a 'sin probar'. Sirve tras editarle las salidas:
+        el veredicto viejo describía otra estrategia."""
+        try:
+            db.borrar_validacion(sid, duenio(request))
+        except KeyError as exc:
+            raise HTTPException(404, "Esa estrategia no existe.") from exc
+        return {"ok": True}
+
     # ------------------------------------------------------------- portfolio
     @app.post("/api/portfolio")
     def portfolio(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
-        ids = payload.get("result_ids") or []
-        components = []
-        for rid in ids:
+        """Combina varias estrategias en una sola curva.
+
+        Acepta resultados guardados —como nació— o estrategias del banco y de
+        Mis estrategias, que es de donde salen en la práctica: nadie guarda un
+        "resultado" para después armar un portafolio, guarda estrategias.
+
+        Cuando vienen del banco hay que correrles el backtest para tener sus
+        curvas. Es más lento que leer un resultado archivado y es lo correcto:
+        la curva tiene que salir del mismo tramo y los mismos costos con los
+        que se encontró cada una, o la combinación suma cosas que no son
+        comparables.
+        """
+        dueno = duenio(request)
+        components: list[dict[str, Any]] = []
+        nombres_vistos: dict[str, int] = {}
+
+        for p in (payload.get("estrategias") or [])[:12]:
+            e = _para_validar(str(p.get("origen") or "banco"), str(p.get("id") or ""), dueno)
+            if not e["dataset_id"]:
+                raise HTTPException(400, f"{e['nombre']}: no sabemos con qué instrumento se encontró.")
+            medido = e["medido"] or {}
+            ajustes = {k: v for k, v in e["settings"].items() if v is not None}
+            df = _load_df({"dataset_id": e["dataset_id"], "timeframe": e["timeframe"],
+                           **({"date_from": medido["from"], "date_to": medido["to"]}
+                              if medido.get("from") else {})})
+            res = run_backtest(df, StrategySpec.from_dict(e["spec"]),
+                               BacktestSettings.from_dict(ajustes))
+            d = res.to_dict()
+            # Dos corridas distintas llaman S-001 a su primera estrategia. Sin
+            # desambiguar, pandas colapsaría las dos columnas en una y el
+            # portafolio tendría menos componentes de los que se pidieron.
+            base = f"{e['nombre']} · {e['dataset_name'] or ''}".strip(" ·")
+            nombres_vistos[base] = nombres_vistos.get(base, 0) + 1
+            nombre = base if nombres_vistos[base] == 1 else f"{base} ({nombres_vistos[base]})"
+            components.append({
+                "name": nombre,
+                "equity": d.get("equity", []),
+                "timestamps": d.get("timestamps", []),
+                "initial_capital": float(ajustes.get("initial_capital") or 10_000.0),
+                "metrics": d.get("metrics", {}),
+                "origen": e["origen"], "id": e["id"],
+            })
+
+        for rid in (payload.get("result_ids") or []):
             try:
-                row = db.get_result(rid, duenio(request))
+                row = db.get_result(rid, dueno)
             except KeyError as exc:
                 raise HTTPException(404, str(exc)) from exc
-            p = row["payload"]
+            p2 = row["payload"]
             components.append({
                 "name": row["strategy_name"],
-                "equity": p.get("equity", []),
-                "timestamps": p.get("timestamps", []),
-                "initial_capital": p.get("equity", [10_000.0])[0] if p.get("equity") else 10_000.0,
+                "equity": p2.get("equity", []),
+                "timestamps": p2.get("timestamps", []),
+                "initial_capital": p2.get("equity", [10_000.0])[0] if p2.get("equity") else 10_000.0,
+                "metrics": p2.get("metrics", {}),
             })
         try:
-            return build_portfolio(components, payload.get("weights"),
-                                   float(payload.get("initial_capital", 10_000.0)))
+            salida = build_portfolio(components, payload.get("weights"),
+                                     float(payload.get("initial_capital", 10_000.0)))
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+        # Las métricas de cada componente por separado viajan con el resultado:
+        # el portafolio sólo tiene sentido comparado contra sus partes, y sin
+        # esto la pantalla tendría que pedir cada backtest otra vez.
+        salida["componentes"] = [
+            {"name": c["name"], "metrics": c.get("metrics") or {}} for c in components
+        ]
+        return salida
 
     # ------------------------------------------------------------ strategies
     @app.get("/api/strategies")
@@ -1121,6 +1437,28 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             # confirmaría que ese id existe y es de otro.
             raise HTTPException(404, "Esa estrategia no existe.") from exc
         return {"id": sid}
+
+    @app.post("/api/strategies/{sid}/nota")
+    def guardar_nota(request: Request, sid: str, payload: dict[str, Any]) -> dict[str, str]:
+        """Cambia SÓLO la nota de una estrategia guardada.
+
+        Existe aparte de ``POST /api/strategies`` porque ese endpoint espera el
+        spec entero y lo reescribe. Para anotar por qué guardaste algo, mandar
+        de vuelta la estrategia completa es pedirle a la pantalla que arriesgue
+        pisar el spec con lo que tenga en memoria.
+        """
+        dueno = duenio(request)
+        try:
+            s = db.get_strategy(sid, dueno)
+        except KeyError as exc:
+            raise HTTPException(404, "Esa estrategia no existe.") from exc
+        # Un tope generoso pero real: es un campo de texto libre que va a la
+        # base sin límite propio, y un pegado accidental de dos megabytes se
+        # guardaría sin protestar.
+        nota = str(payload.get("notes", ""))[:4000]
+        db.save_strategy(s["name"], s["spec"], strategy_id=sid, notes=nota,
+                         meta=s.get("meta") or {}, user_id=dueno)
+        return {"status": "ok", "notes": nota}
 
     @app.delete("/api/strategies/{sid}")
     def delete_strategy(request: Request, sid: str) -> dict[str, str]:
@@ -1260,6 +1598,42 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="report_{rid}.xlsx"'})
 
+    def _offset_broker(payload: dict[str, Any]) -> int:
+        """Horas que adelanta el servidor del bróker respecto de UTC.
+
+        Viaja en cada exportación en vez de guardarse del lado del servidor:
+        es una preferencia de la máquina del usuario, igual que el spread por
+        instrumento, y el servidor no tiene forma de saberla.
+
+        Se acota a ±14 porque no existe ninguna zona fuera de ese rango, y un
+        número absurdo movería la franja horaria a cualquier lado sin que nada
+        avise.
+        """
+        crudo = payload.get("server_utc_offset")
+        try:
+            return max(-14, min(14, int(crudo)))
+        except (TypeError, ValueError):
+            return 0
+
+    #: Lo unico que se acepta en el nombre de un archivo exportado.
+    #: Se sanea porque el nombre llega en el payload y despues se usa para
+    #: construir una ruta: `carpeta / nombre`. Con "C:/Windows/Temp/x" la ruta
+    #: absoluta reemplaza la carpeta entera, y con "../../.." se sale de ella.
+    #: Medido: ambos escribian fuera de ~/Downloads/Botiquant.
+    _NOMBRE_OK = re.compile(r"[^A-Za-z0-9_.\-]")
+
+    def _nombre_de_archivo(crudo: str, porDefecto: str) -> str:
+        """Un nombre de archivo seguro, sin partes de ruta.
+
+        Se queda con el ultimo tramo —lo que iria despues de la ultima barra—
+        y reemplaza todo lo que no sea letra, digito, guion, guion bajo o punto.
+        Los puntos iniciales se van para que no salga un ".." ni un archivo
+        oculto.
+        """
+        base = str(crudo or "").replace("\\", "/").rsplit("/", 1)[-1]
+        base = _NOMBRE_OK.sub("_", base).lstrip(".").strip("_")
+        return (base or porDefecto)[:80]
+
     def _codigo_exportado(formato: str, payload: dict[str, Any],
                           request: Request) -> tuple[str, str]:
         """Renderiza la estrategia y devuelve (código, nombre de archivo).
@@ -1279,13 +1653,16 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         tf = str(payload.get("timeframe") or "")
         metricas = payload.get("metrics") or None
         if formato == "pine":
+            # el nombre VISIBLE dentro del script puede llevar espacios; el del
+            # archivo no puede llevar nada que forme una ruta
             name = str(payload.get("name") or "QF Strategy")
             code = export_pine(spec, name=name, symbol_hint=ds_name,
                                timeframe_hint=tf, metrics=metricas)
-            return code, f"{name.replace(' ', '_')}.pine"
-        name = str(payload.get("name") or "BQ_Strategy").replace(" ", "_")
+            return code, _nombre_de_archivo(name, "QF_Strategy") + ".pine"
+        name = _nombre_de_archivo(payload.get("name"), "BQ_Strategy")
         code = export_mql5(spec, ea_name=name, symbol_hint=ds_name,
-                           timeframe_hint=tf, metrics=metricas)
+                           timeframe_hint=tf, metrics=metricas,
+                              server_utc_offset=_offset_broker(payload))
         return code, f"{name}.mq5"
 
     @app.post("/api/export/mql5")
@@ -1342,7 +1719,13 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
         try:
             carpeta.mkdir(parents=True, exist_ok=True)
-            destino = carpeta / archivo
+            destino = (carpeta / archivo).resolve()
+            # Segunda capa, por si el saneo del nombre cambia alguna vez: se
+            # comprueba que el destino REAL caiga dentro de la carpeta pedida.
+            # Un saneo se puede aflojar sin querer al agregar un caracter a la
+            # lista; esta comprobacion no depende de esa lista.
+            if not destino.is_relative_to(carpeta.resolve()):
+                raise HTTPException(400, "Nombre de archivo inválido.")
             destino.write_text(code, encoding="utf-8")
         except OSError as exc:
             # disco lleno, permisos, ruta redirigida a OneDrive sin conexión…
@@ -1520,7 +1903,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     def _html_de_la_app() -> HTMLResponse:
         html = (UI_DIR / "index.html").read_text(encoding="utf-8")
-        for asset in ("app.js", "charts.js", "styles.css"):
+        # La lista tiene que llevar TODOS los archivos que index.html enlaza.
+        # i18n.js quedó afuera al agregarlo y fue el único que se servía
+        # cacheado: la aplicación nueva con el diccionario viejo, que se ve
+        # como claves crudas en pantalla y no como un error.
+        for asset in ("app.js", "charts.js", "i18n.js", "styles.css"):
             path = UI_DIR / asset
             if path.exists():
                 html = html.replace(f"/static/{asset}",
@@ -1598,9 +1985,47 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         """
         return RedirectResponse("/app", status_code=303)
 
+    class _UISinCache(StaticFiles):
+        """La interfaz se revalida SIEMPRE; los tipos de letra se cachean.
+
+        Sin esto, el navegador aplica caché heurística —StaticFiles manda ETag
+        pero no Cache-Control— y se queda con el JavaScript de la versión
+        anterior. Se ve exactamente como que la actualización no llegó: la
+        aplicación nueva corriendo la pantalla vieja, sin ningún error.
+
+        ``no-cache`` no significa "no guardes": significa "guardá pero
+        preguntá antes de usar". Con el ETag que ya se manda, un archivo que
+        no cambió se resuelve en un 304 sin cuerpo, así que no cuesta ancho de
+        banda. Las tipografías sí se cachean un año porque llevan el hash en
+        el nombre y no cambian nunca.
+        """
+
+        def file_response(self, full_path, stat_result, scope, status_code=200):
+            resp = super().file_response(full_path, stat_result, scope, status_code)
+            es_fuente = str(full_path).lower().endswith((".woff2", ".woff", ".ttf"))
+            resp.headers["cache-control"] = ("public, max-age=31536000, immutable"
+                                             if es_fuente else "no-cache")
+            return resp
+
     # va DESPUÉS de la ruta: el mount toma todo lo que empiece con /static, así
     # que declarado antes se quedaría también con index.html
-    app.mount("/static", StaticFiles(directory=str(UI_DIR)), name="static")
+    app.mount("/static", _UISinCache(directory=str(UI_DIR)), name="static")
+
+    @app.exception_handler(HTTPException)
+    async def error_traducido(request: Request, exc: HTTPException):
+        """Devuelve el mensaje en el idioma de la interfaz.
+
+        La interfaz manda su idioma en una cabecera; sin ella se responde en
+        espanol, que es lo que hacia antes. Traducir aca y no en cada `raise`
+        evita que todas las funciones internas tengan que arrastrar el idioma
+        hasta el fondo.
+        """
+        idioma = (request.headers.get("x-idioma") or "").lower()[:2]
+        detalle = exc.detail
+        if isinstance(detalle, str):
+            detalle = traducir_error(detalle, idioma)
+        return JSONResponse({"detail": detalle}, status_code=exc.status_code,
+                            headers=getattr(exc, "headers", None))
 
     @app.exception_handler(DemasiadoTrabajo)
     async def sin_cupo(request, exc):

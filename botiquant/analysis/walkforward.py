@@ -94,8 +94,17 @@ def walk_forward(
     if not fold_rows:
         raise ValueError("No folds could be evaluated")
 
-    is_avg = float(np.mean([f["is_net_profit_pct"] for f in fold_rows]))
-    oos_avg = float(np.mean([f["oos_net_profit_pct"] for f in fold_rows]))
+    # La eficiencia se calcula sobre la MEDIANA y no sobre el promedio.
+    #
+    # Con ventanas ancladas, el primer tramo de entrenamiento puede ser mucho
+    # más largo que los siguientes, y sobre un mercado alcista devuelve un
+    # rendimiento in-sample enorme (+70% contra +13% de los otros tres). El
+    # promedio se lo lleva puesto: la eficiencia caía a 0.24 y la estrategia se
+    # declaraba sobreajustada aunque hubiera ganado plata en los CUATRO tramos
+    # fuera de muestra. La mediana describe el tramo típico, que es lo que la
+    # pregunta quiere saber.
+    is_avg = float(np.median([f["is_net_profit_pct"] for f in fold_rows]))
+    oos_avg = float(np.median([f["oos_net_profit_pct"] for f in fold_rows]))
     efficiency = oos_avg / is_avg if abs(is_avg) > 1e-9 else 0.0
     profitable = sum(1 for f in fold_rows if f["oos_net_profit_pct"] > 0)
 
@@ -118,6 +127,25 @@ def walk_forward(
 
 
 def _verdict(efficiency: float, consistency: float) -> str:
+    """Las dos preguntas, y cuál manda cuando se contradicen.
+
+    ``consistency`` es en cuántos tramos fuera de muestra ganó plata;
+    ``efficiency``, cuánto del rendimiento ajustado sobrevivió fuera.
+
+    Cuando se contradicen manda la consistencia, y no es una preferencia: una
+    estrategia que ganó en TODOS los tramos que nunca vio aguantó, punto — que
+    haya ganado menos de lo que prometía el ajuste es lo normal, porque el
+    ajuste siempre es optimista por construcción. Llamar "sobreajustada" a algo
+    que ganó cuatro veces de cuatro sobre datos nuevos es decirle al usuario
+    que tire lo único que le funcionó.
+
+    Al revés no vale: una eficiencia alta con consistencia baja significa que
+    un tramo afortunado tapó a los demás, y eso sí es una advertencia.
+    """
+    if consistency >= 0.99:
+        # ganó en todos: como mínimo aguanta, y aguanta bien si además
+        # conservó buena parte de lo que prometía
+        return "robust" if efficiency >= 0.4 else "acceptable"
     if efficiency >= 0.5 and consistency >= 0.75:
         return "robust"
     if efficiency >= 0.3 and consistency >= 0.5:

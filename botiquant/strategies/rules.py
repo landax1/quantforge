@@ -69,6 +69,13 @@ def eval_condition(cond: Condition, ctx: EvalContext) -> np.ndarray:
             res = left >= right
         elif op == "<=":
             res = left <= right
+        elif op in ("==", "!="):
+            # Tolerancia en vez de igualdad exacta: los valores que se comparan
+            # así son enteros que viajan como float, y un 3.0000000000000004
+            # salido de cualquier cuenta intermedia haría que la condición no
+            # se cumpliera nunca sin que nada lo delate.
+            igual = np.abs(left - right) < 1e-9
+            res = igual if op == "==" else ~igual
         elif op in ("cross_above", "cross_below"):
             pl, pr = _shift1(left), _shift1(right)
             pvalid = ~np.isnan(pl) & ~np.isnan(pr)

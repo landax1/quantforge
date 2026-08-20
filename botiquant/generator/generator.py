@@ -14,6 +14,7 @@ import pandas as pd
 
 from botiquant.backtesting.engine import run_backtest
 from botiquant.backtesting.metrics import fitness
+from botiquant.core import sesiones
 from botiquant.core.models import BacktestSettings, RiskConfig, StrategySpec, TimeFilter
 from botiquant.generator.templates import TEMPLATES, RuleTemplate, drivers, filters
 from botiquant.indicators.base import IndicatorCache
@@ -65,6 +66,11 @@ class Genome:
     stop_mult: float | None = None
     trail_mult: float = 0.0
     max_bars: int = 0
+    # En qué franja horaria opera. Es un gen y no configuración porque cuál
+    # sirve depende de las entradas: una ruptura de rango vive de la apertura
+    # de Londres y una reversión a la media de las horas quietas. Ver
+    # botiquant/core/sesiones.py.
+    session: str = sesiones.SIN_RESTRICCION
 
     def key(self) -> str:
         parts = [self.driver, *sorted(self.filters)]
@@ -77,6 +83,10 @@ class Genome:
             exit_sig += f"/tr={self.trail_mult:g}"
         if self.max_bars:
             exit_sig += f"/mb={self.max_bars:d}"
+        # sin esto, dos candidatas idénticas salvo el horario cuentan como la
+        # misma y la búsqueda descarta la segunda por duplicada
+        if self.session and self.session != sesiones.SIN_RESTRICCION:
+            exit_sig += f"/hs={self.session}"
         return "|".join(parts) + "#" + gene_sig + exit_sig
 
 
@@ -117,7 +127,9 @@ def build_spec(
         entry_long=entry_long,
         entry_short=entry_short,
         risk=risk or RiskConfig(),
-        time_filter=time_filter or TimeFilter(),
+        # un time_filter explícito gana —lo usa quien re-evalúa una estrategia
+        # ya construida—, y si no viene, manda la franja del genoma
+        time_filter=time_filter or sesiones.filtro(genome.session),
     )
 
 
@@ -135,8 +147,17 @@ def random_genes(t_id: str, rng) -> dict[str, float]:
     return out
 
 
+def random_session(sessions: list[str] | None, rng) -> str:
+    """Una franja horaria de las permitidas. Con una sola, siempre esa."""
+    opciones = sesiones.normalizar(sessions)
+    if len(opciones) == 1:
+        return opciones[0]
+    return opciones[int(rng.integers(0, len(opciones)))]
+
+
 def random_genome(drivers: list[str], filters: list[str],
-                  max_filters: int, rng, evolve_exits: bool = True) -> Genome:
+                  max_filters: int, rng, evolve_exits: bool = True,
+                  sessions: list[str] | None = None) -> Genome:
     """One random strategy recipe: driver + filter subset + random genes."""
     drv = drivers[int(rng.integers(0, len(drivers)))]
     k = int(rng.integers(0, max_filters + 1)) if filters else 0
@@ -146,7 +167,8 @@ def random_genome(drivers: list[str], filters: list[str],
     return Genome(driver=drv, filters=fs, genes=genes,
                   stop_mult=random_stop_mult(rng) if evolve_exits else None,
                   trail_mult=random_trail_mult(rng) if evolve_exits else 0.0,
-                  max_bars=random_max_bars(rng) if evolve_exits else 0)
+                  max_bars=random_max_bars(rng) if evolve_exits else 0,
+                  session=random_session(sessions, rng))
 
 
 def generate_strategies(

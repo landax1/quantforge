@@ -13,6 +13,15 @@ def test_catalog_entries_complete():
     for c in CATALOG:
         assert c["spread"] > 0 and c["slippage"] >= 0
         assert c["dukascopy"] and c["category"] and c["full_name"]
+        # La categoría es una CLAVE para la interfaz, no un rótulo. Si vuelve a
+        # ser texto visible ("Índices"), la versión en inglés lo muestra en
+        # español en medio de una pantalla en inglés.
+        assert c["category"] == c["category"].lower(), (
+            f"{c['key']}: la categoría volvió a ser un rótulo y no una clave")
+        assert c["category"].isascii(), (
+            f"{c['key']}: una clave con acentos no sirve de identificador")
+        assert "note" not in c, (
+            f"{c['key']}: el texto descriptivo vive en ui/i18n.js, no acá")
         assert BY_KEY[c["key"]] is c
 
 

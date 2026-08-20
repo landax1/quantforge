@@ -167,6 +167,14 @@ class Database:
         if "meta" not in have:
             self._conn.execute(
                 "ALTER TABLE strategies ADD COLUMN meta TEXT NOT NULL DEFAULT '{}'")
+        # El resultado de haberla puesto a prueba. Antes vivía en la pantalla:
+        # se corría el walk-forward, salía un veredicto, y al cambiar de sección
+        # se perdía. Así la lista de estrategias no podía decir cuáles están
+        # probadas y cuáles no, que es justamente lo que le da un objetivo a la
+        # aplicación. Guardado acá, el estado sobrevive a cerrar el programa.
+        if "validacion" not in have:
+            self._conn.execute(
+                "ALTER TABLE strategies ADD COLUMN validacion TEXT NOT NULL DEFAULT '{}'")
         # De quién es cada cosa. Cadena vacía = de nadie en particular, que es
         # lo que corresponde en una instalación local: ahí no hay cuentas y todo
         # es del que está sentado adelante. Servido a varios, cada fila lleva el
@@ -297,17 +305,36 @@ class Database:
         row = rows[0]
         row["spec"] = json.loads(row["spec"])
         row["meta"] = json.loads(row.get("meta") or "{}")
+        row["validacion"] = json.loads(row.get("validacion") or "{}")
         return row
 
     def list_strategies(self, user_id: str | None = None) -> list[dict[str, Any]]:
         cond, args = self._de(user_id)
         rows = self._rows(
-            "SELECT id, name, notes, created, updated, spec, meta "
+            "SELECT id, name, notes, created, updated, spec, meta, validacion "
             f"FROM strategies WHERE 1=1{cond} ORDER BY updated DESC", args)
         for r in rows:
             r["spec"] = json.loads(r["spec"])
             r["meta"] = json.loads(r.get("meta") or "{}")
+            r["validacion"] = json.loads(r.get("validacion") or "{}")
         return rows
+
+    def guardar_validacion(self, sid: str, datos: dict[str, Any],
+                           user_id: str | None = None) -> None:
+        """Deja registrado cómo le fue a una estrategia en las pruebas.
+
+        No toca `updated`: haber probado una estrategia no la modifica, y si
+        lo tocara, cada prueba la mandaría al tope de la lista y el orden por
+        fecha dejaría de significar cuándo la guardaste.
+        """
+        cond, args = self._de(user_id)
+        cur = self._exec(f"UPDATE strategies SET validacion=? WHERE id=?{cond}",
+                         (json.dumps(datos), sid) + args)
+        if cur.rowcount == 0:
+            raise KeyError(f"Strategy {sid} not found")
+
+    def borrar_validacion(self, sid: str, user_id: str | None = None) -> None:
+        self.guardar_validacion(sid, {}, user_id)
 
     def delete_strategy(self, sid: str, user_id: str | None = None) -> None:
         cond, args = self._de(user_id)

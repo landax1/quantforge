@@ -190,7 +190,7 @@ const Charts = (() => {
 
   /* Monthly-returns heat grid rendered as an HTML table */
   function monthlyGrid(container, monthly) {
-    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const MONTHS = t("chart.months").split(",");
     const years = [...new Set(monthly.map(m => m.year))].sort();
     const map = {};
     monthly.forEach(m => { map[`${m.year}-${m.month}`] = m.return_pct; });
@@ -266,6 +266,25 @@ const Charts = (() => {
   /* ----------------------------------------------------------- progress ring
      Inline SVG for "cuánto falta para llenar el databank". Devuelve string
      para poder incrustarlo directo en el HTML que se está armando. */
+  /* Mueve un anillo YA dibujado en vez de reemplazarlo.
+
+     ringSvg devuelve marcado nuevo con un id de gradiente aleatorio, asi que
+     escribirlo de nuevo cambia el nodo y el navegador no tiene desde donde
+     animar: la transicion escrita en el propio SVG nunca corre. Con el nodo
+     quieto y solo el offset cambiando, el anillo avanza. */
+  function ringUpdate(container, fraction) {
+    const circulos = container.querySelectorAll("circle");
+    if (circulos.length < 2) return false;
+    const aro = circulos[1];
+    const c = parseFloat(aro.getAttribute("stroke-dasharray") || "0");
+    if (!c) return false;
+    const f = Math.max(0, Math.min(isFinite(fraction) ? fraction : 0, 1));
+    aro.setAttribute("stroke-dashoffset", (c * (1 - f)).toFixed(1));
+    // el color de "terminado" tambien cambia sin rehacer el nodo
+    if (f >= 1) aro.setAttribute("stroke", css("--pos", "#3ddc97"));
+    return true;
+  }
+
   function ringSvg(fraction, opts = {}) {
     const size = opts.size || 124, stroke = opts.stroke || 9;
     const r = (size - stroke) / 2, c = 2 * Math.PI * r;
@@ -338,6 +357,24 @@ const Charts = (() => {
       svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: Y(opts.initial), y2: Y(opts.initial),
         stroke: dim, "stroke-dasharray": "4 4", "stroke-width": 1, opacity: 0.7 }));
     }
+
+    /* La marca del corte: dónde termina el tramo con el que se buscó y empieza
+       el que la estrategia nunca vio. Es el dato que hace que mirar la curva
+       completa signifique algo — sin la línea, las dos mitades se leen como
+       una sola y no hay forma de ver si algo cambió al cruzarla. */
+    if (opts.marca && opts.labels && opts.labels.length === values.length) {
+      const corte = opts.labels.findIndex(l => l >= opts.marca);
+      if (corte > 0) {
+        const xc = X(corte);
+        svg.appendChild(el("line", { x1: xc, x2: xc, y1: padT, y2: padT + eqH + gap + ddH,
+          stroke: css("--warn", "#e59700"), "stroke-width": 1.5,
+          "stroke-dasharray": "5 3", opacity: 0.9 }));
+        const rot = el("text", { x: xc + 5, y: padT + 11, fill: css("--warn", "#e59700"),
+          "font-size": 10, "font-weight": 600 });
+        rot.textContent = opts.marcaTexto || "";
+        svg.appendChild(rot);
+      }
+    }
     svg.appendChild(el("polyline", { points: pts, fill: "none", stroke: accent,
       "stroke-width": 2, "stroke-linejoin": "round" }));
 
@@ -353,7 +390,7 @@ const Charts = (() => {
     ddLab.textContent = `${ddLo.toFixed(0)}%`;
     svg.appendChild(ddLab);
     const ddTitle = el("text", { x: padL + 4, y: padT + eqH + gap + 11, fill: dim, "font-size": 10 });
-    ddTitle.textContent = "CAÍDA DESDE MÁXIMO";
+    ddTitle.textContent = t("chart.drawdown_from_peak");
     svg.appendChild(ddTitle);
 
     if (opts.labels && opts.labels.length > 1) {
@@ -388,7 +425,7 @@ const Charts = (() => {
       dot.setAttribute("opacity", "1");
       const label = opts.labels ? opts.labels[Math.min(i, opts.labels.length - 1)] : "";
       tip.innerHTML = `<b>${fmtNum(values[i])}</b>` +
-        `<span>${label || ""}</span><span class="tip-dd">${dd[i].toFixed(1)}% bajo máximo</span>`;
+        `<span>${label || ""}</span><span class="tip-dd">${t("chart.below_peak", { pct: dd[i].toFixed(1) })}</span>`;
       tip.style.opacity = "1";
       tip.style.left = `${Math.min(Math.max(ev.clientX - r.left, 60), r.width - 60)}px`;
     });
@@ -398,5 +435,5 @@ const Charts = (() => {
     });
   }
 
-  return { line, fan, histogram, bars, monthlyGrid, corrGrid, sparkSvg, ringSvg, equity };
+  return { line, fan, histogram, bars, monthlyGrid, corrGrid, sparkSvg, ringSvg, ringUpdate, equity };
 })();

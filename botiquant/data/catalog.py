@@ -3,6 +3,29 @@
 Each entry carries the Dukascopy symbol used to fetch history plus the broker
 cost profile that instrument actually trades at, so the mining page can preset
 spread and slippage instead of asking the user to guess.
+
+``direction`` es la direccion que conviene buscar en ese instrumento, y sale
+de medir, no de razonar. Se razono primero y se razono mal: "solo los indices
+tienen deriva al alza". Los numeros dicen otra cosa — 200 candidatas por
+instrumento, 1h, diez anios, riesgo 1%, misma vara, contando las que dan
+profit factor >= 1:
+
+                  solo largos   ambas
+    SP500                 123      40
+    XAUUSD                101      33
+    BTCUSD                 76      39
+    EURUSD                 12      12   (pero ambas llega a +2% y largos no)
+
+El oro y el Bitcoin tambien subieron estos diez anios, asi que shortearlos es
+pelear contra la tendencia de fondo. El unico sin deriva es el par de divisas,
+y ahi permitir cortos sube el techo de 1.92% a 4.05% anual.
+
+``contract_size`` y ``min_lot`` son REFERENCIAS, igual que el spread: cada
+broker define las suyas y la pantalla dice que hay que comprobarlas. Existen
+para poder contestar la unica pregunta que el capital inicial deberia contestar
+y no contestaba: con esta plata y este riesgo, la posicion que sale, ¿el broker
+la acepta? Si no la acepta, el minimo obliga a arriesgar mas de lo pedido y el
+usuario se entera recien operando con plata de verdad.
 """
 
 from __future__ import annotations
@@ -27,52 +50,61 @@ CATALOG: list[dict[str, Any]] = [
         "label": "SP500",
         "full_name": "S&P 500 index CFD",
         "dukascopy": "usa500idxusd",
-        "category": "Índices",
+        "category": "indices",
         "from": "2013-01-01",
         "spread": 0.36,
         "slippage": 0.1,
         "stop_points": 40.0,
         "target_points": 80.0,
-        "note": "CFD del S&P 500 — spread típico 0.36 puntos",
+        "contract_size": 100,
+        "min_lot": 0.1,
+        "direction": "long",
+        "mejor_rendimiento": True,
     },
     {
         "key": "eurusd",
         "label": "EURUSD",
         "full_name": "Euro / US Dollar",
         "dukascopy": "eurusd",
-        "category": "Forex",
+        "category": "forex",
         "from": "2005-01-01",
         "spread": 0.00012,
         "slippage": 0.00003,
         "stop_points": 0.0060,
         "target_points": 0.0120,
-        "note": "El par más operado — spread típico 1.2 pips",
+        "contract_size": 100000,
+        "min_lot": 0.01,
+        "direction": "both",
     },
     {
         "key": "xauusd",
         "label": "XAUUSD",
         "full_name": "Oro / US Dollar",
         "dukascopy": "xauusd",
-        "category": "Metales",
+        "category": "metals",
         "from": "2010-01-01",
         "spread": 0.25,
         "slippage": 0.05,
         "stop_points": 18.0,
         "target_points": 36.0,
-        "note": "Oro spot — spread típico 25 cents",
+        "contract_size": 100,
+        "min_lot": 0.01,
+        "direction": "long",
     },
     {
         "key": "btcusd",
         "label": "BTCUSD",
         "full_name": "Bitcoin / US Dollar",
         "dukascopy": "btcusd",
-        "category": "Cripto",
+        "category": "crypto",
         "from": "2017-01-01",
         "spread": 12.0,
         "slippage": 3.0,
         "stop_points": 900.0,
         "target_points": 1800.0,
-        "note": "Bitcoin CFD — spread ancho, cuidado con el scalping",
+        "contract_size": 1,
+        "min_lot": 0.01,
+        "direction": "long",
     },
 ]
 

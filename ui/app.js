@@ -26,6 +26,8 @@ const S = {
   mt5: { terminales: [], elegido: localStorage.getItem("qf.mt5") },
   // el banco: corridas archivadas, qué se está mirando y qué está tildado
   banco: { corridas: [], total: 0, tope: 0, filas: [], corrida: "", sel: new Set() },
+  // qué mitad de Minado se está viendo: "buscar" o "resultados"
+  vista: "buscar",
   // arranca en la vista de todas, y ahí el puesto no ordena nada — ver ORDEN_NATURAL
   bancoSort: { key: "score", dir: -1 },
   // estrategias guardadas: viven en el servidor y sobreviven a cada corrida
@@ -56,6 +58,15 @@ function lossStreakCost(pct, n = 10) {
 
 const DEFAULT_CFG = {
   spread: 0.36, slippage: 0.1, commission: 0, capital: 10000,
+  /* El volumen minimo que acepta tu broker para el instrumento. Es una
+     referencia como el spread: se sugiere el del catalogo y se comprueba
+     contra el broker propio. */
+  minLot: 0.01,
+  /* Horas que adelanta el servidor del bróker respecto de UTC. Cero es un
+     default honesto —hay brókers en UTC— pero equivocado para la mayoría,
+     que corre en UTC+2 o UTC+3. Se pregunta en Datos y viaja en cada robot
+     exportado; sólo importa si la estrategia tiene franja horaria. */
+  brokerUtc: 0,
   minPf: 1.0, minSharpe: 0.30, maxDd: 25, minNet: 20, minWinRate: 50,
   maxFilters: 2, direction: "long", minTrades: 30,
   minCagr: 5, minExposure: 5, minRetDd: 1.5, minTradesMonth: 4,
@@ -90,6 +101,15 @@ const DEFAULT_CFG = {
   // spread y slippage que el usuario corrigió a mano, por instrumento. Vacío
   // significa "usar el sugerido de cada mercado" — ver costosDe().
   costos: {},
+  /* Franjas horarias habilitadas. Con una, todas las estrategias operan ahí;
+     con varias, la búsqueda elige la mejor por candidata.
+
+     Arranca sin restricción a propósito. Activar una franja recorta las
+     oportunidades disponibles en la misma proporción en que recorta las horas,
+     y una configuración de fábrica que devuelve menos estrategias se siente
+     rota aunque sea más correcta. La franja es una decisión del usuario, y la
+     pantalla explica qué se gana con ella. */
+  sessions: ["todo"],
   riskPct: 1,      // % del capital arriesgado por operación
   lots: 0.1,       // volumen fijo cuando sizing === "lots"
   rr: 2,           // relación riesgo/beneficio: el target vale 2× el stop
@@ -101,6 +121,12 @@ const _saved = S.cfg;
 S.cfg = { ...DEFAULT_CFG, ...(_saved || {}) };
 S.cfg.critOn = { ...(S.cfg.critOn || {}) };
 S.cfg.costos = { ...(S.cfg.costos || {}) };
+// una config vieja no tiene franjas; y una lista vacía dejaría al minero sin
+// ninguna opción de la que elegir, que es una búsqueda que no puede construir
+// ni una candidata
+if (!Array.isArray(S.cfg.sessions) || !S.cfg.sessions.length) {
+  S.cfg.sessions = [...DEFAULT_CFG.sessions];
+}
 // El primer default de Retorno/Drawdown fue 3, puesto a ojo. Medido sobre
 // datos reales lo pasa una de cada diez candidatas en un mercado bueno y
 // NINGUNA en EURUSD, así que como sugerencia mandaba a una búsqueda vacía.
@@ -130,36 +156,29 @@ const GOAL_PRESETS = [10, 25, 50, 100];
    con cuatro condiciones encadenadas siempre aparece algo que se ve
    espectacular hacia atrás, porque hay tantas combinaciones que alguna tenía
    que dar. Lo que no aparece es que funcione después. */
-const COMPLEJIDAD = [
-  { n: 0, nombre: "Mínima",
-    ayuda: "Sólo el disparador de entrada. Es lo más difícil de sobreajustar y lo más honesto como punto de partida: si acá no encontrás nada, el problema no son los filtros." },
-  { n: 1, nombre: "Baja",
-    ayuda: "El disparador más una condición de contexto." },
-  { n: 2, nombre: "Media",
-    ayuda: "Hasta dos condiciones a la vez. Es el equilibrio recomendado entre encontrar algo y no inventarlo." },
-  { n: 3, nombre: "Alta",
-    ayuda: "Hasta tres. Encuentra backtests mucho más lindos y bastante menos repetibles: validá fuera de muestra antes de creerles." },
-];
+const COMPLEJIDAD = () => [0, 1, 2, 3].map(n => ({
+  n, nombre: t(`cx.${n}`), ayuda: t(`cx.${n}_help`), pie: t(`cx.${n}_sub`),
+}));
 
 /* Símbolo por familia de mercado. Con cuatro tarjetas idénticas salvo el
    texto, el icono es lo que permite encontrar la que buscás de un vistazo.
    Van dibujados a mano y no con logos de marca: un CFD de Bitcoin no es
    Bitcoin, y poner el logo real sugeriría una relación que no existe. */
 const INST_FAMILIA = {
-  "Índices": { tono: "indigo", icono:
+  indices: { icono:
     '<path d="M3 20h18"/><rect x="5" y="11" width="3.2" height="6" rx="1"/>' +
     '<rect x="10.4" y="7" width="3.2" height="10" rx="1"/>' +
     '<rect x="15.8" y="4" width="3.2" height="13" rx="1"/>' },
-  "Forex": { tono: "teal", icono:
+  forex: { icono:
     '<path d="M4 9h13"/><path d="M14 6l3 3-3 3"/>' +
     '<path d="M20 15H7"/><path d="M10 12l-3 3 3 3"/>' },
-  "Metales": { tono: "amber", icono:
+  metals: { icono:
     '<path d="M12 3l3.2 4.4L12 21 8.8 7.4 12 3Z"/><path d="M8.8 7.4h6.4"/>' },
-  "Cripto": { tono: "blue", icono:
+  crypto: { icono:
     '<circle cx="12" cy="12" r="8.5"/>' +
     '<path d="M9.6 8.4h4a1.9 1.9 0 0 1 0 3.8H9.6h4.6a1.9 1.9 0 0 1 0 3.8H9.6"/>' +
     '<path d="M11.2 6.6v1.8M11.2 16v1.8"/>' },
-  _otro: { tono: "violet", icono:
+  _otro: { icono:
     '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M9 10h6M9 14h6"/>' },
 };
 
@@ -172,36 +191,37 @@ const INST_FAMILIA = {
    que opera lee win rate y drawdown, los ve así en MetaTrader, en TradingView
    y en cualquier informe. Traducir un término técnico no lo aclara, lo vuelve
    irreconocible. */
-const CRITERIA = [
-  { key: "minPf",       label: "Profit factor ≥",       step: 0.05, min: 0, def: 1.0,  unit: "",
-    ayuda: "Cuántos dólares ganó por cada dólar que perdió. En 1 quedó igual; por debajo, la estrategia pierde plata. Viene tildado en 1 justamente para que el databank no se llene de perdedoras." },
-  { key: "minRetDd",    label: "Retorno / drawdown ≥",  step: 0.5,  min: 0, def: 1.5,  unit: "",
-    ayuda: "Ganancia neta dividida por la peor caída. Junta las dos mitades de la pregunta —cuánto ganó y cuánto hubo que aguantar— y no se mueve si cambiás el riesgo por operación. En 1 ganó justo lo que llegó a caer; 2 ya es exigente y 3 lo pasa una de cada diez en un mercado bueno." },
-  { key: "maxDd",       label: "Drawdown máximo ≤",     step: 1,    min: 4, def: 25,   unit: "%",
-    ayuda: "Lo peor que llegó a bajar la cuenta desde un pico hasta el fondo. Es lo que hay que poder aguantar sin cerrar todo." },
-  { key: "minWinRate",  label: "Win rate ≥",            step: 1,    min: 0, def: 50,   unit: "%",
-    ayuda: "Porcentaje de operaciones ganadoras. Ojo: con una relación riesgo/beneficio de 1:2, un 40% ya es rentable — un win rate alto no es lo mismo que ganar más." },
-  { key: "minTradesMonth", label: "Operaciones por mes ≥", step: 1, min: 0, def: 4,    unit: "",
-    ayuda: "Cuántas veces opera al mes. Es el total de operaciones pero comparable: 200 son muchas en dos años y pocas en veinte." },
-  { key: "minCagr",     label: "Retorno anual (CAGR) ≥", step: 1,   min: 0, def: 5,    unit: "%",
-    ayuda: "Cuánto rindió por año, en promedio compuesto. Escala con el riesgo por operación." },
-  { key: "minSharpe",   label: "Sharpe ≥",              step: 0.1,  min: 0, def: 0.30, unit: "",
-    ayuda: "Retorno por unidad de volatilidad. Premia la curva pareja y castiga la que da saltos." },
-  { key: "minExposure", label: "Tiempo en mercado ≥",   step: 1,    min: 0, def: 5,    unit: "%",
-    ayuda: "Qué porcentaje del tiempo estuvo con una posición abierta. Muy bajo significa que opera poquísimo y la muestra vale poco." },
+/* Los NOMBRES de las métricas viven en i18n.js y son los mismos en los dos
+   idiomas: profit factor, drawdown, win rate, Sharpe se dicen así en la mesa,
+   en MetaTrader y en TradingView. Lo que se traduce es la explicación. */
+const CRIT_DEF = [
+  { key: "minPf",          metrica: "m.pf",           cmp: "≥", step: 0.05, min: 0, def: 1.0,  unit: "" },
+  { key: "minRetDd",       metrica: "m.retdd",        cmp: "≥", step: 0.5,  min: 0, def: 1.5,  unit: "" },
+  { key: "maxDd",          metrica: "m.dd",           cmp: "≤", step: 1,    min: 4, def: 25,   unit: "%" },
+  { key: "minWinRate",     metrica: "m.winrate",      cmp: "≥", step: 1,    min: 0, def: 50,   unit: "%" },
+  { key: "minTradesMonth", metrica: "m.trades_month", cmp: "≥", step: 1,    min: 0, def: 4,    unit: "" },
+  { key: "minCagr",        metrica: "m.cagr",         cmp: "≥", step: 1,    min: 0, def: 5,    unit: "%" },
+  { key: "minSharpe",      metrica: "m.sharpe",       cmp: "≥", step: 0.1,  min: 0, def: 0.30, unit: "" },
+  { key: "minExposure",    metrica: "m.exposure",     cmp: "≥", step: 1,    min: 0, def: 5,    unit: "%" },
 ];
-const CRIT_BY_KEY = Object.fromEntries(CRITERIA.map(c => [c.key, c]));
+const CRITERIA = () => CRIT_DEF.map(c => ({
+  ...c, label: `${t(c.metrica)} ${c.cmp}`, ayuda: t(`crit.${c.key}`),
+}));
+const CRIT_BY_KEY = () => Object.fromEntries(CRITERIA().map(c => [c.key, c]));
 
 // un valor guardado por debajo del piso del criterio (ej. max DD 1%) no dejaría
 // pasar nada: vuelve al recomendado
-for (const cr of CRITERIA) {
+for (const cr of CRITERIA()) {
   if (!Number.isFinite(+S.cfg[cr.key]) || +S.cfg[cr.key] < cr.min) S.cfg[cr.key] = cr.def;
 }
 
 /* -------------------------------------------------------------------- api */
 const api = {
   async req(method, url, body) {
-    const opts = { method, headers: {} };
+    // El idioma viaja en cada pedido para que los errores del servidor
+    // vuelvan en el mismo idioma que la pantalla. Sin esto, la aplicación en
+    // inglés mostraba mensajes en español apenas algo fallaba.
+    const opts = { method, headers: { "X-Idioma": idioma() } };
     if (body !== undefined) {
       opts.headers["Content-Type"] = "application/json";
       opts.body = JSON.stringify(body);
@@ -254,17 +274,18 @@ function toast(msg, kind = "") {
 }
 
 const fmtPct = (v) => `${v > 0 ? "+" : ""}${(+v).toFixed(2)}%`;
-/* Todo el formateo va en es-AR y no en el idioma del navegador. Con
-   `undefined` la app mezclaba criterios: los enteros salían "35.500" y el
-   dinero "35,500" en la misma pantalla según dónde estuviera cada usuario.
-   La aplicación está en español; los números también.
+/* El formateo sigue al IDIOMA de la aplicación, no al del navegador. Con
+   `undefined` la misma pantalla mezclaba criterios: los enteros salían
+   "35.500" y el dinero "35,500" según dónde estuviera cada usuario. Atarlo al
+   idioma elegido mantiene la coherencia y además hace lo correcto en los dos:
+   en inglés 35,500 con coma, en español 35.500 con punto.
 
    Sin abreviar a "k" ni a "M": son cifras de dinero y redondear $35.500 a
    "$35k" esconde justo el detalle que se está mirando. */
 const fmtMoney = (v) => (v < 0 ? "-$" : "$") +
-  Math.abs(+v || 0).toLocaleString("es-AR", { maximumFractionDigits: 0 });
+  Math.abs(+v || 0).toLocaleString(localeNum(), { maximumFractionDigits: 0 });
 const fmtNum = (v, d = 2) => (+v).toFixed(d);
-const fmtInt = (v) => (+v || 0).toLocaleString("es-AR");
+const fmtInt = (v) => (+v || 0).toLocaleString(localeNum());
 
 /* duración legible: 45s, 3m 20s, 1h 04m */
 function fmtDur(seconds) {
@@ -389,7 +410,7 @@ function ctxPill() {
   return `<div class="ctx-pill">
     <span class="ctx-ic">${esc(initials)}</span>
     <div><b>${esc(ds.name)}</b><br>
-      <span>${fmtInt(ds.rows)} velas · ${esc(String(ds.start).slice(0, 10))} → ${esc(String(ds.end).slice(0, 10))}</span>
+      <span>${fmtInt(ds.rows)} ${esc(t("ui.bars"))} · ${esc(String(ds.start).slice(0, 10))} → ${esc(String(ds.end).slice(0, 10))}</span>
     </div></div>`;
 }
 
@@ -427,6 +448,21 @@ const CRIT_FIELD = {
   //: instrumento— pero la clave queda para leer las corridas ya archivadas.
   minNet: "min_net_pct",
 };
+
+/* El camino inverso: de la clave que manda el minero al nombre que ve el
+   usuario, en su idioma. El servidor manda claves justamente porque no puede
+   saber en qué idioma está mirando cada quien. */
+const CRIT_POR_CAMPO = Object.fromEntries(
+  Object.entries(CRIT_FIELD).map(([k, campo]) => [campo, k]));
+
+function nombreDeRechazo(clave) {
+  if (clave === "min_trades") return t("busca.too_few_trades");
+  const k = CRIT_POR_CAMPO[clave];
+  const cr = k ? CRIT_BY_KEY()[k] : null;
+  // una clave desconocida —una corrida archivada por una versión anterior—
+  // se muestra tal cual en vez de desaparecer de la lista de rechazos
+  return cr ? cr.label.replace(/ [≥≤]$/, "") : clave;
+}
 /* Qué se exigió DE VERDAD en esta corrida.
 
    Los filtros son opcionales y arrancan destildados, pero sus casillas de
@@ -441,25 +477,22 @@ const CRIT_FIELD = {
    historia de una corrida ya hecha. */
 function varaAplicada(snap) {
   const a = snap.accept || {};
-  const partes = [`mínimo <b>${fmtInt(snap.min_trades ?? 0)}</b> operaciones`];
-  for (const cr of CRITERIA) {
+  const partes = [t("vara.min_trades", { n: fmtInt(snap.min_trades ?? 0) })];
+  for (const cr of CRITERIA()) {
     const v = a[CRIT_FIELD[cr.key]];
     if (v == null) continue;
     partes.push(`${esc(cr.label.replace(/ [≥≤]$/, ""))} ${cr.label.slice(-1)}
                  <b>${fmtNum(v, cr.step < 1 ? 2 : 0)}${cr.unit}</b>`);
   }
   if (partes.length > 1) {
-    return `<div class="vara">Se exigió: ${partes.join(" · ")}</div>`;
+    return `<div class="vara">${t("vara.required")}: ${partes.join(" · ")}</div>`;
   }
-  return `<div class="vara floja"><b>Sin filtros de calidad.</b> Lo único que se
-    exigió fue ${partes[0]}, así que entra casi cualquier candidata — incluidas
-    las que pierden plata. Tildá lo que te importe en
-    <b>Filtros de aceptación</b> y volvé a minar.</div>`;
+  return `<div class="vara floja">${t("vara.none", { unico: partes[0] })}</div>`;
 }
 
 function acceptPayload() {
   const out = {};
-  for (const cr of CRITERIA) {
+  for (const cr of CRITERIA()) {
     const active = !!S.cfg.critOn[cr.key];
     let v = active ? +S.cfg[cr.key] : null;
     if (active && !Number.isFinite(v)) v = cr.def;
@@ -525,13 +558,16 @@ function icono(nombre, cls = "ico") {
   return `<svg class="${cls}" viewBox="0 0 24 24" ${TRAZO} aria-hidden="true">${d}</svg>`;
 }
 
-const SCORE_TIERS = [
-  { min: 70, label: "Sólida",     cls: "s-top" },
-  { min: 50, label: "Prometedora", cls: "s-good" },
-  { min: 30, label: "Dudosa",     cls: "s-mid" },
-  { min: 0,  label: "Frágil",     cls: "s-low" },
+const SCORE_TIERS = () => [
+  { min: 70, label: t("tier.solid"),      cls: "s-top" },
+  { min: 50, label: t("tier.promising"),  cls: "s-good" },
+  { min: 30, label: t("tier.doubtful"),   cls: "s-mid" },
+  { min: 0,  label: t("tier.fragile"),    cls: "s-low" },
 ];
-const scoreTier = (v) => SCORE_TIERS.find(t => v >= t.min) || SCORE_TIERS[3];
+const scoreTier = (v) => {
+  const t2 = SCORE_TIERS();
+  return t2.find(x => v >= x.min) || t2[3];
+};
 
 function scoreBadge(v, size = "") {
   const t = scoreTier(+v || 0);
@@ -573,6 +609,26 @@ function scoreBars(parts) {
    que quedó lindo en ESTE histórico, no lo que tiene ventaja real. Para
    cambiar algo hay que detener y volver a minar — corrida nueva, criterios
    fijados de antemano. */
+/* El estado visible de los controles de minado, en un solo lugar.
+
+   Estaba repartido en el manejador del boton — cuatro lineas al arrancar y
+   cuatro al terminar — y por eso al volver a la pantalla no se restauraba
+   nada: el marcado se redibuja de cero y esas lineas no vuelven a correr.
+
+   Con esto, dibujar la pantalla y arrancar una busqueda pasan por la misma
+   funcion, asi que no pueden discrepar. */
+function pintarEstadoMinado(corriendo) {
+  const run = $("#m-run");
+  if (run) run.disabled = !!corriendo;
+  const acciones = $("#m-acciones");
+  if (acciones) acciones.style.display = corriendo ? "" : "none";
+  $("#m-runbar")?.classList.toggle("running", !!corriendo);
+  // el punto de la barra lateral late mientras haya corrida: es la unica
+  // senal de que algo pasa si el usuario se fue a otra pantalla
+  $("#nav [data-page='mining']")?.classList.toggle("minando", !!corriendo);
+  lockSetup(!!corriendo);
+}
+
 function lockSetup(on) {
   const setup = $(".setup");
   if (!setup) return;
@@ -586,9 +642,7 @@ function lockSetup(on) {
     const note = document.createElement("div");
     note.id = "lock-note";
     note.className = "lock-note";
-    note.innerHTML = `<span>${icono("candado")}</span><div>Configuración congelada mientras busca.
-      Cambiar los criterios viendo los resultados sería elegirlos a medida del histórico.
-      <b>Detené</b> para ajustar y volver a minar.</div>`;
+    note.innerHTML = `<span>${icono("candado")}</span><div>${t("run.locked")}</div>`;
     $(".setup-run", setup)?.prepend(note);
   }
 }
@@ -622,6 +676,15 @@ function adoptInstrumentDefaults() {
   if (!costos) return;
   S.cfg.spread = costos.spread;
   S.cfg.slippage = costos.slippage;
+  /* La dirección también es propia del instrumento. Medido en EURUSD: buscando
+     sólo largos el techo es 1.76% anual; permitiendo cortos, 4.52% — y con MÁS
+     estrategias rentables, sin aflojar ninguna vara. Un par de divisas no sube:
+     limitarlo a largos tira medio espacio de búsqueda. Un índice sí sube, y ahí
+     "sólo largos" es una hipótesis con fundamento. */
+  if (ds && ds.suggested_direction) S.cfg.direction = ds.suggested_direction;
+  // el volumen mínimo también es propio del instrumento: 0.1 en un índice y
+  // 0.01 en divisas, y heredar el del anterior da un chequeo que no sirve
+  if (ds && ds.min_lot) S.cfg.minLot = ds.min_lot;
   saveCfg();
 }
 
@@ -660,7 +723,7 @@ function harvestCfg(root, { normalizar = false } = {}) {
   $$("[data-cfg]", root).forEach(el => {
     const k = el.dataset.cfg;
     if (el.type !== "number") { S.cfg[k] = el.value; return; }
-    const cr = CRIT_BY_KEY[k];
+    const cr = CRIT_BY_KEY()[k];
     const n = parseFloat(el.value);
 
     if (!Number.isFinite(n)) {
@@ -683,6 +746,79 @@ function harvestCfg(root, { normalizar = false } = {}) {
     S.cfg[k] = n;
   });
   saveCfg();
+}
+
+/* --------------------------------------------------------- franjas horarias */
+
+/** Las franjas elegidas, saneadas contra el catálogo que declara el servidor.
+ *  Nunca devuelve vacío: sin ninguna, el minero no podría construir ni una
+ *  candidata. */
+function sesionesElegidas() {
+  const validas = new Set((S.meta?.sessions || []).map(s => s.id));
+  const elegidas = (S.cfg.sessions || []).filter(x => !validas.size || validas.has(x));
+  return elegidas.length ? elegidas : ["todo"];
+}
+
+function nombreSesion(id) {
+  return id ? t("s." + id) : "";
+}
+
+/** Qué franja conocida describe un time_filter suelto.
+ *
+ *  Las estrategias guardadas llevan su `time_filter` pero no el id de la
+ *  franja: se guardaron antes de que las franjas existieran, o se editaron a
+ *  mano. Reconocerlo permite mostrar "Sesión de Nueva York" en vez de un par
+ *  de horas sueltas que nadie va a interpretar. */
+function sesionDeFiltro(tf) {
+  if (!tf || !tf.enabled) return "";
+  const dias = [...(tf.days || [])].sort().join(",");
+  const s = (S.meta?.sessions || []).find(x =>
+    x.restringe && x.start_hour === tf.start_hour && x.end_hour === tf.end_hour
+    && [...x.days].sort().join(",") === dias);
+  return s ? s.id : "";
+}
+
+function horasSesion(id) {
+  const s = (S.meta?.sessions || []).find(x => x.id === id);
+  return (s && s.horario) || "";
+}
+
+/** El resumen de una sola línea que va debajo de las pastillas. */
+function notaSesiones() {
+  const el = sesionesElegidas();
+  if (el.length === 1) {
+    return el[0] === "todo"
+      ? t("session.none")
+      : `${t("session.fixed")} ${t("session.utc")}`;
+  }
+  return `${t("session.searched", { n: el.length })} ${t("session.utc")}`;
+}
+
+function cablearSesiones(root) {
+  const host = $("#m-sessions", root);
+  if (!host) return;
+  $$("button", host).forEach(b => b.onclick = () => {
+    const id = b.dataset.ses;
+    const act = new Set(sesionesElegidas());
+    if (act.has(id)) act.delete(id); else act.add(id);
+    // Quitar la última dejaría al minero sin franjas. En vez de bloquear el
+    // clic —que se siente como un botón roto— se vuelve a "todo el día", que
+    // es lo que la persona quiso decir al apagar la única que quedaba.
+    S.cfg.sessions = act.size ? [...act] : ["todo"];
+    // "Todo el día" no se combina con nada: es la ausencia de restricción, y
+    // tildarla junto a Londres significaría "Londres o cualquier hora", que es
+    // lo mismo que no filtrar. Elegirla apaga el resto y viceversa.
+    if (id === "todo" && act.has("todo")) S.cfg.sessions = ["todo"];
+    else if (id !== "todo") S.cfg.sessions = S.cfg.sessions.filter(x => x !== "todo");
+    if (!S.cfg.sessions.length) S.cfg.sessions = ["todo"];
+    const vigentes = sesionesElegidas();
+    $$("button", host).forEach(x => x.classList.toggle("on", vigentes.includes(x.dataset.ses)));
+    const nota = $("#m-sesnote", root);
+    if (nota) nota.textContent = notaSesiones();
+    saveCfg();
+  });
+  const nota = $("#m-sesnote", root);
+  if (nota) nota.textContent = notaSesiones();
 }
 
 function progressHtml(id) {
@@ -721,16 +857,23 @@ async function refreshDatasets() {
     S.sel.dataset_id = null;
   }
   if (!S.sel.dataset_id && S.datasets.length) {
-    // La aplicación elige el instrumento sola cuando no hay ninguno: al abrir,
-    // o cuando el que estaba se borró. Sin adoptar sus costos acá, ese caso
-    // arrancaba con el spread del instrumento ANTERIOR y nadie lo eligió.
-    S.sel.dataset_id = S.datasets[0].id;
+    /* La aplicación elige el instrumento sola cuando no hay ninguno: al abrir,
+       o cuando el que estaba se borró. Sin adoptar sus costos acá, ese caso
+       arrancaba con el spread del instrumento ANTERIOR y nadie lo eligió.
+
+       Y no elige el primero de la lista sino el que MÁS estrategias produce,
+       medido sobre los mismos datos que trae la aplicación. La primera búsqueda
+       de alguien que recién llega decide si vuelve: arrancarla en el
+       instrumento más difícil es empezar perdiendo. */
+    const recomendado = (S.catalog || []).find(c => c.mejor_rendimiento && c.dataset_id);
+    S.sel.dataset_id = (recomendado && recomendado.dataset_id) || S.datasets[0].id;
     adoptInstrumentDefaults();
   }
 }
 
-async function navigate(page) {
+async function navigate(page, vista) {
   S.page = page;
+  if (vista) S.vista = vista;
   $$("#nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
   const main = $("#main");
   main.innerHTML = "";
@@ -741,14 +884,14 @@ async function navigate(page) {
     // ya se había limpiado y nadie volvía a escribir nada. Se veía igual que
     // una carga eterna, sin ningún mensaje ni forma de salir.
     if (e && e.status === 401) { pedirCuenta(401); }
-    main.innerHTML = pageHead(TITULOS[page] || "Botiquant", "") + `
+    main.innerHTML = pageHead(TITULOS()[page] || "Botiquant", "") + `
       <div class="card"><div class="empty-state">
         <div class="big">${icono("alerta","ico-xl")}</div>
-        <b>${e && e.status === 401 ? "Se cerró tu sesión" : "No se pudo cargar esta página"}</b>
+        <b>${esc(e && e.status === 401 ? t("auth.expired") : t("err.page"))}</b>
         <p class="mt">${esc(e && e.status === 401
-          ? "Volvé a entrar y seguimos donde estabas."
-          : (e && e.message) || "El servidor no respondió.")}</p>
-        <button class="btn mt" id="reintentar">Reintentar</button>
+          ? t("auth.expired_sub")
+          : (e && e.message) || t("err.no_response"))}</p>
+        <button class="btn mt" id="reintentar">${esc(t("ui.retry"))}</button>
       </div></div>`;
     const b = $("#reintentar", main);
     if (b) b.onclick = () => navigate(page);
@@ -757,351 +900,462 @@ async function navigate(page) {
   main.scrollTop = 0;
 }
 
-const TITULOS = {
-  data: "Datos", mining: "Mining", banco: "Databank",
-  robustez: "Monte Carlo", saved: "Mis estrategias", results: "Resultados",
-};
+const TITULOS = () => ({
+  bienvenida: t("wel.title"), data: t("nav.data"), mining: t("nav.mining"),
+  saved: t("nav.saved"), consejos: t("nav.tips"),
+});
 
-/* ======================================================== página VALIDACIÓN
-   Las dos preguntas que siguen a "encontré algo": ¿funciona fuera de donde lo
-   busqué, y cuánto de lo que veo es suerte?
-
-   Van juntas porque son la misma pregunta hecha de dos maneras. Fuera de
-   muestra la contesta con datos que la búsqueda no vio; Monte Carlo la
-   contesta sin datos nuevos, rebarajando las operaciones que ya hubo para ver
-   qué tan distinto podría haber salido el mismo sistema por puro orden.
-
-   Lo que decide si esta pantalla sirve o engaña es el SOLAPAMIENTO. Volver a
-   correr una estrategia sobre las mismas velas con las que se la encontró
-   devuelve los mismos números por construcción: no valida nada, y se ve
-   exactamente igual que una validación exitosa. Por eso el solapamiento se
-   mide siempre y se muestra antes que los resultados. */
-const VAL = {
-  sel: new Set(),          // "origen:id" de lo tildado
-  tab: "oos",
-  candidatas: [],          // banco + guardadas, forma común
-  resultado: null,
-  mc: null,
-  detalle: null,
-  corriendo: false,
-};
-
-/** Banco y guardadas en una sola lista con la misma forma. */
-async function cargarCandidatas() {
-  const [banco, guardadas] = await Promise.all([
-    api.get("/api/banco?" + new URLSearchParams({ orden: "score", dir: "desc", limite: "80" })),
-    api.get("/api/strategies"),
-  ]);
-  if (!S.banco.corridas.length) await refreshBancoCount();
-  const porCorrida = Object.fromEntries(S.banco.corridas.map(c => [c.id, c]));
-
-  const deBanco = banco.map(f => {
-    const c = porCorrida[f.corrida_id] || {};
-    return {
-      clave: `banco:${f.banco_id}`, origen: "banco", id: f.banco_id, nombre: f.name,
-      mercado: nombreCorto(c.dataset_name), tf: c.timeframe || "",
-      dataset_id: c.dataset_id, medido: (c.contexto || {}).measured_range || null,
-      metricas: f.metrics || {},
-    };
-  });
-  const deGuardadas = guardadas.map(s => {
-    const m = s.meta || {};
-    return {
-      clave: `guardada:${s.id}`, origen: "guardada", id: s.id, nombre: s.name,
-      mercado: nombreCorto(m.dataset_name), tf: m.timeframe || "",
-      dataset_id: m.dataset_id, medido: m.measured_range || null,
-      metricas: m.metrics || {},
-    };
-  });
-  VAL.candidatas = [...deGuardadas, ...deBanco];
-  const vivas = new Set(VAL.candidatas.map(x => x.clave));
-  [...VAL.sel].forEach(k => { if (!vivas.has(k)) VAL.sel.delete(k); });
+/* Todo lo que vive fuera del <main> y por lo tanto no se repinta al navegar:
+   la barra lateral, el pie, el selector de idioma. Se llama al arrancar y cada
+   vez que cambia el idioma. */
+function pintarChrome() {
+  document.documentElement.setAttribute("lang", idioma());
+  $$("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
+  const rot = $("#nav-rotulo");
+  if (rot) rot.textContent = t("nav.section");
+  const rotIdioma = $("#lang-rotulo");
+  if (rotIdioma) rotIdioma.textContent = t("nav.language");
+  const conn = $("#conn-text");
+  if (conn) conn.textContent = t("nav.offline");
+  const btn = $("#theme-btn");
+  if (btn) {
+    btn.setAttribute("aria-label", t("nav.theme"));
+    btn.title = document.documentElement.getAttribute("data-theme") === "light"
+      ? t("nav.theme_dark") : t("nav.theme_light");
+  }
+  pintarIdiomas();
 }
 
-PAGES.robustez = async (main) => {
-  await refreshDatasets();
-  await cargarCandidatas();
+function pintarIdiomas() {
+  const host = $("#lang-sw");
+  if (!host) return;
+  host.replaceChildren();
+  host.setAttribute("role", "group");
+  host.setAttribute("aria-label", t("nav.language"));
+  for (const lg of IDIOMAS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    // el nombre entero y en su propio idioma: "ES" no le dice nada a quien
+    // abrió la aplicación en inglés justamente porque no lee inglés
+    b.textContent = lg.nombre;
+    b.className = lg.id === idioma() ? "on" : "";
+    b.setAttribute("aria-pressed", String(lg.id === idioma()));
+    // Se repinta TODO, no sólo el marco: las pantallas arman su HTML con
+    // llamadas a t() en el momento de dibujarse, así que cambiar el idioma
+    // sin volver a dibujar dejaría el contenido en el anterior.
+    b.onclick = () => setIdioma(lg.id, () => { pintarChrome(); navigate(S.page); });
+    host.appendChild(b);
+  }
+}
 
-  if (!VAL.candidatas.length) {
-    main.innerHTML = pageHead("Monte Carlo",
-      "Cuánto de lo que ves fue la estrategia, y cuánto fue el orden en que salieron las operaciones.") +
-      `<div class="card"><div class="empty-state">
-        <div class="big">${icono("diana", "ico-xl")}</div>
-        <b>Todavía no hay nada que simular</b>
-        <p class="mt">Cuando termines una búsqueda, sus estrategias aparecen acá para
-          ponerlas a prueba y ver cuál aguanta mejor una racha en contra.</p>
-        <button class="btn mt" id="val-ir">Ir a Mining</button>
-      </div></div>`;
-    $("#val-ir", main).onclick = () => navigate("mining");
-    return;
+/* ============================================== PORTAFOLIO COMO UNA HOJA ===
+   Era una de las siete secciones del menú, con su propio selector de
+   estrategias — el tercero idéntico. Pero "¿funcionan juntas?" no es un lugar
+   al que ir: es algo que se pregunta sobre estrategias que YA se eligieron.
+
+   Así que ahora se tildan dos o más en Mis estrategias y esto se abre encima,
+   sin salir del paso 3 ni perder la selección. */
+async function abrirPortafolio(elegidas) {
+  const host = document.createElement("div");
+  host.className = "overlay";
+  host.innerHTML = `<div class="sheet">
+    <div class="sheet-head">
+      <div><h2>${esc(t("pf.title"))}</h2>
+        <p>${esc(elegidas.map(x => x.name).join(" · "))}</p></div>
+      <button class="sheet-close">${icono("cerrar")}</button>
+    </div>
+    <div id="pf-body"><div class="empty-state"><span class="spinner"></span>
+      ${esc(t("pf.building"))}</div></div>
+  </div>`;
+  document.body.appendChild(host);
+  const close = () => host.remove();
+  $(".sheet-close", host).onclick = close;
+  host.onclick = (e) => { if (e.target === host) close(); };
+  document.addEventListener("keydown", function esckey(e) {
+    if (e.key === "Escape") { close(); document.removeEventListener("keydown", esckey); }
+  });
+
+  const body = $("#pf-body", host);
+  try {
+    const r = await api.post("/api/portfolio", {
+      estrategias: elegidas.map(x => ({ origen: "guardada", id: x.id })),
+      initial_capital: S.cfg.capital,
+    });
+    body.innerHTML = resultadoPF(r);
+    const caja = $("#pf-eq", body);
+    if (caja) Charts.equity(caja, {
+      values: r.combined_equity, labels: r.timestamps,
+      initial: r.combined_equity[0], height: 300,
+    });
+  } catch (e) {
+    body.innerHTML = `<div class="empty-state neg">${esc(e.message)}</div>`;
+  }
+}
+
+/** Qué tan parecidas son dos estrategias, en palabras.
+ *
+ *  `null` no es cero: significa que no se pudo medir porque los períodos no
+ *  se solapan lo suficiente. Pintarlo como 0.00 decía "diversificación
+ *  perfecta" justo cuando no había con qué afirmarlo. */
+function juicioCorrelacion(c) {
+  if (c == null) return { cls: "medio", txt: t("pf.corr_unknown") };
+  if (c >= 0.7) return { cls: "mal", txt: t("pf.corr_high") };
+  if (c >= 0.3) return { cls: "medio", txt: t("pf.corr_mid") };
+  return { cls: "bien", txt: t("pf.corr_low") };
+}
+
+function resultadoPF(r) {
+  const m = r.metrics || {};
+  const n = r.names.length;
+  const comps = r.componentes || [];
+  const prom = m.avg_correlation;
+  const j = juicioCorrelacion(prom);
+  const mudas = r.sin_datos || [];
+
+  // El extremo del triángulo superior: el par que más se parece es el que
+  // decide si el conjunto está diversificado o no, y con seis estrategias
+  // nadie va a leer una matriz de 36 celdas buscándolo.
+  let peor = null;
+  for (let i = 0; i < n; i++) {
+    for (let k = i + 1; k < n; k++) {
+      const c = r.correlation[i][k];
+      if (c == null) continue;
+      if (!peor || c > peor.c) peor = { c, a: r.names[i], b: r.names[k] };
+    }
   }
 
-  main.innerHTML = pageHead("Monte Carlo",
-    "Una estrategia que ganó pudo ganar por el orden en que le salieron las operaciones. Acá se rebarajan mil veces para ver cuál aguanta de verdad.") +
-    `<div id="val-elegir"></div><div id="val-cuerpo"></div>`;
+  const celda = (v, diagonal) => {
+    if (diagonal) return `<td class="pf-diag">—</td>`;
+    if (v == null) return `<td class="pf-diag" title="${esc(t("pf.no_overlap_cell"))}">·</td>`;
+    const cl = v >= 0.7 ? "mal" : v >= 0.3 ? "medio" : "bien";
+    return `<td class="pf-corr ${cl}">${fmtNum(v, 2)}</td>`;
+  };
 
-  pintarElegir();
-  pintarCuerpoVal();
+  // Comparar el portafolio contra la MEJOR de sus partes es lo único que
+  // contesta "¿me convino combinarlas?". Contra el promedio siempre gana.
+  const mejorParte = comps.reduce((best, c) =>
+    (!best || (c.metrics.cagr_pct ?? -1e9) > (best.metrics.cagr_pct ?? -1e9)) ? c : best, null);
+
+  return `
+  <div class="card" id="pf-resultado">
+    <h2>${esc(t("pf.combined"))}
+      <span class="hint">${n} ${esc(t("ui.strategies"))} · ${esc(t("pf.equal_weight"))}</span></h2>
+    <div class="statgrid mt">
+      <div class="stat"><span>${esc(t("m.cagr"))}</span>
+        <b class="${m.cagr_pct >= 0 ? "pos" : "neg"}">${fmtPct(m.cagr_pct)}</b></div>
+      <div class="stat"><span>${esc(t("m.dd"))}</span>
+        <b class="neg">${fmtNum(m.max_drawdown_pct, 1)}<u>%</u></b></div>
+      <div class="stat"><span>${esc(t("m.sharpe"))}</span><b>${fmtNum(m.sharpe)}</b></div>
+      <div class="stat"><span>${esc(t("pf.correlation"))}</span>
+        <b class="pf-${j.cls}">${prom == null ? "—" : fmtNum(prom, 2)}</b></div>
+    </div>
+    ${mudas.length ? `<div class="banner warn mt"><span class="b-ic">${icono("alerta")}</span>
+      <div>${t("pf.no_overlap", { lista: mudas.map(esc).join(", "),
+        desde: esc(r.ventana?.from || ""), hasta: esc(r.ventana?.to || "") })}</div></div>` : ""}
+    <div class="pf-juicio ${j.cls}">
+      <b>${esc(j.txt)}</b>
+      <p>${esc(t("pf.correlation_help"))}</p>
+      ${peor ? `<p class="help-note">${esc(t("pf.worst_pair"))}:
+        <b>${esc(peor.a)}</b> ${esc(t("ui.and"))} <b>${esc(peor.b)}</b> — ${fmtNum(peor.c, 2)}</p>` : ""}
+    </div>
+    <div class="chart-box tall mt" id="pf-eq"></div>
+    ${mejorParte ? `<p class="help-note">${esc(t("pf.vs_best", {
+      nombre: mejorParte.name,
+      parte: fmtNum(mejorParte.metrics.cagr_pct ?? 0, 1),
+      dd: fmtNum(mejorParte.metrics.max_drawdown_pct ?? 0, 1),
+      junto: fmtNum(m.cagr_pct, 1),
+      ddjunto: fmtNum(m.max_drawdown_pct, 1),
+    }))}</p>` : ""}
+  </div>
+
+  <div class="card">
+    <h2>${esc(t("pf.correlation"))}</h2>
+    <div class="table-scroll"><table class="pf-matriz">
+      <thead><tr><th></th>${r.names.map((x, i) =>
+        `<th class="num" title="${esc(x)}">${i + 1}</th>`).join("")}
+        <th class="num">${esc(t("pf.contribution"))}</th></tr></thead>
+      <tbody>${r.names.map((name, i) => `
+        <tr>
+          <th class="pf-nombre"><span class="pf-idx">${i + 1}</span>${esc(name)}</th>
+          ${r.correlation[i].map((v, k) => celda(v, i === k)).join("")}
+          <td class="num"><b>${fmtNum(r.risk_contribution_pct[i], 1)}%</b></td>
+        </tr>`).join("")}
+      </tbody>
+    </table></div>
+  </div>`;
+}
+
+/* ========================================================= BIENVENIDA ======
+   Se ve una sola vez, y existe por una razón concreta: alguien que abre esto
+   por primera vez veía siete secciones sin ningún orden y tenía que deducir
+   solo que Monte Carlo va DESPUÉS de minar. El camino ahora está en el menú,
+   numerado, pero el menú se lee cuando ya sabés que hay un camino.
+
+   Tres tarjetas y un botón. No es un tutorial ni un asistente que no te deja
+   salir: es el mapa, una vez, y después nunca más. */
+const VISTA_BIENVENIDA = "bq.bienvenida";
+
+const PASOS_BIENVENIDA = () => [
+  { n: 1, ico: "diana", clave: "wel.s1" },
+  { n: 2, ico: "banco", clave: "wel.s2" },
+  { n: 3, ico: "bajar", clave: "wel.s3" },
+];
+
+PAGES.bienvenida = async (main) => {
+  main.innerHTML = `<div class="wel">
+    <div class="wel-cab">
+      <span class="logo-mark grande" aria-hidden="true"><i class="pulpo"></i></span>
+      <h1>${esc(t("wel.title"))}</h1>
+      <p>${esc(t("wel.sub"))}</p>
+    </div>
+    <ol class="wel-pasos">
+      ${PASOS_BIENVENIDA().map(p => `
+        <li>
+          <span class="wel-num">${p.n}</span>
+          <span class="wel-ico">${icono(p.ico, "ico-lg")}</span>
+          <b>${esc(t(p.clave))}</b>
+          <p>${esc(t(p.clave + "_sub"))}</p>
+        </li>`).join("")}
+    </ol>
+    <button class="btn grande" id="wel-ir">${esc(t("wel.start"))}</button>
+    <p class="wel-fina">${esc(t("wel.again"))}</p>
+  </div>`;
+
+  $("#wel-ir", main).onclick = () => {
+    try { localStorage.setItem(VISTA_BIENVENIDA, "1"); } catch (e) { /* modo privado */ }
+    navigate(S.datasets.length ? "mining" : "data");
+  };
 };
 
-function pintarElegir() {
-  const host = $("#val-elegir");
-  if (!host) return;
-  const n = VAL.sel.size;
-  host.innerHTML = `<div class="card">
-    <h2>Qué estrategias comparar <span class="hint">${VAL.candidatas.length} disponibles ·
-      de tus guardadas y del databank · elegí varias para ver cuál aguanta mejor</span></h2>
-    <div class="val-lista">
-      ${VAL.candidatas.map(x => `
-        <label class="val-item ${VAL.sel.has(x.clave) ? "on" : ""}">
-          <input type="checkbox" data-cand="${esc(x.clave)}" ${VAL.sel.has(x.clave) ? "checked" : ""}>
-          <span class="vi-nom">${esc(x.nombre)}
-            ${x.origen === "guardada" ? `<em class="vi-tag">guardada</em>` : ""}</span>
-          <span class="vi-ctx">${esc(x.mercado)} · ${esc(x.tf)}</span>
-          <span class="vi-pf">PF ${x.metricas.profit_factor != null
-            ? fmtNum(x.metricas.profit_factor) : "—"}</span>
-        </label>`).join("")}
-    </div>
-    <div class="val-pie">
-      <span><b>${n}</b> seleccionada${n === 1 ? "" : "s"}</span>
-      <button class="linkbtn" id="val-todas">Todas</button>
-      <button class="linkbtn" id="val-nada">Ninguna</button>
-    </div>
-  </div>`;
+/* Se muestra si nunca se vio Y no hay nada hecho. La segunda mitad importa:
+   quien ya tiene estrategias guardadas no necesita que le expliquen el camino,
+   aunque haya borrado el almacenamiento del navegador. */
+function tocaBienvenida() {
+  let vista = false;
+  try { vista = localStorage.getItem(VISTA_BIENVENIDA) === "1"; } catch (e) { vista = false; }
+  return !vista && !(S.saved?.length) && !(S.banco?.total);
+}
 
-  $$("[data-cand]", host).forEach(cb => cb.onchange = () => {
-    if (cb.checked) VAL.sel.add(cb.dataset.cand); else VAL.sel.delete(cb.dataset.cand);
-    pintarElegir(); pintarCuerpoVal();
-  });
-  $("#val-todas", host).onclick = () => {
-    VAL.candidatas.forEach(x => VAL.sel.add(x.clave)); pintarElegir(); pintarCuerpoVal();
+/* ══════════════════════════════════════════════════════ CONSEJOS ══════════
+   Lo que aprendimos midiendo, no lo que se dice por ahí.
+
+   Cada consejo lleva su número medido y sobre qué instrumento se midió. Es la
+   diferencia entre "usá más historia" —que suena a consejo de manual— y "con
+   todo el histórico el S&P rinde 3.5% anual y sobrevive el 94% de las veces;
+   con los últimos dos años rinde 21.4% y sobrevive el 65%", que le permite a
+   alguien decidir con qué se queda.
+
+   Es texto y nada más. Sin gráficos, sin interactividad: se entra, se lee y se
+   vuelve a minar. Una sección de ayuda que hay que aprender a usar no es ayuda.
+
+   El orden importa: primero el que más cambia los resultados de alguien que
+   recién empieza, último el que sólo importa cuando ya está exportando. */
+/* ══════════════════════════════════════ LOS DIBUJOS DE LOS CONSEJOS ═══════
+   Un gráfico por consejo, y cada uno dibuja EL dato de ese consejo. Ninguno es
+   decorativo: si un consejo no tuviera una cifra que mostrar, no llevaría
+   dibujo.
+
+   SVG escrito a mano y no una librería. Son seis diagramas fijos —los números
+   salen de mediciones ya hechas y no cambian— así que traer un motor de
+   gráficos sería cargar un camión para llevar una caja. Y en SVG inline los
+   colores salen de las variables del tema, así que los seis funcionan en claro
+   y en oscuro sin una línea extra.
+
+   Regla de composición: el número va SIEMPRE pegado a su barra. Una leyenda
+   aparte obliga a ir y volver con la vista, y eso es más trabajo que leer la
+   frase que el dibujo venía a resumir. */
+
+const G_ANCHO = 620, G_BARRA = 22, G_HUECO = 9;
+
+function lienzo(alto, cuerpo, titulo) {
+  return `<svg class="g-svg" viewBox="0 0 ${G_ANCHO} ${alto}" role="img"
+    aria-label="${esc(titulo)}" preserveAspectRatio="xMidYMid meet">${cuerpo}</svg>`;
+}
+
+const gT = (x, y, txt, cls = "") =>
+  `<text x="${x}" y="${y}" class="g-t ${cls}">${esc(String(txt))}</text>`;
+
+const gB = (x, y, w, alto, cls) =>
+  `<rect x="${x}" y="${y}" width="${Math.max(w, 2)}" height="${alto}" rx="4" class="${cls}"/>`;
+
+/* 1 · Elegí la ventana a conciencia.
+   Dos curvas que se cruzan sobre el mismo eje: lo que sube al acortar la
+   ventana y lo que baja. Sin escala y sin cifras a proposito — el dibujo
+   afirma la FORMA del intercambio, que es cierta siempre, y no un resultado,
+   que depende del instrumento, del periodo y de la configuracion de cada uno.
+   Los numeros de una corrida nuestra dibujados aca harian creer que la
+   aplicacion reparte estrategias ya calculadas. */
+function gHistoria() {
+  const x0 = 46, x1 = G_ANCHO - 46, y0 = 26, y1 = 96;
+  const curva = (subiendo) => {
+    const pasos = 24, pts = [];
+    for (let i = 0; i <= pasos; i++) {
+      const t = i / pasos;
+      // una S suave: el intercambio no es una recta, se acelera en el medio
+      const e = t * t * (3 - 2 * t);
+      pts.push(`${x0 + (x1 - x0) * t},${subiendo ? y1 - (y1 - y0) * e : y0 + (y1 - y0) * e}`);
+    }
+    return pts.join(" ");
   };
-  $("#val-nada", host).onclick = () => { VAL.sel.clear(); pintarElegir(); pintarCuerpoVal(); };
+  let out = `<polyline points="${curva(false)}" class="g-curva g-c-ret"/>`;
+  out += `<polyline points="${curva(true)}" class="g-curva g-c-ev"/>`;
+  out += `<line x1="${x0}" y1="${y1 + 12}" x2="${x1}" y2="${y1 + 12}" class="g-eje"/>`;
+  out += gT(x0, y1 + 30, t("g.short_window"), "g-rot");
+  out += `<text x="${x1}" y="${y1 + 30}" class="g-t g-rot" text-anchor="end">${
+    esc(t("g.long_window"))}</text>`;
+  out += gT(x0, y0 - 8, t("g.higher_returns"), "g-cab g-c-ret-t");
+  out += `<text x="${x1}" y="${y0 - 8}" class="g-t g-cab g-c-ev-t" text-anchor="end">${
+    esc(t("g.more_behind"))}</text>`;
+  return lienzo(140, out, t("tip.historia"));
 }
 
-const seleccionadas = () => VAL.candidatas.filter(x => VAL.sel.has(x.clave));
-
-function pintarCuerpoVal() {
-  const host = $("#val-cuerpo");
-  if (host) pintarMC(host);
+/* 2 · El horario cambia todo.
+   Arriba la silueta de actividad del dia; abajo las 24 horas con la sesion
+   encendida. Sin eje vertical: lo que hay que ver es que el dia no es parejo,
+   no cuanto vale cada hora. */
+function gHorario() {
+  const w = G_ANCHO / 24;
+  // perfil tipico de un dia: quieto de madrugada, pico en el solape
+  const perfil = [.10,.08,.07,.07,.08,.10,.14,.30,.48,.55,.52,.48,
+                  .55,.82,1,.95,.78,.62,.50,.40,.30,.22,.16,.12];
+  const base = 74;
+  let pts = `${0},${base}`;
+  perfil.forEach((v, h) => { pts += ` ${h * w + w / 2},${base - v * 56}`; });
+  pts += ` ${G_ANCHO},${base}`;
+  let out = gT(0, 14, t("g.day_shape"), "g-cab");
+  out += `<polygon points="${pts}" class="g-area"/>`;
+  for (let h = 0; h < 24; h++) {
+    const dentro = h >= 13 && h < 21;
+    out += `<rect x="${h * w}" y="82" width="${w - 2.5}" height="22" rx="3"
+      class="g-cel ${dentro ? "on" : ""}"/>`;
+    if (h % 6 === 0) out += gT(h * w, 122, `${String(h).padStart(2, "0")}h`, "g-rot");
+  }
+  out += gT(0, 144, t("g.day_note"), "g-pie");
+  return lienzo(154, out, t("tip.horario"));
 }
 
-/* ------------------------------------------------------- fuera de muestra */
-/* ------------------------------------------------------------ Monte Carlo
-   Corre sobre TODAS las seleccionadas y las pone una al lado de la otra.
+/* 3 · El spread va por instrumento.
+   La barra heredada es un hilo de dos píxeles, y ESO es lo que hay que ver: el
+   error no se nota porque no se nota. No da ningún aviso, sólo hace que todas
+   las estrategias parezcan rentables. A escala real dice más que el párrafo. */
+function gSpread() {
+  const rot = 200, pista = G_ANCHO - rot - 92;
+  let out = gT(0, 14, t("g.btc_cost"), "g-cab");
+  out += gT(0, 48, t("g.real_spread"), "g-rot");
+  out += gB(rot, 32, pista, G_BARRA, "g-b g-bien");
+  out += gT(rot + pista + 8, 48, "12.00", "g-val");
+  out += gT(0, 88, t("g.inherited_spread"), "g-rot");
+  out += gB(rot, 72, 2, G_BARRA, "g-b g-mal");
+  out += gT(rot + 12, 88, "0.00012", "g-val g-mal-t");
+  out += gT(0, 118, t("g.spread_note"), "g-pie");
+  return lienzo(128, out, t("tip.spread"));
+}
 
-   Antes simulaba sólo la primera, que es una elección arbitraria y encima
-   silenciosa. Y de a una el número no sirve para decidir: un 12% de
-   probabilidad de perder no es bueno ni malo hasta que se lo compara con el
-   de las otras que uno encontró. */
-function pintarMC(host) {
-  const elegidas = seleccionadas();
-  const r = VAL.mc;
+/* 4 · Subi la vara de a poco.
+   Un embudo: cuanto mas alta la vara, menos candidatas la pasan. Cuantas
+   exactamente depende del instrumento y del periodo, asi que el dibujo no
+   pone ningun numero — muestra la direccion, que es lo unico que vale
+   para cualquiera. */
+function gVara() {
+  const cols = 9, x0 = 30, paso = (G_ANCHO - 90) / (cols - 1);
+  let out = gT(0, 14, t("g.funnel"), "g-cab");
+  for (let c = 0; c < cols; c++) {
+    const cuantos = Math.max(1, Math.round(9 * (1 - c / (cols - 1)) ** 1.5));
+    for (let i = 0; i < cuantos; i++) {
+      out += `<circle cx="${x0 + c * paso}" cy="${92 - i * 9}" r="3.2"
+        class="g-pt on" opacity="${(1 - c / cols * .55).toFixed(2)}"/>`;
+    }
+  }
+  out += `<line x1="${x0 - 14}" y1="104" x2="${G_ANCHO - 46}" y2="104" class="g-eje"/>`;
+  out += gT(x0 - 14, 122, t("g.bar_low"), "g-rot");
+  out += `<text x="${G_ANCHO - 46}" y="122" class="g-t g-rot" text-anchor="end">${
+    esc(t("g.bar_high"))}</text>`;
+  out += gT(0, 144, t("g.funnel_note"), "g-pie");
+  return lienzo(154, out, t("tip.vara"));
+}
 
-  host.innerHTML = `<div class="card">
-    <h2>¿Cuánto de esto fue suerte?
-      <span class="hint">las mismas operaciones, en otro orden, mil veces cada una</span></h2>
-    <div class="explico">
-      <b>Qué es esto.</b> Una estrategia que ganó puede haber ganado por el <i>orden</i> en
-      que le salieron las operaciones: si las tres pérdidas seguidas hubieran caído al
-      principio en vez de al final, la historia era otra. Esto agarra sus operaciones
-      reales y las vuelve a repartir mil veces, para ver en qué rango de resultados cae
-      de verdad — y cuánto del backtest fue puntería.
-    </div>
-
-    ${!elegidas.length
-      ? `<div class="pista">${icono("info","ico-sm")}
-          <div><b>Empezá por arriba:</b> tildá las estrategias que quieras comparar.
-          Podés elegir varias y las simula a todas.</div></div>`
-      : `<button class="btn mt" id="mc-correr" ${VAL.corriendo ? "disabled" : ""}>
-          ${VAL.corriendo ? "Simulando…"
-            : `Simular ${elegidas.length} estrategia${elegidas.length === 1 ? "" : "s"}`}
-        </button>`}
-  </div>
-  ${r ? tablaMC(r) : ""}
-  ${r && VAL.detalle ? panelMC(VAL.detalle) : ""}`;
-
-  const btn = $("#mc-correr", host);
-  if (btn) btn.onclick = async () => {
-    VAL.corriendo = true; pintarCuerpoVal();
-    try {
-      VAL.mc = await api.post("/api/robustez", {
-        estrategias: elegidas.map(x => ({ origen: x.origen, id: x.id })),
-        simulations: 1000, seed: 42,
-      });
-      // se abre la mejor: es la que el usuario va a querer mirar primero
-      const mejor = VAL.mc.resultados.find(x => x.puesto === 1);
-      VAL.detalle = mejor ? { ...mejor.mc, nombre: mejor.nombre, id: mejor.id } : null;
-    } catch (e) { toast(e.message, "err"); }
-    VAL.corriendo = false; pintarCuerpoVal();
+/* 5 · El riesgo escala las dos mitades.
+   Dos pares de barras: al triplicar el riesgo, las dos crecen igual. No lleva
+   cifras porque la proporcion es una propiedad del tamano de posicion —
+   vale para cualquier estrategia —, mientras que los valores concretos
+   son de una corrida y no de otra. */
+function gRiesgo() {
+  const grupo = (x, rot, esc_) => {
+    const base = 104, alto = 68 * esc_;
+    let out = `<rect x="${x}" y="${base - alto}" width="46" height="${alto}" rx="4"
+      class="g-b g-acento"/>`;
+    out += `<rect x="${x + 56}" y="${base - alto}" width="46" height="${alto}" rx="4"
+      class="g-b g-mal"/>`;
+    out += `<text x="${x + 51}" y="126" class="g-t g-rot" text-anchor="middle">${
+      esc(rot)}</text>`;
+    return out;
   };
-
-  $$("[data-ver]", host).forEach(b => b.onclick = () => {
-    const x = VAL.mc.resultados.find(y => y.id === b.dataset.ver);
-    VAL.detalle = x && x.mc ? { ...x.mc, nombre: x.nombre, id: x.id } : null;
-    pintarCuerpoVal();
-    $("#mc-detalle")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-
-  if (VAL.detalle) dibujarMC(VAL.detalle);
+  let out = gT(0, 14, t("g.same_shape"), "g-cab");
+  out += grupo(70, t("g.risk_base"), 0.34);
+  out += grupo(330, t("g.risk_triple"), 1);
+  out += `<line x1="40" y1="104" x2="${G_ANCHO - 40}" y2="104" class="g-eje"/>`;
+  // la leyenda va una sola vez, arriba a la derecha
+  out += `<rect x="${G_ANCHO - 172}" y="26" width="10" height="10" rx="2" class="g-b g-acento"/>`;
+  out += gT(G_ANCHO - 157, 35, t("g.legend_return"), "g-rot");
+  out += `<rect x="${G_ANCHO - 84}" y="26" width="10" height="10" rx="2" class="g-b g-mal"/>`;
+  out += gT(G_ANCHO - 69, 35, t("g.legend_dd"), "g-rot");
+  out += gT(0, 146, t("g.scale_note"), "g-pie");
+  return lienzo(156, out, t("tip.riesgo"));
 }
 
-/* El ganador al frente, porque es lo que la pantalla vino a contestar.
-
-   El criterio es el capital que queda EN EL PEOR de cada veinte repartos.
-   Junta cuánto gana y cuánto puede salir mal en una sola cifra comprobable,
-   sin inventar un puntaje opaco: ordenar por ganancia premiaría a la que tuvo
-   suerte, y ordenar sólo por riesgo premiaría a la que no arriesga nada. */
-/* Qué tan bien aguantó, en una palabra.
-
-   El rojo tiene que significar "esto es un problema", y por eso no puede
-   usarse para los rangos. Que el peor de veinte escenarios cierre en -6% no
-   es una mala noticia: es el borde de abajo de lo normal, y una estrategia
-   sana lo tiene igual. Pintarlo de rojo hacía que una estrategia sólida se
-   viera como una alarma, que es exactamente lo contrario de lo que la
-   simulación acababa de demostrar. */
-function juicioMC(m) {
-  const gana = 100 - m.prob_perder;
-  if (m.ruina > 10) return { cls: "flojo", palabra: "Riesgosa",
-    frase: `Aguanta bien en general, pero en ${fmtNum(m.ruina, 1)}% de los escenarios llega a perder mucho. Eso es lo que hay que mirar antes que nada.` };
-  if (gana >= 80) return { cls: "solida", palabra: "Sólida",
-    frase: `Gana en la enorme mayoría de los repartos posibles. Que salga bien no dependió de que las operaciones cayeran en un orden afortunado.` };
-  if (gana >= 60) return { cls: "solida", palabra: "Aguanta",
-    frase: `Gana en la mayoría de los repartos. Depende algo del orden en que salgan las operaciones, pero se sostiene.` };
-  if (gana >= 45) return { cls: "flojo", palabra: "Al filo",
-    frase: `Gana casi tantas veces como pierde. Con esta estrategia el resultado depende bastante de la suerte del orden.` };
-  return { cls: "flojo", palabra: "Frágil",
-    frase: `Pierde en más de la mitad de los repartos posibles: lo que se vio en el backtest fue mayormente un orden afortunado.` };
+/* 6 · El reloj de tu broker.
+   Dos tiras del mismo dia con el mismo bloque corrido tres horas. Explicar el
+   desfase con palabras cuesta un parrafo; verlo corrido se entiende antes de
+   leer nada. */
+function gZona() {
+  const w = G_ANCHO / 24;
+  const tira = (y, rot, desde, hasta, alt) => {
+    let out = gT(0, y, rot, "g-rot");
+    for (let h = 0; h < 24; h++) {
+      const dentro = h >= desde && h < hasta;
+      out += `<rect x="${h * w}" y="${y + 6}" width="${w - 2.5}" height="24" rx="3"
+        class="g-cel ${dentro ? (alt ? "on alt" : "on") : ""}"/>`;
+    }
+    return out;
+  };
+  let out = tira(12, t("g.utc_mined"), 13, 16, false);
+  out += tira(74, t("g.server_utc3"), 16, 19, true);
+  // la flecha va del centro del bloque de arriba al del de abajo
+  out += `<path d="M${14.5 * w} 44 L${17.5 * w} 78" class="g-flecha"/>`;
+  for (let h = 0; h < 24; h += 6) {
+    out += gT(h * w, 122, `${String(h).padStart(2, "0")}h`, "g-rot");
+  }
+  out += gT(0, 146, t("g.offset_note"), "g-pie");
+  return lienzo(158, out, t("tip.zona"));
 }
 
-function campeonMC(m, inicial) {
-  const gana = 100 - m.prob_perder;
-  const j = juicioMC(m);
-  return `<div class="champ mc-champ">
-    <div>
-      <div class="champ-tag">${icono("estrella")} La que mejor aguanta</div>
-      <h2>${esc(m.nombre)}</h2>
-      <div class="champ-blocks">${esc(nombreCorto(m.mercado))} · ${esc(m.timeframe)}</div>
+const GRAFICOS = { historia: gHistoria, horario: gHorario, spread: gSpread,
+                   vara: gVara, riesgo: gRiesgo, zona: gZona };
 
-      <div class="mc-titular ${j.cls}">
-        <b>${fmtNum(gana, 0)}<u>%</u></b>
-        <div><span>${esc(j.palabra)}</span>
-          Gana en <b>${fmtNum(gana, 0)} de cada 100</b> formas en que le podrían
-          haber salido las operaciones.</div>
-      </div>
+const CONSEJOS = () => [
+  { id: "historia", ico: "pico", clave: "tip.historia" },
+  { id: "horario",  ico: "diana", clave: "tip.horario" },
+  { id: "spread",   ico: "alerta", clave: "tip.spread" },
+  { id: "vara",     ico: "estrella", clave: "tip.vara" },
+  { id: "riesgo",   ico: "baja", clave: "tip.riesgo" },
+  { id: "zona",     ico: "info", clave: "tip.zona" },
+];
 
-      <p class="mc-porque">${j.frase}</p>
-      <p class="mc-porque">Y lo que hay que estar dispuesto a aguantar para conseguirlo:
-        una caída de hasta <b>${fmtNum(m.dd_p95, 1)}%</b>, y algún tramo en que la cuenta
-        quede en ${fmtMoney(m.peor_razonable)} habiendo empezado con ${fmtMoney(inicial)}.
-        No es lo que va a pasar — es el borde de abajo de lo normal.</p>
-
-      <button class="btn small mt" data-ver="${esc(m.id)}">Ver la simulación completa</button>
+PAGES.consejos = async (main) => {
+  main.innerHTML = pageHead(t("nav.tips"), esc(t("tips.sub"))) + `
+    <div class="consejos">
+      ${CONSEJOS().map(c => `
+        <article class="consejo">
+          <span class="c-ico">${icono(c.ico, "ico-lg")}</span>
+          <div class="c-cuerpo">
+            <h2>${esc(t(c.clave))}</h2>
+            ${t(c.clave + "_cuerpo").split("\n\n").map(x => `<p>${x}</p>`).join("")}
+            ${GRAFICOS[c.id] ? `<figure class="c-fig">${GRAFICOS[c.id]()}</figure>` : ""}
+          </div>
+        </article>`).join("")}
     </div>
-    <div class="champ-metrics">
-      <div><span>Gana en</span><b class="pos">${fmtNum(gana, 0)}%</b></div>
-      <div><span>Capital típico</span><b class="${
-        m.final_mediana >= inicial ? "pos" : ""}">${fmtMoney(m.final_mediana)}</b></div>
-      <div><span>Hay que aguantar</span><b>${fmtNum(m.dd_p95, 1)}%</b></div>
-      <div><span>Riesgo de ruina</span><b class="${m.ruina > 5 ? "neg" : ""}">${
-        fmtNum(m.ruina, 1)}%</b></div>
-    </div>
-  </div>`;
-}
-
-function tablaMC(r) {
-  const filas = [...r.resultados].sort((a, b) => (a.puesto || 99) - (b.puesto || 99));
-  const mejor = filas.find(x => x.puesto === 1);
-  const inicial = mejor ? mejor.mc.initial_capital : 10000;
-  return `${mejor ? campeonMC(mejor, inicial) : ""}
-  <div class="card">
-    <h2>Todas, una al lado de la otra
-      <span class="hint">${fmtInt(r.simulations)} simulaciones de cada una ·
-        clic en cualquiera para ver su simulación completa</span></h2>
-
-    <div class="databank-wrap"><table class="banco">
-      <thead><tr>
-        <th>#</th><th>Estrategia</th>
-        <th class="num" title="En cuántos de los mil repartos posibles terminó ganando plata. Es el criterio por el que están ordenadas.">Gana en</th>
-        <th></th>
-        <th class="num">Capital típico</th>
-        <th class="num" title="La caída del 5% de simulaciones peores. No es lo que va a pasar: es lo que hay que estar dispuesto a bancar.">Hay que aguantar</th>
-        <th class="num" title="En el mal escenario, con cuánto quedás. Es el borde de abajo de lo normal, no una pérdida esperada.">Mal escenario</th>
-        <th class="num" title="Probabilidad de llegar a perder el 30% del capital en algún momento. Esto sí es una alerta.">Ruina</th>
-        <th class="num">Ops.</th>
-      </tr></thead>
-      <tbody>${filas.map(x => x.error ? `
-        <tr><td class="rank-cell">—</td><td><span class="strat-name">${esc(x.nombre)}</span></td>
-          <td colspan="7" class="muted">${esc(x.error)}</td></tr>` : `
-        <tr class="clickable ${VAL.detalle && VAL.detalle.id === x.id ? "abierta" : ""}"
-            data-ver="${esc(x.id)}" title="Ver la simulación completa de ${esc(x.nombre)}">
-          <td class="rank-cell"><span class="rank">${String(x.puesto).padStart(2, "0")}</span></td>
-          <td><span class="strat-name">${esc(x.nombre)}</span>
-              <div class="run-sub">${esc(nombreCorto(x.mercado))} · ${esc(x.timeframe)}</div></td>
-          <td class="num pos"><b>${fmtNum(100 - x.prob_perder, 0)}%</b></td>
-          <td><span class="sello ${juicioMC(x).cls}">${esc(juicioMC(x).palabra)}</span></td>
-          <td class="num ${x.final_mediana >= x.mc.initial_capital ? "pos" : ""}">${
-            fmtMoney(x.final_mediana)}</td>
-          <td class="num">${fmtNum(x.dd_p95, 1)}%</td>
-          <td class="num">${fmtPct(x.peor_razonable_pct)}</td>
-          <td class="num ${x.ruina > 5 ? "neg" : ""}">${fmtNum(x.ruina, 1)}%</td>
-          <td class="num">${fmtInt(x.operaciones)}</td>
-        </tr>`).join("")}</tbody></table></div>
-    <div class="explico">
-      <b>Qué NO contesta esto.</b> Las operaciones se rebarajan sobre el mismo período
-      donde se encontró la estrategia, así que esto mide cuánto depende del orden — no
-      si la ventaja va a existir el año que viene. Para eso está la validación fuera de
-      muestra, en la sección Avanzado del minado: reserva un tramo final y no lo deja
-      mirar durante la búsqueda.
-    </div>
-  </div>`;
-}
-
-function panelMC(mc) {
-  const fe = mc.final_equity, dd = mc.max_drawdown_pct;
-  const ruina = mc.risk_of_ruin_pct;
-  return `<div class="card" id="mc-detalle">
-    <h2>${esc(mc.nombre || "Simulación")}
-      <span class="hint">${fmtInt(mc.simulations)} simulaciones de
-        ${fmtInt(mc.trades_per_sim)} operaciones</span></h2>
-
-    <div class="metrics-grid">
-      <div class="metric"><span>Termina ganando en</span>
-        <b class="pos">${fmtNum(100 - fe.prob_loss, 1)}%</b></div>
-      <div class="metric"><span>Capital final típico</span>
-        <b class="${fe.median >= mc.initial_capital ? "pos" : ""}">${fmtMoney(fe.median)}</b></div>
-      <div class="metric"><span>Hay que aguantar</span>
-        <b>${fmtNum(dd.p95, 1)}%</b></div>
-      <div class="metric"><span>Riesgo de ruina (−${fmtNum(mc.ruin_threshold_pct, 0)}%)</span>
-        <b class="${ruina > 5 ? "neg" : ""}">${fmtNum(ruina, 1)}%</b></div>
-    </div>
-
-    <p class="stage-note mt">De cada 100 veces que corriera este sistema, en 90 el capital
-      final caería entre <b>${fmtMoney(fe.ci_90[0])}</b> y <b>${fmtMoney(fe.ci_90[1])}</b>.
-      Ese rango es la respuesta honesta a “cuánto puede rendir”: el número único del
-      backtest era sólo uno de los que había adentro.</p>
-
-    <div class="chart-box" id="mc-fan"></div>
-    <p class="stage-note">La banda muestra dónde cae el capital en el 90% de las
-      simulaciones. La línea del medio es el recorrido típico.</p>
-
-    <h2 class="mt">Cómo se reparten los finales</h2>
-    <div class="chart-box short" id="mc-hist"></div>
-
-    <h2 class="mt">Y las caídas máximas</h2>
-    <div class="chart-box short" id="mc-dd"></div>
-  </div>`;
-}
-
-function dibujarMC(mc) {
-  const fan = $("#mc-fan");
-  if (fan) Charts.fan(fan, mc.bands, mc.initial_capital);
-  const h = $("#mc-hist");
-  if (h) Charts.histogram(h, mc.final_equity.histogram, mc.initial_capital);
-  const d = $("#mc-dd");
-  if (d) Charts.histogram(d, mc.max_drawdown_pct.histogram, mc.max_drawdown_pct.median);
-}
-
+    <p class="stage-note tips-pie">${esc(t("tips.foot"))}</p>`;
+};
 
 /* ============================================================ página DATOS */
 PAGES.data = async (main) => {
@@ -1111,58 +1365,83 @@ PAGES.data = async (main) => {
     const ready = !!c.dataset_id;
     const fam = INST_FAMILIA[c.category] || INST_FAMILIA._otro;
     return `<div class="inst-card ${ready ? "ready" : ""}">
+      ${c.mejor_rendimiento ? `<span class="inst-sello"
+        title="${esc(t("inst.mejor_ayuda"))}">${icono("estrella")} ${
+        esc(t("inst.mejor"))}</span>` : ""}
       <div class="inst-top">
-        <span class="inst-ic f-${fam.tono}"><svg viewBox="0 0 24 24" fill="none"
+        <span class="inst-ic"><svg viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
           stroke-linejoin="round">${fam.icono}</svg></span>
         <span class="inst-id"><h3>${esc(c.label)}</h3>
-          <span class="cat">${esc(c.category)}</span></span>
+          <span class="cat">${esc(t("cat." + c.category))}</span></span>
       </div>
-      <p>${esc(c.full_name)} · ${esc(c.note)}</p>
+      <p>${esc(t("inst." + c.key))}</p>
       ${ready
-        ? `<div class="inst-meta">${icono("tilde")} ${c.rows.toLocaleString()} velas de ${
-             esc((c.timeframe || "1h").replace("1h", "1 hora").replace("1m", "1 minuto"))}<br>
+        ? `<div class="inst-meta">${icono("tilde")} ${esc(t("data.bars_of", {
+             n: c.rows.toLocaleString(localeNum()),
+             tf: t("tf." + (c.timeframe || "1h")) }))}<br>
              ${esc(String(c.start).slice(0, 10))} → ${esc(String(c.end).slice(0, 10))}</div>
-           <button class="btn ghost" data-mine="${c.dataset_id}" data-key="${c.key}">Minar este</button>`
-        : `<div class="inst-meta">Historial M1 desde ${esc(c.from)}</div>
+           <button class="btn ghost" data-mine="${c.dataset_id}" data-key="${c.key}">${esc(t("data.search_this"))}</button>`
+        : `<div class="inst-meta">${esc(t("data.history_since", { fecha: c.from }))}</div>
            ${S.meta?.multiuser
-             ? `<span class="muted" style="font-size:11.5px">No disponible en este instrumento</span>`
-             : `<button class="btn" data-dl="${c.key}">${icono("bajar")} Descargar</button>`}`}
+             ? `<span class="muted" style="font-size:11.5px">${esc(t("data.unavailable"))}</span>`
+             : `<button class="btn" data-dl="${c.key}">${icono("bajar")} ${esc(t("data.download"))}</button>`}`}
     </div>`;
   }).join("") + `
     <button class="inst-card add-card" id="inst-add">
       <span class="add-plus">+</span>
-      <b>Agregar símbolo o data</b>
-      <span>Importá cualquier CSV de MT4/MT5, TradingView, Dukascopy o Binance</span>
+      <b>${esc(t("data.add"))}</b>
+      <span>${esc(t("data.add_sub"))}</span>
     </button>`;
 
   const rows = S.datasets.map(d => `
     <tr>
       <td><b>${esc(d.name)}</b></td>
       <td><span class="badge ${d.source === "sample" ? "yellow" : "green"}">${
-        d.source === "sample" ? "sintético" : esc(d.source)}</span></td>
+        d.source === "sample" ? esc(t("data.synthetic")) : esc(d.source)}</span></td>
       <td class="num">${d.rows.toLocaleString()}</td>
       <td class="muted">${esc(String(d.start).slice(0, 16))}</td>
       <td class="muted">${esc(String(d.end).slice(0, 16))}</td>
       <td>${esc(d.timeframe)}</td>
       <td class="num">${puedeBorrar(d)
-        ? `<button class="btn ghost small" data-del="${d.id}">Borrar</button>`
-        : `<span class="muted" title="Instrumento compartido: lo usan todos los usuarios">compartido</span>`}</td>
+        ? `<button class="btn ghost small" data-del="${d.id}">${esc(t("ui.delete"))}</button>`
+        : `<span class="muted" title="${esc(t("data.shared_help"))}">${esc(t("data.shared"))}</span>`}</td>
     </tr>`).join("");
 
   main.innerHTML = `
-  ${pageHead("Datos",
-    "Los instrumentos más operados, listos para minar. Descargá con un clic o importá tu propio CSV.",
-    ctxPill())}
+  ${pageHead(t("nav.data"), esc(t("data.sub")), ctxPill())}
 
   <div class="card">
-    <h2>Biblioteca de instrumentos <span class="hint">M1 real de Dukascopy, en hora del servidor (NY+7)</span></h2>
+    <h2>${esc(t("data.library"))} <span class="hint">${esc(t("data.library_hint"))}</span></h2>
     <div class="inst-grid">${cards}</div>
     ${progressHtml("dl-prog")}
   </div>
 
+  <!-- El reloj del bróker. Va en Datos y no en Minado porque es una propiedad
+       de la máquina y de la cuenta, no de una búsqueda: se pone una vez y
+       vale para todos los robots que se exporten después. -->
+  <div class="card">
+    <h2>${esc(t("data.broker"))} <span class="hint">${esc(t("data.broker_hint"))}</span></h2>
+    <p class="help-note">${t("data.broker_help")}</p>
+    <div class="reloj">
+      <label class="fld">
+        <span>${esc(t("data.broker_offset"))}</span>
+        <select data-cfg="brokerUtc">
+          ${[-5,-4,-3,-2,-1,0,1,2,3,4,5].map(h => `<option value="${h}" ${
+            +S.cfg.brokerUtc === h ? "selected" : ""}>UTC${h >= 0 ? "+" : ""}${h}${
+            h === 0 ? "" : " h"}</option>`).join("")}
+        </select>
+      </label>
+      <div class="reloj-ahora">
+        <span>${esc(t("data.broker_now"))}</span>
+        <b id="reloj-b">—</b>
+      </div>
+    </div>
+    <p class="stage-note">${esc(t("data.broker_note"))}</p>
+  </div>
+
   <div class="card" id="imp-card">
-    <h2>Importar tu propio CSV <span class="hint">MT4/MT5, TradingView, Dukascopy, Binance</span></h2>
+    <h2>${esc(t("data.import"))} <span class="hint">MT4/MT5, TradingView, Dukascopy, Binance</span></h2>
     <div class="controls">
       <!-- El selector de archivo primero, que es lo que la gente sabe usar.
            Antes el campo grande pedía "Ruta del archivo en esta PC" —algo que
@@ -1171,18 +1450,19 @@ PAGES.data = async (main) => {
            fuera la opción mala. La ruta sigue existiendo porque un histórico
            M1 de años no entra por el selector del navegador, pero eso es el
            caso raro y ahora está donde va: guardado. -->
-      <label class="fld" style="flex:1; min-width:280px"><span>Elegí el archivo
-          <span class="hint">CSV de MT4, MT5, TradingView, Dukascopy o Binance</span></span>
+      <label class="fld" style="flex:1; min-width:280px"><span>${esc(t("data.pick_file"))}
+          <span class="hint">${esc(t("data.pick_file_hint"))}</span></span>
         <input id="up-file" type="file" accept=".csv,.txt"></label>
-      <label class="fld"><span>Nombre</span><input id="imp-name" type="text" placeholder="opcional"></label>
+      <label class="fld"><span>${esc(t("data.name"))}</span>
+        <input id="imp-name" type="text" placeholder="${esc(t("data.optional"))}"></label>
       <details class="adv" style="flex-basis:100%">
-        <summary><span class="adv-chev">›</span>El archivo pesa más de 100 MB</summary>
+        <summary><span class="adv-chev">›</span>${esc(t("data.big_file"))}</summary>
         <div class="fld-pair mt">
-          <label class="fld" style="flex:1; min-width:300px"><span>Pegá su ruta completa
-              <span class="hint">un histórico M1 de años no entra por el selector del navegador</span></span>
+          <label class="fld" style="flex:1; min-width:300px"><span>${esc(t("data.paste_path"))}
+              <span class="hint">${esc(t("data.paste_path_hint"))}</span></span>
             <input id="imp-path" type="text" style="width:100%"
               placeholder="C:\Users\...\Downloads\SP500_M1.csv"></label>
-          <button class="btn" id="imp-go">Importar por ruta</button>
+          <button class="btn" id="imp-go">${esc(t("data.import_path"))}</button>
         </div>
       </details>
     </div>
@@ -1190,33 +1470,39 @@ PAGES.data = async (main) => {
   </div>
 
   <div class="card">
-    <h2>Datasets en el workspace</h2>
+    <h2>${esc(t("data.in_workspace"))}</h2>
     ${S.datasets.length ? `<div class="scroll-x"><table>
-      <thead><tr><th>Nombre</th><th>Fuente</th><th class="num">Velas</th>
-        <th>Desde</th><th>Hasta</th><th>TF</th><th></th></tr></thead>
+      <thead><tr><th>${esc(t("data.name"))}</th><th>${esc(t("data.source"))}</th>
+        <th class="num">${esc(t("ui.bars"))}</th>
+        <th>${esc(t("mine.from"))}</th><th>${esc(t("mine.to"))}</th><th>TF</th><th></th></tr></thead>
       <tbody>${rows}</tbody></table></div>`
       : `<div class="empty-state"><div class="big">${icono("base","ico-xl")}</div>
-           <b>Todavía no hay datos</b>
-           <p class="mt">Descargá un instrumento de la biblioteca de arriba, o importá tu propio CSV.</p>
+           <b>${esc(t("data.none"))}</b>
+           <p class="mt">${esc(t("data.none_help"))}</p>
          </div>`}
   </div>`;
 
   $("#inst-add", main).onclick = () => {
+    // Con guarda porque el manejador puede sobrevivir a su propio DOM: si la
+    // pantalla se redibuja mientras algo asincrónico está en vuelo, `main`
+    // queda apuntando a un árbol desmontado y todo lo de adentro es null.
     const card = $("#imp-card", main);
+    if (!card) return;
     card.scrollIntoView({ block: "center", behavior: "smooth" });
     card.classList.add("flash");
     setTimeout(() => card.classList.remove("flash"), 900);
-    $("#imp-path", main).focus();
+    $("#imp-path", main)?.focus();
   };
 
   $$("[data-dl]", main).forEach(b => b.onclick = async () => {
     const key = b.dataset.dl;
     $$("[data-dl]", main).forEach(x => x.disabled = true);
-    b.innerHTML = `<span class="spinner"></span> Descargando…`;
+    b.innerHTML = `<span class="spinner"></span> ${esc(t("data.downloading"))}`;
     try {
       const meta = await runJob("/api/datasets/download", { key },
         j => setProgress("dl-prog", j));
-      toast(`${meta.name}: ${meta.rows.toLocaleString()} velas listas`, "ok");
+      toast(t("data.ready", { nombre: meta.name,
+                             n: meta.rows.toLocaleString(localeNum()) }), "ok");
       navigate("data");
     } catch (e) {
       toast(`Descarga fallida: ${e.message}`, "err");
@@ -1225,6 +1511,33 @@ PAGES.data = async (main) => {
       b.textContent = "↓ Descargar";
     }
   });
+
+  /* El reloj del bróker. Se muestra la hora que sería AHORA con el desfase
+     elegido, para que se pueda comparar de un vistazo con el reloj de
+     Observación de Mercado en MetaTrader. Sin esa comparación, elegir "UTC+3"
+     es adivinar. */
+  const relojSel = $('[data-cfg="brokerUtc"]', main);
+  const relojB = $("#reloj-b", main);
+  if (relojSel && relojB) {
+    const pintarReloj = () => {
+      const h = parseInt(relojSel.value, 10) || 0;
+      const ahora = new Date(Date.now() + h * 3600e3);
+      relojB.textContent = String(ahora.getUTCHours()).padStart(2, "0") + ":" +
+        String(ahora.getUTCMinutes()).padStart(2, "0");
+    };
+    relojSel.onchange = () => {
+      S.cfg.brokerUtc = parseInt(relojSel.value, 10) || 0;
+      saveCfg();
+      pintarReloj();
+      toast(t("data.broker_saved"), "ok");
+    };
+    pintarReloj();
+    // el minuto corre mientras la pantalla está abierta; se corta al salir
+    const tic = setInterval(() => {
+      if (!document.body.contains(relojB)) { clearInterval(tic); return; }
+      pintarReloj();
+    }, 20000);
+  }
 
   $$("[data-mine]", main).forEach(b => b.onclick = () => {
     S.sel.dataset_id = b.dataset.mine;
@@ -1236,14 +1549,16 @@ PAGES.data = async (main) => {
   });
 
   $("#imp-go").onclick = async () => {
-    const path = $("#imp-path").value.trim();
-    if (!path) { toast("Pegá la ruta del CSV", "err"); return; }
+    const campo = $("#imp-path");
+    if (!campo) return;                    // pantalla ya redibujada
+    const path = campo.value.trim();
+    if (!path) { toast(t("data.need_path"), "err"); return; }
     $("#imp-go").disabled = true;
     try {
       const meta = await runJob("/api/datasets/import-path",
-        { path, name: $("#imp-name").value.trim() || undefined },
+        { path, name: $("#imp-name")?.value.trim() || undefined },
         j => setProgress("imp-prog", j));
-      toast(`Importado: ${meta.name} (${meta.rows.toLocaleString()} velas)`, "ok");
+      toast(t("data.imported", { nombre: meta.name, n: fmtInt(meta.rows) }), "ok");
       navigate("data");
     } catch (e) { toast(e.message, "err"); hideProgress("imp-prog"); }
     const btn = $("#imp-go"); if (btn) btn.disabled = false;
@@ -1255,18 +1570,19 @@ PAGES.data = async (main) => {
     const fd = new FormData();
     fd.append("file", f);
     try {
-      const r = await fetch("/api/datasets/upload", { method: "POST", body: fd });
+      const r = await fetch("/api/datasets/upload",
+        { method: "POST", body: fd, headers: { "X-Idioma": idioma() } });
       if (!r.ok) throw new Error((await r.json()).detail || r.status);
       const meta = await r.json();
-      toast(`Subido: ${meta.name} (${meta.rows.toLocaleString()} velas)`, "ok");
+      toast(t("data.uploaded", { nombre: meta.name, n: fmtInt(meta.rows) }), "ok");
       navigate("data");
     } catch (e) { toast(e.message, "err"); }
   };
 
   $$("[data-del]", main).forEach(b => b.onclick = async () => {
-    if (!confirm("¿Borrar este dataset?")) return;
+    if (!confirm(t("data.confirm_delete"))) return;
     await api.del(`/api/datasets/${b.dataset.del}`);
-    toast("Dataset borrado", "ok");
+    toast(t("data.deleted"), "ok");
     navigate("data");
   });
 };
@@ -1312,68 +1628,202 @@ async function refreshBancoCount() {
   } catch (e) { /* ídem */ }
 }
 
+/* ================================================ ESTADO DE UNA ESTRATEGIA ==
+   El dato que le da un objetivo a la aplicación.
+
+   Antes de esto se podía correr el walk-forward y el Monte Carlo desde dos
+   secciones distintas del menú, salía un veredicto, y al cambiar de pantalla
+   se perdía. La lista de estrategias no podía decir cuáles estaban probadas,
+   así que la aplicación era un montón de pantallas sin ningún objetivo: nunca
+   había un "listo".
+
+   Ahora cada guardada tiene un estado que sobrevive a cerrar el programa, y el
+   trabajo consiste en llevarlas a verde.
+
+   Cuatro estados y no dos. "A medias" es un resultado real y frecuente —
+   sobrevivió en la mitad de los tramos — y meterlo en "no pasó" sería mentir
+   tanto como meterlo en "aprobada". */
+/* ══════════════════════════════════════════════ FUNCIONES AVANZADAS ═══════
+   Walk-forward, Monte Carlo y portafolio están construidos, probados y
+   funcionando — y apagados a propósito para la primera versión.
+
+   El motivo no es técnico. Alguien que abre esto por primera vez tiene que
+   poder minar una estrategia y llevársela a MetaTrader sin que nadie le
+   explique qué es la eficiencia de un walk-forward. Cada pantalla de más es
+   una razón de más para cerrar la aplicación y no volver.
+
+   Nada se borró: el código está entero, los endpoints responden y sus tests
+   siguen corriendo en cada cambio. Poner esto en `true` los devuelve a la
+   pantalla. Se eligió un interruptor y no comentar bloques porque el código
+   comentado se pudre en tres semanas, y el código con tests no.
+
+   Lo que se apaga:
+     · el veredicto y el botón "Poner a prueba" dentro de una estrategia
+     · la columna Estado en Mis estrategias
+     · el portafolio al tildar dos o más
+*/
+const AVANZADO = false;
+
+const ESTADO_UI = {
+  aprobada:  { cls: "ok",  ico: "tilde" },
+  aceptable: { cls: "mid", ico: "info" },
+  no_paso:   { cls: "bad", ico: "alerta" },
+};
+
+const estadoDe = (s) => (s.validacion && s.validacion.estado) || "sin_probar";
+
+function estadoChip(s) {
+  const e = estadoDe(s);
+  const ui = ESTADO_UI[e];
+  if (!ui) {
+    return `<span class="est est-none">${esc(t("est.sin_probar"))}</span>`;
+  }
+  return `<span class="est est-${ui.cls}">${icono(ui.ico, "ico-sm")}${esc(t("est." + e))}</span>`;
+}
+
+/* La frase que resume la prueba. Es lo primero que se lee, y va antes que
+   cualquier número: "aguantó en 3 de 4 tramos" se entiende sin saber qué es un
+   tramo, y "eficiencia 0.62" no se entiende sin que te lo expliquen.
+
+   La frase tiene que nombrar QUÉ la limitó, y hay dos cosas distintas que
+   pueden limitarla. Una estrategia puede ganar en los cuatro tramos y aun así
+   quedar en "a medias" porque afuera rindió un tercio de lo que rendía adentro
+   — que es el caso más común de todos. Con una sola frase por estado, la
+   pantalla decía "aguantó a medias: ganó en 4 de 4 tramos", que se lee como una
+   contradicción y le hace perder la confianza al usuario justo cuando le
+   estamos pidiendo que confíe en el veredicto. */
+function fraseVeredicto(v) {
+  if (!v || !v.estado) return "";
+  const g = v.tramos_ganadores, n = v.tramos;
+  const todos = n > 0 && g >= n;
+  if (v.estado === "aprobada") return t("wf.frase_aprobada", { g, n });
+  if (v.estado === "aceptable") {
+    return todos ? t("wf.frase_aceptable_ef", { n })
+                 : t("wf.frase_aceptable_tramos", { g, n });
+  }
+  // no pasó: o perdió en la mitad de los tramos, o ganó pero sin ventaja real
+  return g * 2 <= n ? t("wf.frase_no_paso_tramos", { g, n })
+                    : t("wf.frase_no_paso_ef", { g, n });
+}
+
+/* Corre las dos pruebas. Una sola acción: son dos preguntas sobre la misma
+   estrategia y ninguna se entiende sola, así que pedirle al usuario que elija
+   entre "walk-forward" y "Monte Carlo" es pedirle la respuesta antes de la
+   pregunta. */
+async function probarEstrategia(sid, onTick) {
+  return runJob("/api/probar", { strategy_id: sid }, onTick);
+}
+
+/* Selección para el portafolio. Vive fuera de la función porque la pantalla
+   se repinta al probar una estrategia y no se puede perder lo tildado. */
+const SEL_PF = new Set();
+
 PAGES.saved = async (main) => {
   await refreshDatasets();
   await refreshSavedCount();
   const items = S.saved || [];
 
   if (!items.length) {
-    main.innerHTML = pageHead("Mis estrategias",
-      "Las estrategias que guardes quedan acá, aunque vuelvas a minar con otros filtros.") +
+    main.innerHTML = pageHead(t("nav.saved"), esc(t("saved.empty_sub"))) +
       `<div class="card"><div class="empty-state">
         <div class="big">${icono("marcador","ico-xl")}</div>
-        <b>Todavía no guardaste ninguna</b>
-        <p class="mt">Cuando el minado encuentre una que te sirva, abrila y tocá
-          <b>Guardar estrategia</b>. Se guarda con su instrumento, su timeframe y sus costos,
-          así la podés volver a exportar meses después sin tener que minar de nuevo.</p>
-        <button class="btn mt" id="go-mine">Ir a Mining</button>
+        <b>${esc(t("saved.none"))}</b>
+        <p class="mt">${t("saved.none_help")}</p>
+        <button class="btn mt" id="go-bank">${esc(t("ui.go_bank"))}</button>
       </div></div>`;
-    $("#go-mine", main).onclick = () => navigate("mining");
+    $("#go-bank", main).onclick = () => navigate("mining", "resultados");
     return;
   }
 
+  // las que ya no existen no pueden seguir tildadas
+  const vivas = new Set(items.map(x => x.id));
+  [...SEL_PF].forEach(k => { if (!vivas.has(k)) SEL_PF.delete(k); });
+
+  /* La tabla bajó de nueve columnas a seis. Las que se fueron —profit factor,
+     fuera de muestra del minado, cantidad de operaciones, fecha— no
+     desaparecieron: están en la ficha de cada estrategia, a un clic. Una tabla
+     es una superficie de DECISIÓN y no un volcado de datos; con nueve columnas
+     de números nadie decide nada, y "fuera de muestra" al lado de "estado"
+     eran dos validaciones parecidas pero distintas, que es exactamente la
+     confusión que se vino a sacar. */
   const fila = (s) => {
-    const t = s.meta || {}, m = t.metrics || {};
-    const q = t.oos_ratio;
-    return `<tr class="clickable" data-sid="${esc(s.id)}">
-      <td><span class="strat-name">${esc(s.name)}</span>
-          <div class="strat-blocks">${esc(t.blocks || "")}</div>
-          <div class="strat-genes">${esc(t.genes_label || "")}</div></td>
-      <td>${esc((t.dataset_name || "—").replace(/ M1.*/, ""))}
-          <div class="muted" style="font-size:11px">${esc(t.timeframe || "")}
-            ${t.direction === "short" ? "· cortos" : t.direction === "both" ? "· ambos" : "· largos"}</div></td>
-      <td class="num ${(m.cagr_pct ?? 0) >= 0 ? "pos" : "neg"}"><b>${m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
-      <td class="num">${m.profit_factor != null ? fmtNum(m.profit_factor) : "—"}</td>
-      <td class="num neg">${m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
-      <td class="num">${q != null
-        ? `<span class="oos-tag ${q >= 0.8 ? "good" : q >= 0.5 ? "mid" : "bad"}"><b>${fmtNum(q, 2)}×</b></span>`
-        : `<span class="muted">—</span>`}</td>
-      <td class="num">${m.trades ?? "—"}</td>
-      <td class="muted" style="white-space:nowrap">${esc(String(s.updated).slice(0, 10))}</td>
+    const ctx = s.meta || {}, m = ctx.metrics || {};
+    return `<tr class="clickable ${SEL_PF.has(s.id) ? "elegida" : ""}" data-sid="${esc(s.id)}">
+      ${AVANZADO ? `<td class="tick"><input type="checkbox" data-pf="${esc(s.id)}"
+            ${SEL_PF.has(s.id) ? "checked" : ""}
+            aria-label="${esc(t("pf.pick_one", { nombre: s.name }))}"></td>` : ""}
+      <td><span class="strat-name">${esc(s.name)}</span>${sesionTag(s.spec?.time_filter
+            ? { session: sesionDeFiltro(s.spec.time_filter) } : {})}
+          ${s.notes ? `<div class="strat-nota">${esc(s.notes)}</div>` : ""}
+          <div class="strat-blocks">${esc(ctx.blocks || "")}</div></td>
+      <td>${esc((ctx.dataset_name || "—").replace(/ M1.*/, ""))}
+          <div class="muted" style="font-size:11px">${esc(ctx.timeframe || "")}
+            · ${esc(t("dir." + (ctx.direction || "long")).toLowerCase())}</div></td>
+      <td class="num ${(m.cagr_pct ?? 0) >= 0 ? "pos" : "neg"}"><b>${
+        m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
+      <td class="num neg">${m.max_drawdown_pct != null
+        ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
+      ${AVANZADO ? `<td>${estadoChip(s)}</td>` : ""}
       <td class="num" style="white-space:nowrap">
+        ${AVANZADO ? `<button class="btn ghost small" data-probar="${esc(s.id)}">${
+          esc(t(estadoDe(s) === "sin_probar" ? "wf.test_it" : "wf.retest"))}</button>` : ""}
         <button class="btn ghost small" data-export="${esc(s.id)}">${icono("bajar")} MQL5</button>
-        <button class="btn ghost small" data-del-strat="${esc(s.id)}" title="Borrar">${icono("cerrar")}</button>
+        <button class="btn ghost small" data-del-strat="${esc(s.id)}"
+          title="${esc(t("ui.delete"))}">${icono("cerrar")}</button>
       </td>
     </tr>`;
   };
 
-  main.innerHTML = pageHead("Mis estrategias",
-    `${items.length} guardada${items.length === 1 ? "" : "s"}. Sobreviven a cualquier corrida nueva.`) +
-    `<div class="card">
-      <h2>Guardadas <span class="hint">clic en una fila para volver a analizarla</span></h2>
-      <div class="scroll-x"><table>
-        <thead><tr><th>Estrategia</th><th>Mercado</th><th class="num">Anual</th>
-          <th class="num">PF</th><th class="num">Max DD</th>
-          <th class="num" title="Profit factor fuera de muestra sobre el de adentro">Fuera de muestra</th>
-          <th class="num">Trades</th><th>Guardada</th><th></th></tr></thead>
+  const sinProbar = items.filter(x => estadoDe(x) === "sin_probar").length;
+
+  main.innerHTML = pageHead(t("nav.saved"), esc(t("saved.sub", { n: items.length }))) +
+    `${AVANZADO && sinProbar ? `<div class="pista mb">${icono("idea", "ico-sm")}
+       <div>${esc(t("saved.pending", { n: sinProbar }))}</div></div>` : ""}
+    <div class="card">
+      <h2>${esc(t("saved.title"))} <span class="hint">${esc(t("saved.hint"))}</span></h2>
+      <div class="scroll-x"><table class="guardadas">
+        <thead><tr>${AVANZADO ? '<th class="tick"></th>' : ""}
+          <th>${esc(t("col.strategy"))}</th><th>${esc(t("mine.market"))}</th>
+          <th class="num">${esc(t("col.annual"))}</th>
+          <th class="num">${esc(t("col.maxdd"))}</th>
+          ${AVANZADO ? `<th title="${esc(t("est.help"))}">${esc(t("col.status"))}</th>` : ""}
+          <th></th></tr></thead>
         <tbody>${items.map(fila).join("")}</tbody>
       </table></div>
-    </div>`;
+    </div>
+    <div class="barra-sel" id="barra-pf" hidden></div>`;
+
+  const pintarBarra = () => {
+    const barra = $("#barra-pf", main);
+    const n = SEL_PF.size;
+    barra.hidden = !AVANZADO || n < 2;
+    if (n >= 2) {
+      barra.innerHTML = `<span>${esc(t("ui.selected", { n }))}</span>
+        <button class="linkbtn" id="pf-nada">${esc(t("ui.clear"))}</button>
+        <button class="btn" id="pf-ver">${esc(t("pf.build"))}</button>`;
+      $("#pf-nada", barra).onclick = () => {
+        SEL_PF.clear();
+        $$("[data-pf]", main).forEach(cb => { cb.checked = false; });
+        $$("tr[data-sid]", main).forEach(tr => tr.classList.remove("elegida"));
+        pintarBarra();
+      };
+      $("#pf-ver", barra).onclick = () => abrirPortafolio(
+        items.filter(x => SEL_PF.has(x.id)));
+    }
+  };
+  pintarBarra();
+
+  $$("[data-pf]", main).forEach(cb => cb.onchange = (ev) => {
+    ev.stopPropagation();
+    const sid = cb.dataset.pf;
+    if (cb.checked) SEL_PF.add(sid); else SEL_PF.delete(sid);
+    cb.closest("tr").classList.toggle("elegida", cb.checked);
+    pintarBarra();
+  });
 
   $$("[data-sid]", main).forEach(tr => tr.onclick = (ev) => {
-    if (ev.target.closest("button")) return;      // los botones tienen lo suyo
-    const s = items.find(x => x.id === tr.dataset.sid);
-    openSaved(s);
+    if (ev.target.closest("button") || ev.target.closest(".tick")) return;
+    openSaved(items.find(x => x.id === tr.dataset.sid));
   });
 
   $$("[data-export]", main).forEach(b => b.onclick = async () => {
@@ -1386,49 +1836,82 @@ PAGES.saved = async (main) => {
         spec: s.spec, name: `BQ_${s.name.replace(/[^\w]/g, "_")}`,
         dataset_id: (s.meta || {}).dataset_id,
         timeframe: (s.meta || {}).timeframe, metrics: (s.meta || {}).metrics,
+        server_utc_offset: S.cfg.brokerUtc,
       });
-      toast(`${r.archivo} guardado en ${r.carpeta}`, "ok");
+      toast(t("exp.saved_in", { archivo: r.archivo, carpeta: r.carpeta }), "ok");
     } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     b.disabled = false;
   });
 
+  $$("[data-probar]", main).forEach(b => b.onclick = async () => {
+    const s = items.find(x => x.id === b.dataset.probar);
+    await correrPrueba(s, b);
+  });
+
   $$("[data-del-strat]", main).forEach(b => b.onclick = async () => {
     const s = items.find(x => x.id === b.dataset.delStrat);
-    if (!confirm(`¿Borrar "${s.name}"? No se puede deshacer.`)) return;
+    if (!confirm(t("saved.confirm_delete", { nombre: s.name }))) return;
     try {
       await api.del(`/api/strategies/${s.id}`);
-      toast("Estrategia borrada", "ok");
+      toast(t("saved.deleted"), "ok");
       navigate("saved");
     } catch (e) { toast(e.message, "err"); }
   });
 };
 
+/* Corre la prueba desde un botón cualquiera y deja el botón contando.
+   El walk-forward reajusta la estrategia en cada tramo, así que tarda: sin
+   avisar del progreso se ve igual que un botón roto. */
+async function correrPrueba(s, boton) {
+  const original = boton.innerHTML;
+  boton.disabled = true;
+  boton.innerHTML = `<span class="spinner"></span>${esc(t("wf.testing"))}`;
+  try {
+    await probarEstrategia(s.id, (j) => {
+      const pct = Math.round((j.progress || 0) * 100);
+      boton.innerHTML = `<span class="spinner"></span>${pct}%`;
+    });
+    toast(t("wf.done", { nombre: s.name }), "ok");
+    await navigate("saved");
+  } catch (e) {
+    if (!pedirCuenta(e.status)) toast(e.message, "err");
+    boton.disabled = false;
+    boton.innerHTML = original;
+  }
+}
+
 /* Re-analiza una guardada sobre su propio instrumento y sus propios costos,
    no sobre lo que esté configurado ahora en la página de Mining. */
 async function openSaved(s) {
-  const t = s.meta || {};
-  if (!t.dataset_id || !S.datasets.some(d => d.id === t.dataset_id)) {
-    toast("El dataset con el que se minó ya no está en el workspace", "err");
+  const meta = s.meta || {};
+  if (!meta.dataset_id || !S.datasets.some(d => d.id === meta.dataset_id)) {
+    toast(t("err.dataset_gone"), "err");
     return;
   }
   const row = {
-    name: s.name, blocks: t.blocks || "", genes_label: t.genes_label || "",
-    spec: s.spec, metrics: t.metrics || {}, score: t.score,
-    stop_mult: t.stop_mult, oos: t.oos, oos_ratio: t.oos_ratio,
+    name: s.name, blocks: meta.blocks || "", genes_label: meta.genes_label || "",
+    spec: s.spec, metrics: meta.metrics || {}, score: meta.score,
+    stop_mult: meta.stop_mult, oos: meta.oos, oos_ratio: meta.oos_ratio,
     fitness: 0, spark: [],
   };
   /* El tramo tiene que ser el mismo con el que se midió, o el backtest corre
      sobre toda la historia y devuelve otra estrategia distinta con el mismo
      nombre. Las guardadas antes de que esto se registrara no lo tienen: se
      avisa en vez de mostrar números que no coinciden con la fila. */
-  const r = t.measured_range;
+  const r = meta.measured_range;
   openInspector(row, {
-    dataset_id: t.dataset_id, timeframe: t.timeframe || "1h",
+    dataset_id: meta.dataset_id, timeframe: meta.timeframe || "1h",
     date_from: r ? r.from : undefined,
     date_to: r ? r.to : undefined,
     sinRango: !r,
-    settings: { spread: t.spread, slippage: t.slippage,
-                commission_pct: t.commission, initial_capital: t.capital },
+    // el id y la nota van al contexto para que el inspector pueda ofrecer
+    // escribir por qué se guardó esta estrategia
+    strategy_id: s.id, notes: s.notes || "",
+    // el veredicto guardado: sin esto la ficha no puede mostrar el estado ni
+    // saber si ofrecer "poner a prueba" o "volver a probar"
+    validacion: s.validacion || {},
+    settings: { spread: meta.spread, slippage: meta.slippage,
+                commission_pct: meta.commission, initial_capital: meta.capital },
   });
 }
 
@@ -1453,9 +1936,10 @@ async function openSaved(s) {
    listas de los mismos filtros terminan diciendo cosas distintas del mismo
    número en cuanto se renombra uno. Al final va el que ya no se ofrece, para
    que las corridas viejas sigan pudiendo contar qué se les pidió. */
-const VARA = [
-  ...CRITERIA.map(cr => [CRIT_FIELD[cr.key], cr.label, cr.unit]),
-  ["min_net_pct", "Ganancia total ≥", "%"],
+const VARA = () => [
+  ...CRITERIA().map(cr => [CRIT_FIELD[cr.key], cr.label, cr.unit]),
+  // ya no se ofrece como filtro, pero las corridas archivadas lo tienen
+  ["min_net_pct", `${t("m.net")} ≥`, "%"],
 ];
 
 /* Las columnas que dependen del tamaño de posición. Un riesgo del 3% por
@@ -1466,14 +1950,14 @@ const VARA = [
    tamaño, así que sí comparan de verdad. */
 const COLS_CON_RIESGO = new Set(["cagr", "dd"]);
 
-const BANCO_COLS = [
-  ["score", "Score", "Puntaje propio de robustez: qué tan repetible parece la estrategia, no cuánto rindió."],
-  ["cagr", "Anual", "Rendimiento anualizado. Escala con el riesgo por operación: no se compara entre corridas de distinto riesgo."],
-  ["pf", "PF", "Profit factor: cuántos dólares ganó por cada dólar que perdió. No depende del tamaño de posición, así que compara bien entre corridas."],
-  ["dd", "Máx. DD", "Máxima caída desde un pico. Escala con el riesgo por operación igual que el rendimiento."],
-  ["trades", "Ops.", "Cantidad de operaciones. Pocas operaciones hacen que cualquier métrica sea poco confiable."],
-  ["months", "Meses +", "Porcentaje de meses cerrados en ganancia. Alto significa que gana seguido, no de un solo golpe."],
-  ["oos", "Fuera<br>de muestra", "Profit factor fuera de muestra sobre el de adentro. Cerca de 1 la ventaja se sostuvo."],
+const BANCO_COLS = () => [
+  ["score", t("m.score"), t("col.score_help")],
+  ["cagr", t("col.annual"), t("bank.cagr_help")],
+  ["pf", "PF", t("bank.pf_help")],
+  ["dd", t("col.maxdd"), t("bank.dd_help")],
+  ["trades", t("col.ops"), t("col.ops_help")],
+  ["months", t("col.months_plus"), t("col.months_help")],
+  ["oos", t("col.oos"), t("col.oos_help")],
 ];
 
 const nombreCorto = (s) => String(s || "—").replace(/ M1.*/, "");
@@ -1486,16 +1970,16 @@ function etiquetaCorrida(c) {
  *  no) sus números con los de otra. */
 function riesgoDe(c) {
   const r = (c.contexto || {}).risk || {};
-  return r.size_mode === "fixed_units" ? `${r.size_value} lotes` : `${r.size_value ?? "—"}%`;
+  return r.size_mode === "fixed_units" ? `${r.size_value} ${t("mine.lots")}` : `${r.size_value ?? "—"}%`;
 }
 
 function varaDe(c) {
   const acc = (c.contexto || {}).accept || {};
-  const puestos = VARA.filter(([k]) => acc[k] != null)
+  const puestos = VARA().filter(([k]) => acc[k] != null)
     .map(([k, lab, u]) => `${lab} ${acc[k]}${u}`);
   const min = (c.contexto || {}).min_trades;
-  if (min) puestos.unshift(`${min}+ operaciones`);
-  return puestos.length ? puestos.join(" · ") : "sin filtros";
+  if (min) puestos.unshift(`${min}+ ${t("m.trades").toLowerCase()}`);
+  return puestos.length ? puestos.join(" · ") : t("bank.no_filters");
 }
 
 /* El orden con el que abre cada vista.
@@ -1532,21 +2016,19 @@ async function cargarBanco({ corridas = true } = {}) {
   [...S.banco.sel].forEach(id => { if (!vivos.has(id)) S.banco.sel.delete(id); });
 }
 
-PAGES.banco = async (main) => {
+const vistaResultados = async (main) => {
   await Promise.all([refreshDatasets(), cargarBanco()]);
   const b = S.banco;
 
   if (!b.corridas.length) {
-    main.innerHTML = pageHead("Databank", "Todo lo que encontrás, corrida por corrida.") +
+    main.innerHTML = pageHead(t("mine.tab_results"), esc(t("bank.sub"))) +
       `<div class="card"><div class="empty-state">
         <div class="big">${icono("banco", "ico-xl")}</div>
-        <b>El banco está vacío</b>
-        <p class="mt">Cada búsqueda que termina deja acá sus estrategias con el instrumento,
-          la temporalidad y los filtros con los que se encontraron. Se acumulan: minar de
-          nuevo ya no borra lo anterior.</p>
-        <button class="btn mt" id="ir-a-minar">Ir a Mining</button>
+        <b>${esc(t("bank.empty"))}</b>
+        <p class="mt">${esc(t("bank.empty_help"))}</p>
+        <button class="btn mt" id="ir-a-minar">${esc(t("ui.go_mining"))}</button>
       </div></div>`;
-    $("#ir-a-minar", main).onclick = () => navigate("mining");
+    $("#ir-a-minar", main).onclick = () => navigate("mining", "buscar");
     return;
   }
 
@@ -1569,12 +2051,11 @@ function pintarCabecera() {
   if (!host) return;
   const b = S.banco;
   const lleno = b.tope ? b.total / b.tope : 0;
-  host.innerHTML = pageHead("Databank",
-    `${fmtInt(b.total)} estrategia${b.total === 1 ? "" : "s"} de
-     ${b.corridas.length} corrida${b.corridas.length === 1 ? "" : "s"}.`,
+  host.innerHTML = pageHead(t("mine.tab_results"),
+    esc(t("bank.count", { n: fmtInt(b.total), corridas: b.corridas.length })),
     `<div class="ph-pill ${lleno > 0.85 ? "alerta" : ""}">
        <b>${fmtInt(b.total)}</b><u>/${fmtInt(b.tope)}</u>
-       <em>${lleno > 0.85 ? "casi lleno" : "capacidad"}</em></div>`);
+       <em>${esc(lleno > 0.85 ? t("bank.almost_full") : t("bank.capacity"))}</em></div>`);
   // y el de la barra lateral, que es el mismo dato en otro lado
   const nav = $("#banco-count");
   if (nav) nav.textContent = b.total || "";
@@ -1590,40 +2071,37 @@ function pintarCorridas() {
   const activa = b.corridas.find(c => c.id === b.corrida);
 
   host.innerHTML = `<div class="card">
-    <h2>Corridas <span class="hint">cada búsqueda quedó con la configuración
-      que la produjo · clic para ver sólo la suya</span></h2>
+    <h2>${esc(t("bank.runs"))} <span class="hint">${esc(t("bank.runs_hint"))}</span></h2>
     <div class="corridas-lista">
       <button class="corrida-chip ${b.corrida ? "" : "on"}" data-corrida="">
-        <b>Todas</b><span>${fmtInt(b.total)} estrategias</span></button>
+        <b>${esc(t("bank.all"))}</b><span>${fmtInt(b.total)} ${esc(t("ui.strategies"))}</span></button>
       ${b.corridas.map(c => `
         <button class="corrida-chip ${b.corrida === c.id ? "on" : ""} ${c.n ? "" : "vacia"}"
           data-corrida="${esc(c.id)}" title="${esc(varaDe(c))}">
           <b>${esc(etiquetaCorrida(c))}</b>
-          <span>${c.n ? `${c.n} · riesgo ${esc(riesgoDe(c))}` : "sin resultados"}</span>
+          <span>${c.n ? `${c.n} · ${esc(t("bank.risk"))} ${esc(riesgoDe(c))}`
+            : esc(t("bank.no_results"))}</span>
         </button>`).join("")}
     </div>
     ${activa ? `
       <div class="corrida-ficha">
         <div class="cf-datos">
-          <div><span>Buscó</span><b>${fmtInt(activa.tested)} candidatas</b></div>
-          <div><span>Encontró</span><b>${activa.encontradas ?? activa.n}${
+          <div><span>${esc(t("bank.searched"))}</span><b>${fmtInt(activa.tested)}</b></div>
+          <div><span>${esc(t("bank.found"))}</span><b>${activa.encontradas ?? activa.n}${
             activa.n !== (activa.encontradas ?? activa.n)
-              ? `<u class="cf-quedan"> · quedan ${activa.n}</u>` : ""}</b></div>
-          <div><span>Tardó</span><b>${fmtDur(activa.elapsed)}</b></div>
-          <div><span>Terminó</span><b>${esc(activa.ended)}</b></div>
-          <div><span>Semilla</span><b>${activa.seed ?? "—"}</b></div>
-          <div><span>Dirección</span><b>${
-            (activa.contexto || {}).direction === "short" ? "cortos"
-            : (activa.contexto || {}).direction === "both" ? "ambos" : "largos"}</b></div>
+              ? `<u class="cf-quedan"> · ${esc(t("bank.remaining", { n: activa.n }))}</u>` : ""}</b></div>
+          <div><span>${esc(t("bank.took"))}</span><b>${fmtDur(activa.elapsed)}</b></div>
+          <div><span>${esc(t("bank.ended"))}</span><b>${esc(t("ended." + activa.ended))}</b></div>
+          <div><span>${esc(t("bank.seed"))}</span><b>${activa.seed ?? "—"}</b></div>
+          <div><span>${esc(t("mine.direction"))}</span><b>${
+            esc(t("dir." + ((activa.contexto || {}).direction || "long")).toLowerCase())}</b></div>
         </div>
-        <p class="cf-vara"><span>Vara</span> ${esc(varaDe(activa))}</p>
+        <p class="cf-vara"><span>${esc(t("bank.bar"))}</span> ${esc(varaDe(activa))}</p>
         <div class="cf-acciones">
-          <button class="btn ghost small" id="repetir-corrida">Repetir esta configuración</button>
-          <button class="linkbtn peligro" id="borrar-corrida">${icono("basura","ico-sm")} Borrar la corrida entera</button>
+          <button class="btn ghost small" id="repetir-corrida">${esc(t("bank.repeat"))}</button>
+          <button class="linkbtn peligro" id="borrar-corrida">${icono("basura","ico-sm")} ${esc(t("bank.delete_run"))}</button>
         </div>
-        <p class="stage-note">Repetir no da las mismas estrategias: la semilla es aleatoria y cada
-          búsqueda explora otras combinaciones. Dos corridas iguales que rinden distinto son
-          varianza de la búsqueda, no una configuración mejor que la otra.</p>
+        <p class="stage-note">${esc(t("bank.repeat_note"))}</p>
       </div>` : ""}
   </div>`;
 
@@ -1644,8 +2122,8 @@ function pintarCorridas() {
 
   const borrar = $("#borrar-corrida", host);
   if (borrar) borrar.onclick = async () => {
-    if (!confirm(`¿Borrar la corrida ${etiquetaCorrida(activa)} y sus ${activa.n} estrategias?\n\n` +
-                 `Las que ya copiaste a Mis estrategias no se tocan.`)) return;
+    if (!confirm(t("bank.confirm_delete_run", {
+      nombre: etiquetaCorrida(activa), n: activa.n }))) return;
     try {
       await api.del(`/api/corridas/${activa.id}`);
       S.banco.corrida = "";
@@ -1654,7 +2132,7 @@ function pintarCorridas() {
       pintarCabecera();
       pintarCorridas();
       pintarBanco();
-      toast("Corrida borrada", "ok");
+      toast(t("bank.run_deleted"), "ok");
     } catch (e) { toast(e.message, "err"); }
   };
 }
@@ -1676,50 +2154,48 @@ function pintarBanco() {
     const flecha = activa ? (s.dir === -1 ? icono("baja","ico-sm") : icono("sube","ico-sm")) : "";
     const ojo = mezcla && COLS_CON_RIESGO.has(key) ? " mixta" : "";
     return `<th class="num orden ${activa ? "activa" : ""}${ojo}" data-sort="${key}"
-      title="${esc(ayuda)}${activa ? "" : " · clic para ordenar"}">${label}<i>${flecha}</i></th>`;
+      title="${esc(ayuda)}${activa ? "" : ` · ${esc(t("col.click_sort"))}`}">${label}<i>${flecha}</i></th>`;
   };
 
   const todosTildados = b.filas.length && b.filas.every(f => b.sel.has(f.banco_id));
 
   host.innerHTML = `<div class="card">
-    <h2>${todas ? "Todas las estrategias" : etiquetaCorrida(porId[b.corrida] || {})}
-      <span class="hint">${b.filas.length} a la vista · clic en una fila para analizarla</span></h2>
+    <h2>${todas ? esc(t("bank.all_strategies")) : etiquetaCorrida(porId[b.corrida] || {})}
+      <span class="hint">${esc(t("bank.in_view", { n: b.filas.length }))}</span></h2>
 
     ${mezcla ? `<div class="banner info mt" style="margin-bottom:14px">
-      <span class="b-ic">${icono("info")}</span><div>
-      <b>Estás viendo corridas con riesgos distintos.</b>
-      <b>Anual</b> y <b>Máx. DD</b> escalan con el riesgo por operación, así que entre
-      corridas ordenan por esa perilla y no por la estrategia.
-      <b>PF</b>, <b>Score</b> y <b>Meses +</b> son proporciones: ésas sí comparan.</div>
+      <span class="b-ic">${icono("info")}</span><div>${t("bank.mixed_risk", {
+        anual: t("col.annual"), dd: t("col.maxdd"),
+        score: t("m.score"), meses: t("col.months_plus") })}</div>
     </div>` : ""}
 
     <div class="seleccion ${b.sel.size ? "activa" : ""}">
-      <span class="sel-n">${b.sel.size} seleccionada${b.sel.size === 1 ? "" : "s"}</span>
-      <button class="btn small" id="sel-guardar">${icono("marcador","ico-sm")} Guardar en Mis estrategias</button>
-      <button class="btn ghost small" id="sel-borrar">${icono("basura","ico-sm")} Quitar del banco</button>
-      <button class="linkbtn" id="sel-limpiar">Limpiar</button>
+      <span class="sel-n">${esc(t("ui.selected", { n: b.sel.size }))}</span>
+      <button class="btn small" id="sel-guardar">${icono("marcador","ico-sm")} ${esc(t("insp.save"))}</button>
+      <button class="btn ghost small" id="sel-borrar">${icono("basura","ico-sm")} ${esc(t("bank.remove"))}</button>
+      <button class="linkbtn" id="sel-limpiar">${esc(t("ui.clear"))}</button>
     </div>
 
     ${b.filas.length ? `<div class="databank-wrap"><table class="banco">
       <thead><tr>
         <th class="tick"><input type="checkbox" id="sel-todas" ${todosTildados ? "checked" : ""}
-          aria-label="Seleccionar todas las de la vista"></th>
-        <th>Estrategia</th>
-        ${todas ? `<th>Corrida</th>` : `<th class="num orden ${s.key === "puesto" ? "activa" : ""}"
-          data-sort="puesto" title="El orden que le dio el minero, por QF Score">#<i>${
+          aria-label="${esc(t("ui.select_all"))}"></th>
+        <th>${esc(t("col.strategy"))}</th>
+        ${todas ? `<th>${esc(t("bank.run"))}</th>` : `<th class="num orden ${s.key === "puesto" ? "activa" : ""}"
+          data-sort="puesto" title="${esc(t("bank.rank_help"))}">#<i>${
             s.key === "puesto" ? icono("sube","ico-sm") : ""}</i></th>`}
-        ${BANCO_COLS.map(([k, l, a]) => th(k, l, a)).join("")}
+        ${BANCO_COLS().map(([k, l, a]) => th(k, l, a)).join("")}
       </tr></thead>
       <tbody>${b.filas.map(f => {
         const m = f.metrics || {}, c = porId[f.corrida_id] || {};
         return `<tr class="clickable ${b.sel.has(f.banco_id) ? "tildada" : ""}" data-fila="${esc(f.banco_id)}">
           <td class="tick"><input type="checkbox" data-tick="${esc(f.banco_id)}"
             ${b.sel.has(f.banco_id) ? "checked" : ""} aria-label="Seleccionar ${esc(f.name)}"></td>
-          <td><span class="strat-name">${esc(f.name)}</span>
-              <div class="strat-genes">${esc(f.genes_label || "")}</div></td>
+          <td><span class="strat-name">${esc(f.name)}</span>${sesionTag(f)}
+              <div class="strat-genes">${esc(etiquetaGenes(f))}</div></td>
           ${todas
             ? `<td class="origen"><b>${esc(nombreCorto(c.dataset_name))}</b>
-                 <div class="run-sub">${esc(c.timeframe || "")} · riesgo ${esc(riesgoDe(c))}</div></td>`
+                 <div class="run-sub">${esc(c.timeframe || "")} · ${esc(t("bank.risk"))} ${esc(riesgoDe(c))}</div></td>`
             : `<td class="rank-cell"><span class="rank">${String(f.puesto + 1).padStart(2, "0")}</span></td>`}
           <td class="num">${scoreCell(f.score)}</td>
           <td class="num ${(m.cagr_pct ?? 0) >= 0 ? "pos" : "neg"}"><b>${
@@ -1742,22 +2218,21 @@ function pintarBanco() {
    aflojar la vara, y si las borraste no hay nada que arreglar. */
 function bancoVacioHtml(c) {
   if (!c) {
-    return `<div class="empty-state"><b>No queda nada en el banco.</b>
-      <p class="mt">Las que hayas guardado siguen en Mis estrategias.</p></div>`;
+    return `<div class="empty-state"><b>${esc(t("bank.nothing_left"))}</b>
+      <p class="mt">${esc(t("bank.saved_untouched"))}</p></div>`;
   }
   if (!c.encontradas) {
     return `<div class="empty-state">
       <div class="big">${icono("diana","ico-xl")}</div>
-      <b>Esta búsqueda no encontró ninguna.</b>
-      <p class="mt">Probó ${fmtInt(c.tested)} candidatas sobre
-        ${esc(nombreCorto(c.dataset_name))} y ninguna pasó la vara:
-        <b>${esc(varaDe(c))}</b>.</p>
-      <p class="mt muted">Queda anotada igual — es el experimento que conviene no repetir
-        por olvido. Repetí la configuración y aflojá el filtro que más descarta.</p>
+      <b>${esc(t("bank.run_found_none"))}</b>
+      <p class="mt">${t("bank.run_found_none_help", {
+        n: fmtInt(c.tested), mercado: esc(nombreCorto(c.dataset_name)),
+        vara: esc(varaDe(c)) })}</p>
+      <p class="mt muted">${esc(t("bank.run_found_none_note"))}</p>
     </div>`;
   }
-  return `<div class="empty-state"><b>Le sacaste las ${c.encontradas} que había encontrado.</b>
-    <p class="mt">Las que hayas guardado siguen en Mis estrategias.</p></div>`;
+  return `<div class="empty-state"><b>${esc(t("bank.you_removed", { n: c.encontradas }))}</b>
+    <p class="mt">${esc(t("bank.saved_untouched"))}</p></div>`;
 }
 
 function cablearBanco(host) {
@@ -1810,7 +2285,7 @@ function cablearBanco(host) {
       b.sel.clear();
       refrescar();
       await refreshSavedCount();
-      toast(`${n} estrategia${n === 1 ? "" : "s"} en Mis estrategias — siguen también en el banco`, "ok");
+      toast(t("bank.copied", { n }), "ok");
     } catch (e) { toast(e.message, "err"); }
     btn.disabled = false;
   };
@@ -1818,8 +2293,8 @@ function cablearBanco(host) {
   $("#sel-borrar", host).onclick = async () => {
     const ids = [...b.sel];
     if (!ids.length) return;
-    if (!confirm(`¿Quitar ${ids.length} estrategia${ids.length === 1 ? "" : "s"} del banco?\n\n` +
-                 `Las que hayas guardado en Mis estrategias no se tocan.`)) return;
+    if (!confirm(t("bank.confirm_remove", { n: ids.length }) + "\n\n"
+                 + t("bank.saved_untouched"))) return;
     try {
       await api.post("/api/banco/borrar", { ids });
       b.sel.clear();
@@ -1874,9 +2349,9 @@ function repetirCorrida(c) {
   const hay = S.datasets.some(d => d.id === c.dataset_id);
   if (hay) S.sel.dataset_id = c.dataset_id;
   saveCfg();
-  navigate("mining").then(() => toast(hay
-    ? "Configuración cargada — dale a Iniciar"
-    : `Configuración cargada, pero ${nombreCorto(c.dataset_name)} ya no está en el workspace`,
+  navigate("mining", "buscar").then(() => toast(hay
+    ? t("bank.cfg_loaded")
+    : t("bank.cfg_loaded_missing", { mercado: nombreCorto(c.dataset_name) }),
     hay ? "ok" : "err"));
 }
 
@@ -1890,7 +2365,7 @@ function abrirDelBanco(f) {
   const ctx = c ? (c.contexto || {}) : {};
   const rango = ctx.measured_range;
   if (!c || !S.datasets.some(d => d.id === c.dataset_id)) {
-    toast("El instrumento con el que se minó ya no está en el workspace", "err");
+    toast(t("err.dataset_gone"), "err");
     return;
   }
   openInspector(f, {
@@ -1898,6 +2373,8 @@ function abrirDelBanco(f) {
     date_from: rango ? rango.from : undefined,
     date_to: rango ? rango.to : undefined,
     sinRango: !rango,
+    // el corte, para poder mirar cada mitad por separado y las dos juntas
+    split: ctx.split || null,
     settings: ctx.settings || {},
     // decir de qué corrida salió, no "guardada": todavía no lo está, y
     // confundir las dos cosas hace creer que ya se rescató algo que no
@@ -1906,14 +2383,46 @@ function abrirDelBanco(f) {
 }
 
 /* =========================================================== página MINING */
+/* ═══════════════════════════════════════ MINADO: BUSCAR Y RESULTADOS ══════
+   El databank era una sección aparte del menú. Es información valiosa —lo que
+   encontró cada corrida, y de dónde se guardan las estrategias— pero no es un
+   destino: es la otra mitad de minar. Uno busca y después mira lo que salió.
+
+   Puestas como dos vistas de la misma sección, el menú baja una entrada y el
+   recorrido se lee solo: Buscar → Resultados → Guardar.
+
+   Se mantienen como dos funciones separadas y no como una pantalla enorme
+   porque no comparten nada: una configura una búsqueda, la otra lee una tabla
+   de corridas archivadas. */
 PAGES.mining = async (main) => {
+  const vista = S.vista === "resultados" ? "resultados" : "buscar";
+  const n = S.banco?.total || 0;
+  main.innerHTML = `<div class="vistas" role="tablist">
+      <button role="tab" data-vista="buscar" aria-selected="${vista === "buscar"}"
+        class="${vista === "buscar" ? "on" : ""}">${esc(t("mine.tab_search"))}</button>
+      <button role="tab" data-vista="resultados" aria-selected="${vista === "resultados"}"
+        class="${vista === "resultados" ? "on" : ""}">${esc(t("mine.tab_results"))}
+        ${n ? `<em>${fmtInt(n)}</em>` : ""}</button>
+    </div>
+    <div id="vista-host"></div>`;
+
+  $$("[data-vista]", main).forEach(b => b.onclick = () => {
+    S.vista = b.dataset.vista;
+    navigate("mining");
+  });
+
+  const host = $("#vista-host", main);
+  await (vista === "resultados" ? vistaResultados(host) : vistaBuscar(host));
+};
+
+const vistaBuscar = async (main) => {
   await refreshDatasets();
   if (!S.datasets.length) {
-    main.innerHTML = pageHead("Mining", "Buscá estrategias sobre datos reales.") +
+    main.innerHTML = pageHead(t("nav.mining"), esc(t("mine.sub_empty"))) +
       `<div class="card"><div class="empty-state"><div class="big">${icono("pico","ico-xl")}</div>
-        <b>No hay con qué minar todavía</b>
-        <p class="mt">Andá a <b>Datos</b> y descargá un instrumento — con un clic queda listo.</p>
-        <button class="btn mt" id="go-data">Ir a Datos</button>
+        <b>${esc(t("mine.no_data"))}</b>
+        <p class="mt">${t("mine.no_data_help")}</p>
+        <button class="btn mt" id="go-data">${esc(t("mine.go_data"))}</button>
       </div></div>`;
     $("#go-data", main).onclick = () => navigate("data");
     return;
@@ -1926,7 +2435,8 @@ PAGES.mining = async (main) => {
   const c = S.cfg;
   const dsOpts = S.datasets.map(d =>
     `<option value="${d.id}" ${d.id === S.sel.dataset_id ? "selected" : ""}>
-       ${esc(d.name)} · ${d.rows.toLocaleString()} velas</option>`).join("");
+       ${esc(d.name)} · ${esc(t("ui.n_bars", {
+         n: d.rows.toLocaleString(localeNum()) }))}</option>`).join("");
   if (!S.sel.timeframe) S.sel.timeframe = "1h";
   const tfOpts = (S.meta?.timeframes || ["1h"]).map(t =>
     `<option ${t === S.sel.timeframe ? "selected" : ""}>${t}</option>`).join("");
@@ -1970,80 +2480,92 @@ PAGES.mining = async (main) => {
   };
 
   main.innerHTML = `
-  ${pageHead("Mining",
-    "Elegís cuántas estrategias querés y la búsqueda no para hasta juntarlas.", ctxPill())}
+  ${pageHead(t("nav.mining"), esc(t("mine.sub")), ctxPill())}
 
   <div class="workbench">
     <aside class="setup">
       <div class="setup-scroll">
         <details class="sect">
-          <summary><span class="sect-num n-indigo">1</span>
-            <span class="sect-t"><b>Mercado</b><em id="sum-market">—</em></span>
+          <summary><span class="sect-num">1</span>
+            <span class="sect-t"><b>${esc(t("mine.market"))}</b><em id="sum-market">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
             <div class="fld-stack">
-              <label class="fld"><span>Instrumento</span><select id="sel-dataset">${dsOpts}</select></label>
-              <label class="fld"><span>Timeframe <span class="hint">las velas M1 se agrupan a este TF</span></span>
+              <label class="fld"><span>${esc(t("mine.instrument"))}</span>
+                <select id="sel-dataset">${dsOpts}</select></label>
+              <label class="fld"><span>${esc(t("mine.timeframe"))}
+                  <span class="hint">${esc(t("mine.timeframe_hint"))}</span></span>
                 <select id="sel-timeframe">${tfOpts}</select></label>
-              <div class="fld"><span>Dirección</span>
+              <div class="fld"><span>${esc(t("mine.direction"))}</span>
                 <div class="seg full" id="m-dir">
-                  ${[["long", "Largos"], ["short", "Cortos"], ["both", "Ambos"]]
-                    .map(([v, t]) => `<button data-dir="${v}" class="${c.direction === v ? "on" : ""}">${t}</button>`).join("")}
+                  ${["long", "short", "both"].map(v =>
+                    `<button data-dir="${v}" class="${c.direction === v ? "on" : ""}"
+                      >${esc(t("dir." + v))}</button>`).join("")}
                 </div>
               </div>
             </div>
 
-            <div class="stage-sub">Período a minar</div>
+            <div class="stage-sub">${esc(t("mine.period"))}</div>
             <div class="fld-pair">
-              <label class="fld"><span>Desde</span>
+              <label class="fld"><span>${esc(t("mine.from"))}</span>
                 <input type="date" class="datefld" id="m-date-from"
                   min="${esc(bounds.lo)}" max="${esc(bounds.hi)}" value="${esc(range.from)}"></label>
-              <label class="fld"><span>Hasta</span>
+              <label class="fld"><span>${esc(t("mine.to"))}</span>
                 <input type="date" class="datefld" id="m-date-to"
                   min="${esc(bounds.lo)}" max="${esc(bounds.hi)}" value="${esc(range.to)}"></label>
             </div>
             ${acotado && aniosTotales > VENTANA_ANIOS ? `
               <div class="ventana">
-                <div>Arranca en los <b>últimos ${VENTANA_ANIOS} años</b> para que la
-                  primera búsqueda no tarde una eternidad. Este instrumento tiene
-                  ${aniosTotales.toFixed(0)} años.</div>
-                <button class="btn ghost small" id="m-todo-historial">Usar los ${
-                  aniosTotales.toFixed(0)} años</button>
+                <div>${t("mine.window", { n: VENTANA_ANIOS, total: aniosTotales.toFixed(0) })}</div>
+                <button class="btn ghost small" id="m-todo-historial">${
+                  esc(t("mine.use_all", { total: aniosTotales.toFixed(0) }))}</button>
               </div>` : ""}
             <p class="stage-note" id="m-dsnote"></p>
 
+            <div class="stage-sub">${esc(t("session.title"))}
+              <span class="hint">${esc(t("session.sub"))}</span></div>
+            <p class="help-note">${esc(t("session.help"))}</p>
+            <div class="franjas" id="m-sessions">
+              ${(S.meta?.sessions || []).map(s => `
+                <button data-ses="${esc(s.id)}"
+                  class="${sesionesElegidas().includes(s.id) ? "on" : ""}">
+                  <b>${esc(t("s." + s.id))}</b>
+                  <em>${esc(s.horario
+                    || (s.restringe ? t("session.all_day") : t("session.no_limit")))}</em>
+                </button>`).join("")}
+            </div>
+            <p class="help-note" id="m-sesnote"></p>
+
             <details class="adv" id="m-adv-oos">
-              <summary><span class="adv-chev">›</span>Avanzado<em id="sum-oos"></em></summary>
+              <summary><span class="adv-chev">›</span>${esc(t("ui.advanced"))}<em id="sum-oos"></em></summary>
               <div class="adv-body">
-                <label class="fld"><span>Validación fuera de muestra</span>
+                <label class="fld"><span>${esc(t("mine.oos"))}</span>
                   <select data-cfg="oosPct">
-                    ${opt(0, +c.oosPct, "Desactivada")}
-                    ${opt(30, +c.oosPct, "Minar 70% · validar 30% (sugerido)")}
-                    ${opt(20, +c.oosPct, "Minar 80% · validar 20%")}
-                    ${opt(40, +c.oosPct, "Minar 60% · validar 40%")}
+                    ${opt(0, +c.oosPct, esc(t("mine.oos_off")))}
+                    ${opt(30, +c.oosPct, esc(t("mine.oos_split", { mina: 70, valida: 30 })) + ` (${esc(t("ui.recommended"))})`)}
+                    ${opt(20, +c.oosPct, esc(t("mine.oos_split", { mina: 80, valida: 20 })))}
+                    ${opt(40, +c.oosPct, esc(t("mine.oos_split", { mina: 60, valida: 40 })))}
                   </select></label>
-                <p class="help-note">Parte el período en dos: la búsqueda usa sólo el tramo
-                  inicial y cada estrategia aceptada se vuelve a correr sobre el final, con
-                  datos que <b>nunca vio</b>. El databank suma una columna que dice si la
-                  ventaja se sostiene o se cae — que es lo que separa una estrategia real de
-                  una casualidad bien ajustada al pasado.</p>
+                <p class="help-note">${t("mine.oos_help")}</p>
               </div>
             </details>
           </div>
         </details>
 
         <details class="sect">
-          <summary><span class="sect-num n-teal">2</span>
-            <span class="sect-t"><b>Bloques</b><em id="sum-blocks">—</em></span>
+          <summary><span class="sect-num">2</span>
+            <span class="sect-t"><b>${esc(t("mine.blocks"))}</b><em id="sum-blocks">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
-            <div class="stage-sub">Disparadores de entrada</div>
+            <div class="stage-sub">${esc(t("mine.triggers"))}</div>
             <div class="blocklist-actions" data-for="m-drivers">
-              <button data-all="1">Todos</button><button data-all="0">Ninguno</button></div>
+              <button data-all="1">${esc(t("ui.all"))}</button>
+              <button data-all="0">${esc(t("ui.none_btn"))}</button></div>
             <div id="m-drivers">${blockList("driver")}</div>
-            <div class="stage-sub">Filtros de contexto</div>
+            <div class="stage-sub">${esc(t("mine.filters"))}</div>
             <div class="blocklist-actions" data-for="m-filters">
-              <button data-all="1">Todos</button><button data-all="0">Ninguno</button></div>
+              <button data-all="1">${esc(t("ui.all"))}</button>
+              <button data-all="0">${esc(t("ui.none_btn"))}</button></div>
             <div id="m-filters">${blockList("filter")}</div>
             <!-- Este número pasó por dos nombres malos: "Máx. filtros por
                  estrategia" describía el código, y "cuántos de estos puede
@@ -2054,31 +2576,29 @@ PAGES.mining = async (main) => {
                  condiciones puede apilar una estrategia, más fácil le resulta
                  describir el pasado exacto y menos le queda para el futuro.
                  Como eso es una decisión y no un número, va con nombres. -->
-            <div class="fld mt"><span>Complejidad de las reglas
-                <span class="hint">cuántos filtros de contexto puede exigir
-                  una estrategia al mismo tiempo</span></span></div>
+            <div class="fld mt"><span>${esc(t("mine.complexity"))}
+                <span class="hint">${esc(t("mine.complexity_hint"))}</span></span></div>
             <div class="complejidad" id="m-complejidad">
-              ${COMPLEJIDAD.map(c2 => `<button data-filtros="${c2.n}"
+              ${COMPLEJIDAD().map(c2 => `<button data-filtros="${c2.n}"
                 class="${+c.maxFilters === c2.n ? "on" : ""}" title="${esc(c2.ayuda)}">
-                <b>${esc(c2.nombre)}</b><em>${c2.n === 0 ? "sólo el disparador"
-                  : c2.n === 1 ? "1 condición" : `hasta ${c2.n}`}</em></button>`).join("")}
+                <b>${esc(c2.nombre)}</b><em>${esc(c2.pie)}</em></button>`).join("")}
             </div>
             <p class="help-note" id="m-filtnote"></p>
           </div>
         </details>
 
         <details class="sect">
-          <summary><span class="sect-num n-pink">3</span>
-            <span class="sect-t"><b>Riesgo y salidas</b><em id="sum-risk">—</em></span>
+          <summary><span class="sect-num">3</span>
+            <span class="sect-t"><b>${esc(t("mine.risk"))}</b><em id="sum-risk">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
             <div class="seg full" id="rk-sizing">
-              <button data-v="risk" class="${c.sizing !== "lots" ? "on" : ""}">Riesgo % del capital</button>
-              <button data-v="lots" class="${c.sizing === "lots" ? "on" : ""}">Lotes fijos</button>
+              <button data-v="risk" class="${c.sizing !== "lots" ? "on" : ""}">${esc(t("mine.size_risk"))}</button>
+              <button data-v="lots" class="${c.sizing === "lots" ? "on" : ""}">${esc(t("mine.size_lots"))}</button>
             </div>
 
             <div class="knob mt" id="rk-risk-box" ${c.sizing === "lots" ? "hidden" : ""}>
-              <div class="knob-head"><b>Riesgo por operación</b>
+              <div class="knob-head"><b>${esc(t("mine.risk_per_trade"))}</b>
                 <span class="knob-val"><input type="number" id="rk-risk" step="0.1" min="0.1" max="10"
                   value="${c.riskPct}"><em>%</em></span></div>
               <div class="goal-presets" id="rk-risk-presets">
@@ -2088,9 +2608,9 @@ PAGES.mining = async (main) => {
             </div>
 
             <div class="knob mt" id="rk-lots-box" ${c.sizing === "lots" ? "" : "hidden"}>
-              <div class="knob-head"><b>Volumen por operación</b>
+              <div class="knob-head"><b>${esc(t("mine.volume"))}</b>
                 <span class="knob-val"><input type="number" id="rk-lots" step="0.01" min="0.01" max="100"
-                  value="${c.lots}"><em>lotes</em></span></div>
+                  value="${c.lots}"><em>${esc(t("mine.lots"))}</em></span></div>
               <div class="goal-presets" id="rk-lots-presets">
                 ${LOT_PRESETS.map(p => `<button data-v="${p}" class="${+c.lots === p ? "on" : ""}">${p}</button>`).join("")}
               </div>
@@ -2098,7 +2618,7 @@ PAGES.mining = async (main) => {
             </div>
 
             <div class="knob mt">
-              <div class="knob-head"><b>Relación riesgo / beneficio</b>
+              <div class="knob-head"><b>${esc(t("mine.rr"))}</b>
                 <span class="knob-val"><em>1 :</em><input type="number" id="rk-rr" step="0.25" min="0.25" max="10"
                   value="${c.rr}"></span></div>
               <div class="goal-presets" id="rk-rr-presets">
@@ -2107,24 +2627,29 @@ PAGES.mining = async (main) => {
               <p class="help-note" id="m-rrhelp"></p>
             </div>
 
-            <p class="stage-note mt">La <b>distancia</b> del stop no se configura: se mide en
-              volatilidad (ATR) y el minero le busca a cada estrategia el múltiplo que le sirve,
-              entre 1× y 5×. Por eso funciona igual en cualquier instrumento.</p>
+            <label class="fld mt"><span>${esc(t("mine.capital"))}</span>
+              <input type="number" step="1000" min="100" data-cfg="capital" value="${c.capital}"></label>
+
+            <!-- La comprobacion que el capital nunca hacia: con esta plata y
+                 este riesgo, la posicion que sale, ¿el broker la acepta? -->
+            <div class="realidad" id="m-realidad"></div>
+
+            <p class="stage-note mt">${t("mine.stop_note")}</p>
           </div>
         </details>
 
         <details class="sect">
-          <summary><span class="sect-num n-blue">4</span>
-            <span class="sect-t"><b>Costos del broker</b><em id="sum-cost">—</em></span>
+          <summary><span class="sect-num">4</span>
+            <span class="sect-t"><b>${esc(t("mine.costs"))}</b><em id="sum-cost">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
             <div class="fld-pair">
-              <label class="fld"><span>Spread</span><input type="number" step="0.00001" data-cfg="spread" value="${c.spread}"></label>
-              <label class="fld"><span>Slippage</span><input type="number" step="0.00001" data-cfg="slippage" value="${c.slippage}"></label>
+              <label class="fld"><span>${esc(t("mine.spread"))}</span><input type="number" step="0.00001" data-cfg="spread" value="${c.spread}"></label>
+              <label class="fld"><span>${esc(t("mine.slippage"))}</span><input type="number" step="0.00001" data-cfg="slippage" value="${c.slippage}"></label>
             </div>
             <div class="fld-pair mt">
-              <label class="fld"><span>Comisión % lado</span><input type="number" step="0.001" data-cfg="commission" value="${c.commission}"></label>
-              <label class="fld"><span>Capital</span><input type="number" step="1000" data-cfg="capital" value="${c.capital}"></label>
+              <label class="fld"><span>${esc(t("mine.commission"))}</span><input type="number" step="0.001" data-cfg="commission" value="${c.commission}"></label>
+              <label class="fld"><span>${esc(t("mine.min_lot"))}</span><input type="number" step="0.01" min="0.001" data-cfg="minLot" value="${c.minLot}"></label>
             </div>
             <div class="sugerido" id="m-sugerido" hidden></div>
             <p class="stage-note" id="m-costnote"></p>
@@ -2132,40 +2657,41 @@ PAGES.mining = async (main) => {
         </details>
 
         <details class="sect">
-          <summary><span class="sect-num n-amber">5</span>
-            <span class="sect-t"><b>Filtros de aceptación</b><em id="sum-crit">—</em></span>
+          <summary><span class="sect-num">5</span>
+            <span class="sect-t"><b>${esc(t("mine.accept"))}</b><em id="sum-crit">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
-            <p class="help-note">Una estrategia entra al databank si cumple TODO lo que esté tildado.
-              Activá sólo lo que te importe: cada filtro extra hace la búsqueda más lenta.</p>
+            <p class="help-note">${esc(t("mine.accept_help"))}</p>
             <p class="help-note" id="m-critaviso"></p>
             <div class="critlist mt">
               <div class="critrow on always">
                 <label class="crit-check"><input type="checkbox" checked disabled>
-                  <span class="crit-label">Mínimo de operaciones</span></label>
+                  <span class="crit-label">${esc(t("crit.minTrades"))}</span></label>
                 <input class="crit-val" type="number" data-cfg="minTrades" value="${c.minTrades}" min="1" step="5">
                 <span class="crit-unit"></span>
               </div>
-              ${CRITERIA.map(critRow).join("")}
+              ${CRITERIA().map(critRow).join("")}
             </div>
             <p class="help-note" id="m-crithelp"></p>
           </div>
         </details>
 
         <details class="sect">
-          <summary><span class="sect-num n-violet">6</span>
-            <span class="sect-t"><b>Avanzado</b><em id="sum-adv">—</em></span>
+          <summary><span class="sect-num">6</span>
+            <span class="sect-t"><b>${esc(t("ui.advanced"))}</b><em id="sum-adv">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
             <div class="fld-stack">
-              <label class="fld"><span>Método de búsqueda</span><select data-cfg="method">
-                ${opt("random", c.method, "Aleatorio (explora amplio)")}
-                ${opt("evolution", c.method, "Evolutivo (mejora por generaciones)")}</select></label>
-              <label class="fld"><span>Ordenar el databank por</span><select data-cfg="fitness">
-                ${opt("composite", c.fitness, "QF Score (robustez) — recomendado")}${opt("net_profit", c.fitness, "Ganancia neta")}
-                ${opt("profit_factor", c.fitness, "Profit factor")}${opt("sharpe", c.fitness, "Sharpe")}</select></label>
-              <label class="fld"><span>Tope de seguridad
-                  <span class="hint">candidatas máximas antes de rendirse</span></span>
+              <label class="fld"><span>${esc(t("mine.method"))}</span><select data-cfg="method">
+                ${opt("random", c.method, esc(t("mine.method_random")))}
+                ${opt("evolution", c.method, esc(t("mine.method_evolution")))}</select></label>
+              <label class="fld"><span>${esc(t("mine.sort_by"))}</span><select data-cfg="fitness">
+                ${opt("composite", c.fitness, `${esc(t("mine.sort_score"))} — ${esc(t("ui.recommended"))}`)}
+                ${opt("net_profit", c.fitness, esc(t("m.net")))}
+                ${opt("profit_factor", c.fitness, esc(t("m.pf")))}
+                ${opt("sharpe", c.fitness, esc(t("m.sharpe")))}</select></label>
+              <label class="fld"><span>${esc(t("mine.cap"))}
+                  <span class="hint">${esc(t("mine.cap_hint"))}</span></span>
                 <input type="number" data-cfg="maxCandidates" value="${c.maxCandidates}" min="100" step="1000"></label>
             </div>
           </div>
@@ -2174,19 +2700,19 @@ PAGES.mining = async (main) => {
 
       <div class="setup-run" id="m-runbar">
         <div class="goal-field">
-          <span>Quiero encontrar</span>
+          <span>${esc(t("mine.want"))}</span>
           <div class="goal-input">
             <input type="number" id="m-goal" value="${c.goal}" min="1" max="1000" step="1">
-            <em>estrategias que<br>cumplan los filtros</em>
+            <em>${t("mine.want_sub")}</em>
           </div>
           <div class="goal-presets" id="m-goal-presets">
             ${GOAL_PRESETS.map(g => `<button data-goal="${g}" class="${+c.goal === g ? "on" : ""}">${g}</button>`).join("")}
           </div>
         </div>
-        <button class="btn big" id="m-run">${icono("pico")} Iniciar mining</button>
+        <button class="btn big" id="m-run">${icono("pico")} ${esc(t("mine.start"))}</button>
         <div class="run-acciones" id="m-acciones" style="display:none">
-          <button class="btn ghost big" id="m-pause">${icono("pausa")} Pausar</button>
-          <button class="btn ghost big" id="m-stop">${icono("detener")} Detener</button>
+          <button class="btn ghost big" id="m-pause">${icono("pausa")} ${esc(t("mine.pause"))}</button>
+          <button class="btn ghost big" id="m-stop">${icono("detener")} ${esc(t("mine.stop"))}</button>
         </div>
         ${progressHtml("m-prog")}
       </div>
@@ -2271,8 +2797,7 @@ PAGES.mining = async (main) => {
     adoptInstrumentDefaults();          // costos del broker del mercado nuevo
     navigate("mining").then(() => {     // refresca la pastilla de contexto
       if (clamped) {
-        toast(`${ds.name.replace(/ M1.*/, "")} no cubre todo ese período — ` +
-              `las fechas se ajustaron a su historial`, "ok");
+        toast(t("note.range_clamped", { mercado: ds.name.replace(/ M1.*/, "") }), "ok");
       }
     });
   };
@@ -2338,31 +2863,73 @@ PAGES.mining = async (main) => {
       const years = (new Date(r.to) - new Date(r.from)) / (365.25 * 24 * 3600 * 1000);
       const oos = +S.cfg.oosPct;
       const base = full
-        ? `Minando <b>todo</b> el historial: ${esc(r.from)} → ${esc(r.to)}
-           (${years.toFixed(1)} años) · último precio <b>${ds.last_close}</b>`
-        : `Minando <b>${esc(r.from)} → ${esc(r.to)}</b> (${years.toFixed(1)} años de
-           ${esc(datasetBounds(ds).lo)} → ${esc(datasetBounds(ds).hi)})`;
+        ? t("note.full_history", { desde: esc(r.from), hasta: esc(r.to),
+                                   anios: years.toFixed(1), precio: ds.last_close })
+        : t("note.range", { desde: esc(r.from), hasta: esc(r.to), anios: years.toFixed(1),
+                            lo: esc(datasetBounds(ds).lo), hi: esc(datasetBounds(ds).hi) });
       // si la validación está activa, el corte se calcula sobre ESE rango
-      const corte = oos
-        ? `<br>De ese tramo, la búsqueda ve el <b>${100 - oos}%</b> inicial y el
-           <b>${oos}%</b> final queda reservado para validar.`
-        : "";
+      const corte = oos ? "<br>" + t("note.split", { mina: 100 - oos, valida: oos }) : "";
       dsNote.innerHTML = base + corte;
     }
     updateSummaries(ds);
+    /* ¿La posicion que sale de este capital y este riesgo la acepta un broker?
+
+       Es lo unico que el capital inicial deberia contestar y no contestaba.
+       Cambiarlo de 500 a 100.000 dolares no movia ni una metrica — el riesgo
+       porcentual escala todo por igual — asi que el campo parecia decorativo.
+       Lo que si cambia es el TAMANO de la posicion, y por debajo del minimo del
+       broker el minimo manda: pediste 1% y vas a arriesgar lo que el minimo
+       imponga.
+
+       Medido sobre S&P 500 con la configuracion por defecto: 10.000 dolares al
+       1% dan 0.025 lotes contra un minimo de 0.1. El minimo fuerza 4%. */
+    const chequeo = $("#m-realidad");
+    if (chequeo) {
+      const espec = ds || {};
+      const stop = espec.suggested_stop;
+      if (!ds || !stop || S.cfg.sizing === "lots") {
+        chequeo.hidden = true;
+      } else {
+        chequeo.hidden = false;
+        const plata = +S.cfg.capital * +S.cfg.riskPct / 100;
+        const unidades = plata / stop;
+        const contrato = +(espec.contract_size || 1);
+        const lotes = unidades / contrato;
+        const minimo = +S.cfg.minLot || +(espec.min_lot || 0.01);
+        const entra = lotes >= minimo;
+        // lo que el minimo del broker te obliga a arriesgar de verdad
+        const forzado = minimo * contrato * stop;
+        const pctForzado = forzado / +S.cfg.capital * 100;
+        const capitalMinimo = forzado / (+S.cfg.riskPct / 100);
+        chequeo.className = "realidad " + (entra ? "ok" : "mal");
+        chequeo.innerHTML = `
+          <div class="r-linea">${icono("info", "ico-sm")}
+            <b>${esc(t("cap.fits"))}</b></div>
+          <p>${t("cap.detail", {
+            plata: fmtMoney(plata), lotes: lotes.toFixed(3),
+            mercado: nombreCorto(ds.name) })}</p>
+          ${entra ? "" : `<p class="r-aviso">${t("cap.forced", {
+            pct: pctForzado.toFixed(1), pedido: S.cfg.riskPct,
+            minimo, capital: fmtMoney(capitalMinimo) })}</p>`}
+          <p class="help-note">${esc(t("cap.check_broker"))}</p>`;
+      }
+    }
+
     const note = $("#m-costnote");
     if (note) {
       const abs = +S.cfg.spread + 2 * +S.cfg.slippage;
       const pct = ds && ds.last_close ? abs / ds.last_close * 100 + 2 * +S.cfg.commission : null;
-      let txt = `Ida y vuelta: <b>${abs.toLocaleString(undefined, { maximumFractionDigits: 5 })}</b> de precio`;
+      let txt = t("note.round_trip", {
+        abs: abs.toLocaleString(localeNum(), { maximumFractionDigits: 5 }) });
       if (pct != null) txt += ` ≈ <b>${pct.toFixed(3)}%</b>`;
-      txt += ". Debe coincidir con tu broker.";
+      txt += ". " + t("note.match_broker");
       // un costo así se come cualquier estrategia: todas dan -100%
       const bad = pct != null && pct > 1;
       if (bad) {
-        txt = `<b class="neg">${icono("alerta")} Costo imposible: ${pct.toFixed(1)}% por operación.</b>
-          Parece el spread de otro instrumento — con esto ninguna estrategia puede ganar.
-          <button class="linkbtn" id="fix-cost">Usar los de ${esc(ds.name.replace(/ M1.*/, ""))}</button>`;
+        txt = `<b class="neg">${icono("alerta")} ${esc(t("note.impossible_cost", { pct: pct.toFixed(1) }))}</b>
+          ${esc(t("note.impossible_cost_sub"))}
+          <button class="linkbtn" id="fix-cost">${esc(t("note.use_defaults",
+            { mercado: ds.name.replace(/ M1.*/, "") }))}</button>`;
       }
       note.classList.toggle("danger", bad);
       note.innerHTML = txt;
@@ -2388,16 +2955,15 @@ PAGES.mining = async (main) => {
       } else {
         sug.hidden = false;
         const mercado = esc(ds.name.replace(/ M1.*/, ""));
-        const num = (v) => (+v).toLocaleString("es-AR", { maximumFractionDigits: 5 });
+        const num = (v) => (+v).toLocaleString(localeNum(), { maximumFractionDigits: 5 });
         const igual = Math.abs(+S.cfg.spread - refSpread) < 1e-9;
         sug.innerHTML = igual
           ? `<span class="sg-ok">${icono("tilde","ico-sm")}</span>
-             <div>Es el spread típico de <b>${mercado}</b>: ${num(refSpread)}.
-               Cambialo si tu broker te cobra otro.</div>`
+             <div>${t("note.typical_ok", { mercado, spread: num(refSpread) })}</div>`
           : `<span class="sg-ojo">${icono("info","ico-sm")}</span>
-             <div>Estás usando <b>${num(S.cfg.spread)}</b>. El típico de
-               <b>${mercado}</b> es <b>${num(refSpread)}</b>.
-               <button class="linkbtn" id="usar-sugerido">Usar el típico</button></div>`;
+             <div>${t("note.typical_diff", { actual: num(S.cfg.spread),
+               mercado, tipico: num(refSpread) })}
+               <button class="linkbtn" id="usar-sugerido">${esc(t("note.use_typical"))}</button></div>`;
         const usar = $("#usar-sugerido", sug);
         if (usar) usar.onclick = () => {
           // se borra el valor propio: pedir el sugerido es decir que el de uno
@@ -2414,12 +2980,10 @@ PAGES.mining = async (main) => {
     if (riskHelp) {
       const cap = +S.cfg.capital, v = +S.cfg.riskPct;
       const streak = lossStreakCost(v, 10);
-      riskHelp.innerHTML =
-        `Cada operación pone en juego <b>${v}%</b> ≈ <b>$${(cap * v / 100).toFixed(0)}</b> de tus
-         $${fmtInt(cap)}; el tamaño de la posición se calcula solo para que tocar el stop cueste
-         exactamente eso. <br>Multiplica en la misma proporción la ganancia y la caída de
-         cualquier estrategia que encuentres: <b>10 pérdidas seguidas</b> se llevan el
-         <b>${streak.toFixed(0)}%</b> de la cuenta.`;
+      riskHelp.innerHTML = t("help.risk", {
+        pct: v, plata: (cap * v / 100).toFixed(0), capital: fmtInt(cap),
+        racha: streak.toFixed(0),
+      });
       riskHelp.classList.toggle("danger-note", streak >= 25);
     }
 
@@ -2430,12 +2994,10 @@ PAGES.mining = async (main) => {
     // está puesta.
     const critAviso = $("#m-critaviso");
     if (critAviso) {
-      const activos = CRITERIA.filter(cr => S.cfg.critOn[cr.key]).length;
-      critAviso.innerHTML = activos ? "" :
-        `<b class="neg">${icono("alerta")} No hay ningún filtro de calidad tildado.</b> Con sólo
-         <b>${S.cfg.minTrades}+ operaciones</b> entra casi cualquier candidata: el
-         databank se llena en segundos con estrategias que pierden plata. Los
-         números de abajo no se aplican hasta que tildes su casilla.`;
+      const activos = CRITERIA().filter(cr => S.cfg.critOn[cr.key]).length;
+      critAviso.innerHTML = activos ? ""
+        : `<b class="neg">${icono("alerta")} ${esc(t("help.no_crit_title"))}</b> ${
+            t("help.no_crit", { n: S.cfg.minTrades })}`;
     }
 
     const critHelp = $("#m-crithelp");
@@ -2445,23 +3007,16 @@ PAGES.mining = async (main) => {
       } else {
         const rr = +S.cfg.rr, be = 100 / (1 + rr), pedido = +S.cfg.minWinRate;
         critHelp.innerHTML = pedido <= be
-          ? `<b class="neg">${icono("alerta")} ${pedido}% de aciertos no alcanza para ganar plata</b> con
-             relación 1:${rr}: el punto de equilibrio está en <b>${be.toFixed(0)}%</b>.
-             Por debajo de ahí, acertar más veces sigue dando pérdida.`
-          : `Con relación 1:${rr} el equilibrio está en <b>${be.toFixed(0)}%</b>, así que
-             pedís <b>${(pedido - be).toFixed(0)} puntos</b> de ventaja.${
-               pedido - be > 15 ? " Es una vara muy alta: probá bajarla si no aparece nada."
-                                : ""}`;
+          ? `<b class="neg">${icono("alerta")} ${esc(t("help.wr_impossible_title", { pct: pedido }))}</b> ${
+              t("help.wr_impossible", { rr, be: be.toFixed(0) })}`
+          : t("help.wr_ok", { rr, be: be.toFixed(0), ventaja: (pedido - be).toFixed(0) })
+            + (pedido - be > 15 ? " " + t("help.wr_high") : "");
       }
     }
 
     const lotsHelp = $("#m-lotshelp");
     if (lotsHelp) {
-      lotsHelp.innerHTML =
-        `Siempre <b>${S.cfg.lots}</b> lote(s), pase lo que pase. Lo que arriesgás por operación
-         deja de ser fijo: depende de la volatilidad del momento, porque el stop se mueve con
-         el ATR. A cambio, el volumen es un número redondo que cualquier broker acepta sin
-         recalcular nada — que es donde algunos CFDs se traban.`;
+      lotsHelp.innerHTML = t("help.lots", { lots: S.cfg.lots });
     }
 
     const rrHelp = $("#m-rrhelp");
@@ -2469,12 +3024,11 @@ PAGES.mining = async (main) => {
       const rr = +S.cfg.rr;
       // el break-even sale de la relación: con 1:2 alcanza con acertar 1 de 3
       const be = 100 / (1 + rr);
-      rrHelp.innerHTML =
-        `El objetivo vale <b>${rr}×</b> lo que arriesgás: ganás <b>$${(+S.cfg.capital * +S.cfg.riskPct / 100 * rr).toFixed(0)}</b>
-         cuando acertás y perdés <b>$${(+S.cfg.capital * +S.cfg.riskPct / 100).toFixed(0)}</b> cuando no.
-         Te alcanza con acertar <b>${be.toFixed(0)}%</b> de las veces para empatar.
-         <br>Cuanto más lejos el objetivo, menos veces se acierta: el minero tiene que
-         encontrar entradas que superen esa vara.`;
+      rrHelp.innerHTML = t("help.rr", {
+        rr, be: be.toFixed(0),
+        gana: (+S.cfg.capital * +S.cfg.riskPct / 100 * rr).toFixed(0),
+        pierde: (+S.cfg.capital * +S.cfg.riskPct / 100).toFixed(0),
+      });
     }
   }
 
@@ -2482,46 +3036,51 @@ PAGES.mining = async (main) => {
      entera sin tener que abrirlas una por una */
   function updateSummaries(ds) {
     const set = (id, txt) => { const el = $(`#${id}`, main); if (el) el.textContent = txt; };
-    const dirLbl = { long: "solo largos", short: "solo cortos", both: "largos y cortos" };
-    set("sum-market", (ds ? `${ds.name.replace(/ M1.*/, "")} · ${S.sel.timeframe} · ${dirLbl[S.cfg.direction]}` : "—") +
-      (+S.cfg.oosPct ? ` · valida ${S.cfg.oosPct}%` : ""));
-    // el resumen del desplegable: se ve sin abrirlo
+    const ses = sesionesElegidas();
+    set("sum-market", (ds ? `${ds.name.replace(/ M1.*/, "")} · ${S.sel.timeframe} · ${
+      t("dir." + S.cfg.direction).toLowerCase()}` : "—")
+      // la franja va en el resumen del desplegable cerrado porque cambia por
+      // completo lo que la búsqueda puede encontrar, y no se ve sin abrirlo
+      + (ses.length === 1 && ses[0] !== "todo" ? ` · ${nombreSesion(ses[0])}`
+         : ses.length > 1 ? ` · ${t("sum.sessions", { n: ses.length })}` : "")
+      + (+S.cfg.oosPct ? ` · ${t("sum.oos_short", { pct: S.cfg.oosPct })}` : ""));
     set("sum-oos", +S.cfg.oosPct
-      ? `mina ${100 - +S.cfg.oosPct}% · valida ${S.cfg.oosPct}%` : "");
+      ? t("mine.oos_split", { mina: 100 - +S.cfg.oosPct, valida: S.cfg.oosPct }).toLowerCase() : "");
 
     const drv = $$("#m-drivers .blockitem input", main).filter(x => x.checked).length;
     const flt = $$("#m-filters .blockitem input", main).filter(x => x.checked).length;
-    const compl = COMPLEJIDAD.find(c => c.n === +S.cfg.maxFilters);
-    set("sum-blocks", `${drv} disparadores · ${flt} filtros · complejidad ${
-      (compl ? compl.nombre : S.cfg.maxFilters).toString().toLowerCase()}`);
+    const compl = COMPLEJIDAD().find(c => c.n === +S.cfg.maxFilters);
+    set("sum-blocks", t("sum.blocks", {
+      drv, flt, compl: (compl ? compl.nombre : S.cfg.maxFilters).toString().toLowerCase() }));
 
     // qué significa el número, con los valores que el usuario tiene puestos
     const fn = $("#m-filtnote");
     if (fn) {
       const n = +S.cfg.maxFilters;
-      fn.innerHTML = !flt
-        ? `Sin filtros marcados, cada estrategia es sólo su disparador de entrada.`
-        : n === 0
-          ? `En <b>mínima</b>, los filtros marcados no se usan: cada estrategia entra
-             sólo con su disparador.`
-          : `Marcaste <b>${flt} filtros</b>. Cada candidata elige al azar
-             <b>entre 0 y ${n}</b> de ellos y los exige a la vez. Más filtros por
-             estrategia hace reglas más específicas —y más fáciles de ajustar al
-             pasado sin que sirvan después.`;
+      fn.innerHTML = !flt ? t("sum.no_filters")
+        : n === 0 ? t("sum.minimal_ignores", { nombre: COMPLEJIDAD()[0].nombre.toLowerCase() })
+        : t("sum.filters_note", { flt, n });
     }
 
-    set("sum-risk", `${S.cfg.sizing === "lots" ? `${S.cfg.lots} lotes fijos` : `${S.cfg.riskPct}% por operación`}` +
-      ` · relación 1:${S.cfg.rr} · stop por volatilidad`);
+    set("sum-risk", (S.cfg.sizing === "lots"
+      ? t("sum.lots", { lots: S.cfg.lots }) : t("sum.risk", { pct: S.cfg.riskPct }))
+      + ` · 1:${S.cfg.rr} · ${t("sum.vol_stop_short")}`);
 
-    set("sum-cost", `spread ${S.cfg.spread} · slippage ${S.cfg.slippage} · capital $${fmtInt(S.cfg.capital)}`);
+    set("sum-cost", t("sum.costs", {
+      spread: S.cfg.spread, slip: S.cfg.slippage, cap: fmtInt(S.cfg.capital) }));
 
-    const on = CRITERIA.filter(cr => S.cfg.critOn[cr.key]);
+    /* Con el valor y no sólo el nombre del filtro. Decía "Profit factor" a
+       secas, que al lado de "30+ operaciones" se lee como una frase cortada —
+       y encima es el único de los seis resúmenes que no mostraba su número. */
+    const on = CRITERIA().filter(cr => S.cfg.critOn[cr.key]);
     set("sum-crit", on.length
-      ? `${S.cfg.minTrades}+ trades · ${on.map(cr => cr.label.replace(/ [≥≤]$/, "")).join(" · ")}`
-      : `sólo ${S.cfg.minTrades}+ operaciones — el resto sin filtrar`);
+      ? `${S.cfg.minTrades}+ ${t("m.trades").toLowerCase()} · ${
+          on.map(cr => `${cr.label} ${S.cfg[cr.key]}${cr.unit || ""}`).join(" · ")}`
+      : t("sum.only_trades", { n: S.cfg.minTrades }));
 
-    set("sum-adv", `${S.cfg.method === "evolution" ? "evolutivo" : "aleatorio"} · ` +
-      `tope ${fmtInt(S.cfg.maxCandidates)} candidatas`);
+    set("sum-adv", `${S.cfg.method === "evolution"
+      ? t("sum.method_evo_short") : t("sum.method_rnd_short")} · ${
+      t("sum.cap_short", { n: fmtInt(S.cfg.maxCandidates) })}`);
   }
   /* objetivo: input y atajos, siempre en sincronía */
   const goalInput = $("#m-goal", main);
@@ -2544,6 +3103,7 @@ PAGES.mining = async (main) => {
     updateNotes();
   });
 
+  cablearSesiones(main);
   updateNotes();
   if (fixed) {
     toast(fixed.badCost
@@ -2552,6 +3112,13 @@ PAGES.mining = async (main) => {
   }
   if (S.mineResult || S.mineLive) renderMining(S.mineResult || S.mineLive, !!S.mineResult);
   else renderIdle();
+
+  /* Si hay una busqueda corriendo, la pantalla recien dibujada tiene que
+     mostrarla. Sin esto el boton volvia a decir "Iniciar minado" con la
+     busqueda en curso: no habia como detenerla, y apretarlo lanzaba una
+     SEGUNDA encima de la primera. */
+  pintarEstadoMinado(S.mining);
+  if (S.mining) pintarPausa(S.minePaused);
 
   $("#m-stop").onclick = async () => {
     if (S.mineJobId) {
@@ -2573,9 +3140,7 @@ PAGES.mining = async (main) => {
     try {
       const r = await api.post(`/api/jobs/${S.mineJobId}/pause`, { paused: !S.minePaused });
       pintarPausa(r.paused);
-      toast(r.paused
-        ? "En pausa — se guarda dónde iba, no se pierde nada"
-        : "Sigue la búsqueda");
+      toast(r.paused ? t("run.paused_toast") : t("run.resumed_toast"));
     } catch (e) { toast(e.message, "err"); }
     btn.disabled = false;
   };
@@ -2588,16 +3153,10 @@ PAGES.mining = async (main) => {
     const checked = (sel) => $$(`${sel} .blockitem input`, main)
       .filter(cb => cb.checked).map(cb => cb.dataset.tid);
     const drivers = checked("#m-drivers");
-    if (!drivers.length) { toast("Elegí al menos un disparador de entrada", "err"); return; }
+    if (!drivers.length) { toast(t("mine.need_trigger"), "err"); return; }
     S.mining = true; S.mineResult = null; S.mineLive = null;
-    // el punto de la barra lateral late mientras haya corrida: es la única
-    // señal de que algo pasa si el usuario se fue a otra pantalla
-    $("#nav [data-page='mining']")?.classList.add("minando");
-    $("#m-run").disabled = true;
-    $("#m-acciones").style.display = "";
+    pintarEstadoMinado(true);
     pintarPausa(false);
-    $("#m-runbar")?.classList.add("running");
-    lockSetup(true);
     // pintar el estado "buscando" YA: el primer snapshot del backend tarda
     // varios segundos en un dataset grande y sin esto la app parece colgada
     renderMining({ seed: "—", tested: 0, passed: 0, rejected: 0, kept: 0,
@@ -2614,6 +3173,7 @@ PAGES.mining = async (main) => {
         target_keep: cfg.goal, keep_top: Math.max(cfg.goal, 100),
         oos_pct: +cfg.oosPct || 0,
         max_candidates: cfg.maxCandidates, max_filters: cfg.maxFilters,
+        sessions: sesionesElegidas(),
         method: cfg.method, population: 40,
         direction: cfg.direction, min_trades: cfg.minTrades, fitness: cfg.fitness,
         // un filtro sin tildar viaja como null: el backend lo ignora
@@ -2643,18 +3203,13 @@ PAGES.mining = async (main) => {
       if (result.stopped) toast(`Detenido — ${kept} estrategias, guardadas en el Databank`, "ok");
       else if (result.reached_goal)
         toast(`${kept} estrategias en ${fmtDur(result.elapsed_s)} — quedaron en el Databank`, "ok");
-      else toast(`Se probaron ${fmtInt(result.tested)} y sólo ${kept} pasaron los filtros`, "err");
+      else toast(t("run.few_passed", { n: fmtInt(result.tested), kept }), "err");
       if (result.podadas) {
-        toast(`El banco estaba lleno: se soltaron las ${result.podadas} corridas más viejas`);
+        toast(t("bank.pruned", { n: result.podadas }));
       }
     } catch (e) { toast(e.message, "err"); hideProgress("m-prog"); }
     S.mining = false; S.mineJobId = null; S.minePaused = false;
-    $("#nav [data-page='mining']")?.classList.remove("minando");
-    const run = $("#m-run"), acciones = $("#m-acciones");
-    if (run) run.disabled = false;
-    if (acciones) acciones.style.display = "none";
-    $("#m-runbar")?.classList.remove("running");
-    lockSetup(false);
+    pintarEstadoMinado(false);
   };
 };
 
@@ -2665,7 +3220,8 @@ function pintarPausa(on) {
   S.minePaused = !!on;
   const btn = $("#m-pause");
   if (!btn) return;
-  btn.innerHTML = on ? `${icono("seguir")} Seguir` : `${icono("pausa")} Pausar`;
+  btn.innerHTML = on ? `${icono("seguir")} ${esc(t("mine.resume"))}`
+                     : `${icono("pausa")} ${esc(t("mine.pause"))}`;
   btn.classList.toggle("pausado", !!on);
   $("#m-runbar")?.classList.toggle("pausado", !!on);
   $("#nav [data-page='mining']")?.classList.toggle("pausado", !!on);
@@ -2677,37 +3233,49 @@ function renderIdle() {
   const live = $("#m-live"), bankBox = $("#m-bank");
   if (!live) return;
   const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
-  const on = CRITERIA.filter(cr => S.cfg.critOn[cr.key]);
+  const on = CRITERIA().filter(cr => S.cfg.critOn[cr.key]);
+  const ses = sesionesElegidas();
   live.innerHTML = `
   <div class="idle-card">
     <div class="idle-ready">
       <span class="idle-ic">${icono("pico","ico-xl")}</span>
       <div>
-        <h2>Listo para minar</h2>
-        <p>Vas a buscar <b>${S.cfg.goal} estrategias</b> sobre
-          <b>${esc(ds ? ds.name.replace(/ M1.*/, "") : "—")}</b> en velas de
-          <b>${esc(S.sel.timeframe || "1h")}</b>, ${S.cfg.sizing === "lots"
-            ? `con <b>${S.cfg.lots} lotes fijos</b>` : `arriesgando <b>${S.cfg.riskPct}%</b> por operación`}
-          y relación <b>1:${S.cfg.rr}</b>.
-          Entran al databank las que hagan <b>${S.cfg.minTrades}+ operaciones</b>${
-            on.length ? ` y cumplan: ${on.map(cr => `<b>${esc(cr.label)} ${S.cfg[cr.key]}${cr.unit}</b>`).join(", ")}` : ""}.</p>
-        ${on.length ? "" : `<p class="idle-warn">Sin filtros activos entra cualquier estrategia,
-          incluso las que pierden plata. Tildá <b>Profit factor ≥ 1</b> en la sección 5 para
-          quedarte sólo con las ganadoras.</p>`}
+        <h2>${esc(t("idle.title"))}</h2>
+        <p>${t("idle.plan", {
+          goal: S.cfg.goal,
+          mercado: esc(ds ? ds.name.replace(/ M1.*/, "") : "—"),
+          tf: esc(S.sel.timeframe || "1h"),
+          tamano: S.cfg.sizing === "lots"
+            ? t("sum.lots", { lots: S.cfg.lots }) : t("sum.risk", { pct: S.cfg.riskPct }),
+          rr: S.cfg.rr,
+          trades: S.cfg.minTrades,
+        })}${on.length
+          ? " " + t("idle.and_meet", {
+              lista: on.map(cr => `<b>${esc(cr.label)} ${S.cfg[cr.key]}${cr.unit}</b>`).join(", ") })
+          : ""}</p>
+        ${ses.length === 1 && ses[0] !== "todo"
+          ? `<p class="idle-ses">${icono("info","ico-sm")} ${esc(t("idle.session_one",
+              { nombre: nombreSesion(ses[0]), horas: horasSesion(ses[0]) }))}</p>`
+          : ses.length > 1
+            ? `<p class="idle-ses">${icono("info","ico-sm")} ${esc(t("idle.session_many", { n: ses.length }))}</p>`
+            : ""}
+        ${on.length ? "" : `<p class="idle-warn">${t("idle.no_filters")}</p>`}
       </div>
     </div>
     <div class="guide-steps">
-      <div class="gstep"><span class="gnum g-indigo">1</span><b>Se arma una candidata</b>
-        <p>Combina al azar un disparador de entrada, filtros de contexto y los parámetros de cada indicador.</p></div>
-      <div class="gstep"><span class="gnum g-teal">2</span><b>Se backtestea entera</b>
-        <p>Sobre todos los años de datos reales, con tus costos y tu modelo de riesgo.</p></div>
-      <div class="gstep"><span class="gnum g-pink">3</span><b>Pasa o se descarta</b>
-        <p>Si cumple los filtros entra al databank ordenada por fitness; si no, se tira y se prueba otra.</p></div>
-      <div class="gstep"><span class="gnum g-amber">4</span><b>Se repite sin parar</b>
-        <p>Hasta juntar las ${S.cfg.goal} que pediste. Cada una se puede inspeccionar y exportar a MetaTrader.</p></div>
+      <div class="gstep"><span class="gnum">1</span><b>${esc(t("idle.s1"))}</b>
+        <p>${esc(t("idle.s1_sub"))}</p></div>
+      <div class="gstep"><span class="gnum">2</span><b>${esc(t("idle.s2"))}</b>
+        <p>${esc(t("idle.s2_sub"))}</p></div>
+      <div class="gstep"><span class="gnum">3</span><b>${esc(t("idle.s3"))}</b>
+        <p>${esc(t("idle.s3_sub"))}</p></div>
+      <div class="gstep"><span class="gnum">4</span><b>${esc(t("idle.s4"))}</b>
+        <p>${esc(t("idle.s4_sub", { goal: S.cfg.goal }))}</p></div>
     </div>
   </div>`;
   if (bankBox) bankBox.innerHTML = "";
+  // arranca una busqueda nueva: lo que se vio en la anterior no cuenta
+  S.vistasBanco = null;
 }
 
 /* Cuánto sobrevivió la ventaja fuera de muestra. Es la única columna del
@@ -2717,14 +3285,56 @@ function oosCell(r) {
   const oos = r.oos;
   if (!oos) return `<span class="muted">—</span>`;
   if (!oos.trades) {
-    return `<span class="oos-tag none" title="No operó en el tramo reservado: no hay nada que validar">sin datos</span>`;
+    return `<span class="oos-tag none" title="${esc(t("col.oos_nodata_help"))}"
+      >${esc(t("col.oos_nodata"))}</span>`;
   }
   const q = r.oos_ratio;
   const cls = q >= 0.8 ? "good" : q >= 0.5 ? "mid" : "bad";
-  const etiqueta = q >= 0.8 ? "se sostiene" : q >= 0.5 ? "se debilita" : "se cae";
+  const etiqueta = q >= 0.8 ? t("col.oos_holds") : q >= 0.5 ? t("col.oos_weakens") : t("col.oos_falls");
   return `<span class="oos-tag ${cls}"
-    title="Profit factor ${fmtNum(oos.profit_factor)} fuera de muestra contra ${fmtNum(r.metrics.profit_factor)} adentro · ${oos.trades} operaciones · ${fmtPct(oos.net_profit_pct)}">
-    <b>${fmtNum(q, 2)}×</b><em>${etiqueta}</em></span>`;
+    title="PF ${fmtNum(oos.profit_factor)} / ${fmtNum(r.metrics.profit_factor)} · ${oos.trades} ${esc(t("m.trades").toLowerCase())} · ${fmtPct(oos.net_profit_pct)}">
+    <b>${fmtNum(q, 2)}×</b><em>${esc(etiqueta)}</em></span>`;
+}
+
+/* Los parámetros de una estrategia, en una línea.
+
+   Se arma acá y no se usa el `genes_label` que guardó el minero porque ese
+   texto quedó congelado en el idioma que había cuando se minó. Los datos
+   crudos —los genes, el stop, el trailing— viajan igual en la fila, así que
+   la etiqueta se puede volver a escribir en el idioma que corresponda.
+
+   Las estrategias guardadas antes de esto no traen los genes sueltos: para
+   ésas se usa el texto viejo, que es mejor que no mostrar nada. */
+function etiquetaGenes(r) {
+  if (!r) return "";
+  if (!r.genes) return r.genes_label || "";
+  const partes = [];
+  for (const id of [r.driver, ...(r.filters || [])]) {
+    const vals = r.genes[id];
+    if (!vals) continue;
+    const kv = Object.keys(vals).sort().map(k => `${k}=${(+vals[k])}`).join(",");
+    if (kv) partes.push(kv);
+  }
+  if (r.stop_mult != null) partes.push(`SL=${r.stop_mult}×ATR`);
+  if (r.trail_mult) partes.push(`${t("gene.trail")}=${r.trail_mult}×ATR`);
+  if (r.max_bars) partes.push(t("gene.max_bars", { n: r.max_bars }));
+  // la franja NO va acá: ya tiene su propia etiqueta al lado del nombre, y
+  // repetirla hace la línea más larga sin decir nada nuevo
+  return partes.join(" · ");
+}
+
+/* La franja horaria de una fila, como etiqueta al lado del nombre.
+
+   Va ahí y no en una columna propia porque la tabla tiene ocho a propósito
+   (ver el comentario de la tabla) y agregar una novena la mandaría de vuelta
+   al scroll horizontal. Sólo aparece cuando la estrategia está restringida:
+   "todo el día" es la ausencia de horario y no vale una etiqueta. */
+function sesionTag(r) {
+  const id = r && r.session;
+  if (!id || id === "todo") return "";
+  const horas = r.session_hours || horasSesion(id);
+  return `<span class="ses-tag" title="${esc(t("m.session"))}: ${esc(nombreSesion(id))}${
+    horas ? ` · ${esc(horas)}` : ""}">${esc(nombreSesion(id))}</span>`;
 }
 
 /* Columnas ordenables del databank.
@@ -2792,24 +3402,23 @@ function buscandoHtml(snap) {
       <span class="pulso"><i></i><i></i><i></i></span>
       <div>
         <b class="contador" data-valor="${probadas}">${fmtInt(probadas)}</b>
-        <span>candidatas probadas${snap.passed
-          ? ` · <b class="pos">${fmtInt(snap.passed)}</b> aceptadas` : ""}</span>
+        <span>${esc(t("busca.tested"))}${snap.passed
+          ? ` · <b class="pos">${fmtInt(snap.passed)}</b> ${esc(t("busca.accepted"))}` : ""}</span>
       </div>
     </div>
     ${barras.length ? `
       <div class="buscando-motivos">
-        <span class="bm-tit">Por qué se caen</span>
-        ${barras.map(([etiqueta, n]) => `
+        <span class="bm-tit">${esc(t("busca.why"))}</span>
+        ${barras.map(([clave, n]) => `
           <div class="bm-fila">
-            <span class="bm-lab">${esc(etiqueta)}</span>
+            <span class="bm-lab">${esc(nombreDeRechazo(clave))}</span>
             <span class="bm-track"><i style="width:${(n / tope * 100).toFixed(0)}%"></i></span>
             <span class="bm-n">${fmtInt(n)}</span>
           </div>`).join("")}
       </div>`
-      : `<p class="bm-tit" style="margin-top:16px">Preparando indicadores…</p>`}
+      : `<p class="bm-tit" style="margin-top:16px">${esc(t("run.preparing"))}</p>`}
     ${consejo(snap)}
-    <p class="buscando-pie">Las que pasen la vara van apareciendo acá. Podés
-      dejarlo corriendo y volver.</p>
+    <p class="buscando-pie">${esc(t("busca.foot"))}</p>
   </div>`;
 }
 
@@ -2824,10 +3433,75 @@ function buscandoHtml(snap) {
    Se muestra recién con una muestra suficiente. Con veinte candidatas el filtro
    que más descarta todavía es ruido, y recomendar sobre ruido manda a aflojar
    el que no era. */
+/* Por qué el databank está vacío, y qué aflojar.
+
+   El texto se arma acá y no en el servidor aunque el servidor ya lo mande
+   hecho: viene en español, y esta pantalla existe en dos idiomas. El servidor
+   manda los datos —qué criterio, cuánto se pidió, hasta dónde llegó, cuántas
+   se cayeron sólo por ése— y la frase la escribe quien sabe en qué idioma
+   está mirando el usuario. */
+function textoDiagnostico(d) {
+  if (!d || !d.reason) return "";
+  if (d.reason === "trades") {
+    const ses = d.sessions || [];
+    return t("diag.trades", { n: d.tested, min: d.min_trades })
+      + (ses.length
+         ? " " + t("diag.trades_session", { franjas: ses.map(nombreSesion).join(", ") })
+         : "");
+  }
+  const nombre = nombreDeRechazo(d.reason);
+  const cerca = (d.near_miss || {})[d.reason];
+  if (cerca) {
+    return t("diag.near", {
+      n: cerca, criterio: nombre,
+      pedido: fmtNum(d.limit, 2), llego: fmtNum(d.best_reached, 2),
+    });
+  }
+  if (d.best_reached == null) return "";
+  return t("diag.far", {
+    criterio: nombre, n: d.rejected,
+    pedido: fmtNum(d.limit, 2), llego: fmtNum(d.best_reached, 2),
+  });
+}
+
+/* "Pediste 20% anual y el techo de este mercado es 5%": qué haría falta y qué
+   costaría. Los números los calcula el minero —CAGR y drawdown escalan casi
+   lineal con el riesgo por operación, medido— y la frase se arma acá, en el
+   idioma que corresponda. */
+function sugerenciaRiesgo(sug) {
+  if (!sug) return "";
+  const unidad = sug.size_mode === "risk_pct" ? t("sug.per_trade") : t("sug.notional");
+  const cuerpo = sug.unreachable
+    ? t("sug.unreachable", {
+        factor: fmtNum(sug.factor, 0),
+        haria: fmtNum(sug.current * sug.factor, 1),
+        realista: sug.realistic_target,
+        unidad, subir: fmtNum(sug.current * 4, 1),
+      })
+    : t("sug.reachable", {
+        unidad, actual: sug.current, necesario: sug.needed,
+        factor: fmtNum(sug.factor, 1),
+        ddahora: fmtNum(sug.dd_now, 0), ddluego: fmtNum(sug.dd_projected, 0),
+      });
+  const aviso = sug.unreachable ? t("sug.warn_market")
+    : sug.dd_projected >= 45 ? t("sug.warn_dd") : "";
+  return `<div class="suggestion mt">
+    <div class="sug-title">${icono("idea")} ${esc(t("sug.title"))}</div>
+    <p>${cuerpo}</p>
+    ${aviso ? `<p class="sug-warn">${icono("alerta")} ${esc(aviso)}</p>` : ""}
+    ${sug.unreachable
+      ? `<button class="btn small mt" id="apply-target" data-target="${sug.realistic_target}">${
+          esc(t("sug.apply_target", { n: sug.realistic_target }))}</button>`
+      : `<button class="btn small mt" id="apply-risk" data-needed="${sug.needed}">${
+          esc(t("sug.apply_risk", { n: sug.needed }))}</button>`}
+  </div>`;
+}
+
 function consejo(snap) {
   const d = snap.diagnosis || {};
-  if (!d.text || (snap.tested || 0) < 60) return "";
-  return `<div class="consejo"><span class="c-ic">${icono("idea")}</span><div>${d.text}</div></div>`;
+  const txt = textoDiagnostico(d);
+  if (!txt || (snap.tested || 0) < 60) return "";
+  return `<div class="consejo"><span class="c-ic">${icono("idea")}</span><div>${txt}</div></div>`;
 }
 
 function cablearOrden(raiz) {
@@ -2885,7 +3559,7 @@ function renderMining(snap, finished) {
     const activa = s.key === key;
     const flecha = activa ? (s.dir === -1 ? icono("baja","ico-sm") : icono("sube","ico-sm")) : "";
     return `<th class="num orden ${activa ? "activa" : ""}" data-sort="${key}"
-      title="${esc(ayuda)}${activa ? "" : " · clic para ordenar"}">${label}<i>${flecha}</i></th>`;
+      title="${esc(ayuda)}${activa ? "" : ` · ${esc(t("col.click_sort"))}`}">${label}<i>${flecha}</i></th>`;
   };
 
   const goal = snap.target_keep || null;
@@ -2899,28 +3573,21 @@ function renderMining(snap, finished) {
   let banner = "";
   if (finished && snap.stopped) {
     banner = `<div class="banner info"><span class="b-ic">${icono("detener")}</span><div>
-      <b>Búsqueda detenida por vos.</b> ${bank.length === 1
-        ? "La estrategia que ya había entrado al databank sigue"
-        : `Las ${bank.length} estrategias que ya habían entrado al databank siguen`}
-      acá abajo, lista${bank.length === 1 ? "" : "s"} para inspeccionar o exportar.</div></div>`;
+      ${t("run.stopped", { n: bank.length })}</div></div>`;
   } else if (finished && snap.exhausted) {
     banner = `<div class="banner"><span class="b-ic">${icono("info")}</span><div>
-      <b>Se agotaron las combinaciones posibles</b> con los bloques que marcaste.
-      Marcá más bloques en la sección 2 o subí el máximo de filtros para ampliar el espacio.</div></div>`;
+      ${t("run.exhausted")}</div></div>`;
   } else if (finished && snap.hit_cap) {
     banner = `<div class="banner"><span class="b-ic">${icono("alerta")}</span><div>
-      <b>Se llegó al tope de seguridad de ${fmtInt(snap.target)} candidatas</b> con
-      ${bank.length} de ${goal} estrategias. Tus filtros son muy exigentes para este mercado:
-      destildá alguno en la sección 5, cambiá las salidas en la 3, o subí el tope en Avanzado
-      si querés que siga buscando más tiempo.</div></div>`;
-  } else if (!finished && !bank.length && snap.tested >= 20 && snap.diagnosis?.text) {
+      ${t("run.hit_cap", { tope: fmtInt(snap.target), n: bank.length, goal })}</div></div>`;
+  } else if (!finished && !bank.length && snap.tested >= 20 && textoDiagnostico(snap.diagnosis)) {
     // no esperar al final para explicar por qué no entra ninguna: el usuario
     // puede aflojar el filtro ahora mismo en vez de mirar un cero por minutos
-    banner = `<div class="banner"><span class="b-ic">${icono("diana")}</span><div>${snap.diagnosis.text}</div></div>`;
+    banner = `<div class="banner"><span class="b-ic">${icono("diana")}</span><div>${
+      textoDiagnostico(snap.diagnosis)}</div></div>`;
   } else if (finished && goal && snap.reached_goal) {
     banner = `<div class="banner ok"><span class="b-ic">${icono("tilde")}</span><div>
-      <b>Objetivo cumplido.</b> ${goal} estrategias que cumplen todos los filtros, encontradas
-      probando ${fmtInt(snap.tested)} candidatas en ${fmtDur(snap.elapsed_s)}.</div></div>`;
+      ${t("run.reached", { goal, probadas: fmtInt(snap.tested), tiempo: fmtDur(snap.elapsed_s) })}</div></div>`;
   }
 
   const goalCard = `
@@ -2928,30 +3595,31 @@ function renderMining(snap, finished) {
     <div class="ring">${Charts.ringSvg(frac)}
       <div class="ring-label">
         <b>${goal ? `${kept}/${goal}` : fmtInt(snap.tested)}</b>
-        <span>${goal ? "en el databank" : "probadas"}</span>
+        <span>${goal ? esc(t("run.in_bank")) : esc(t("run.tested"))}</span>
       </div>
     </div>
     <div class="goal-side">
       <div class="goal-title">
-        <h2>${finished ? "Búsqueda terminada" : "Buscando estrategias"}</h2>
+        <h2>${esc(finished ? t("run.done") : t("run.searching"))}</h2>
         ${finished ? "" : `<span class="mining-live">
           <span class="scanner"><i></i><i></i><i></i><i></i><i></i></span>
-          ${snap.tested ? `probando candidata #${fmtInt(snap.tested + 1)}` : "preparando indicadores…"}
+          ${esc(snap.tested ? t("run.trying", { n: fmtInt(snap.tested + 1) })
+                            : t("run.preparing"))}
         </span>`}
       </div>
       <div class="goal-sub">${goal
-        ? `No se detiene hasta juntar <b>${goal}</b> que cumplan la vara — faltan <b>${Math.max(goal - kept, 0)}</b>.`
-        : `Probando candidatas hasta llegar a <b>${fmtInt(snap.target)}</b>.`}
-        · semilla <b>${snap.seed}</b> para reproducir esta corrida</div>
+        ? t("run.until", { goal, faltan: Math.max(goal - kept, 0) })
+        : t("run.until_cap", { n: fmtInt(snap.target) })}
+        · ${t("run.seed", { seed: snap.seed })}</div>
       ${varaAplicada(snap)}
       <div class="statgrid">
-        <div class="stat"><span>Probadas</span><b>${fmtInt(snap.tested)}</b></div>
-        <div class="stat"><span>Con ganancia</span><b class="${winners ? "pos" : "neg"}">${winners}<u>de ${bank.length}</u></b></div>
-        <div class="stat"><span>Tasa de éxito</span><b>${snap.tested ? (snap.passed / snap.tested * 100).toFixed(1) : "0.0"}<u>%</u></b></div>
-        <div class="stat"><span>${finished ? "Duración" : "Transcurrido"}</span><b>${fmtDur(snap.elapsed_s)}</b></div>
-        ${!finished && goal ? `<div class="stat"><span>Falta aprox.</span><b>${
+        <div class="stat"><span>${esc(t("run.tested"))}</span><b>${fmtInt(snap.tested)}</b></div>
+        <div class="stat"><span>${esc(t("run.profitable"))}</span><b class="${winners ? "pos" : "neg"}">${winners}<u>${esc(t("ui.of"))} ${bank.length}</u></b></div>
+        <div class="stat"><span>${esc(t("run.hit_rate"))}</span><b>${snap.tested ? (snap.passed / snap.tested * 100).toFixed(1) : "0.0"}<u>%</u></b></div>
+        <div class="stat"><span>${esc(finished ? t("run.duration") : t("run.elapsed"))}</span><b>${fmtDur(snap.elapsed_s)}</b></div>
+        ${!finished && goal ? `<div class="stat"><span>${esc(t("run.eta"))}</span><b>${
           snap.eta_s != null ? fmtDur(snap.eta_s) : "—"}</b></div>` : ""}
-        <div class="stat"><span>Ritmo</span><b>${rate ? rate.toFixed(2) : "—"}<u>acept./s</u></b></div>
+        <div class="stat"><span>${esc(t("run.rate"))}</span><b>${rate ? rate.toFixed(2) : "—"}<u>${esc(t("run.per_sec"))}</u></b></div>
       </div>
       ${banner}
     </div>
@@ -2959,22 +3627,22 @@ function renderMining(snap, finished) {
 
   const champCardHtml = champ ? `<div class="champ" id="champ-card">
     <div>
-      <div class="champ-tag">${finished ? `${icono("estrella")} Mejor QF Score` : `${icono("estrella")} Mejor hasta ahora`}</div>
-      <h2>${esc(champ.name)} ${scoreBadge(champ.score, "big")}</h2>
+      <div class="champ-tag">${icono("estrella")} ${esc(finished ? t("run.best") : t("run.best_so_far"))}</div>
+      <h2>${esc(champ.name)} ${scoreBadge(champ.score, "big")}${sesionTag(champ)}</h2>
       <div class="champ-blocks">${esc(champ.blocks || "")}</div>
-      <div class="champ-genes">${esc(champ.genes_label)}</div>
+      <div class="champ-genes">${esc(etiquetaGenes(champ))}</div>
       <div class="champ-spark">${Charts.sparkSvg(champ.spark, { width: 240, height: 54 })}</div>
       ${scoreBars(champ.score_parts)}
-      <div class="champ-cta">Ver análisis completo →</div>
+      <div class="champ-cta">${esc(t("run.open_full"))} →</div>
     </div>
     <div class="champ-metrics">
-      <div><span>Anual (CAGR)</span><b class="${champ.metrics.cagr_pct >= 0 ? "pos" : "neg"}">${fmtPct(champ.metrics.cagr_pct)}</b></div>
-      <div><span>Total ${champ.metrics.years ? `${fmtNum(champ.metrics.years, 1)} años` : ""}</span><b class="${champ.metrics.net_profit_pct >= 0 ? "pos" : "neg"}">${fmtPct(champ.metrics.net_profit_pct)}</b></div>
-      <div><span>Profit factor</span><b>${fmtNum(champ.metrics.profit_factor)}</b></div>
-      <div><span>Sharpe</span><b>${fmtNum(champ.metrics.sharpe)}</b></div>
-      <div><span>Max DD</span><b class="neg">${fmtNum(champ.metrics.max_drawdown_pct, 1)}%</b></div>
-      <div><span>En mercado</span><b>${fmtNum(champ.metrics.exposure_pct ?? 0, 1)}%</b></div>
-      <div><span>Trades</span><b>${champ.metrics.trades}</b></div>
+      <div><span>${esc(t("m.cagr"))}</span><b class="${champ.metrics.cagr_pct >= 0 ? "pos" : "neg"}">${fmtPct(champ.metrics.cagr_pct)}</b></div>
+      <div><span>${esc(t("m.net"))} ${champ.metrics.years ? `${fmtNum(champ.metrics.years, 1)} ${esc(t("m.years").toLowerCase())}` : ""}</span><b class="${champ.metrics.net_profit_pct >= 0 ? "pos" : "neg"}">${fmtPct(champ.metrics.net_profit_pct)}</b></div>
+      <div><span>${esc(t("m.pf"))}</span><b>${fmtNum(champ.metrics.profit_factor)}</b></div>
+      <div><span>${esc(t("m.sharpe"))}</span><b>${fmtNum(champ.metrics.sharpe)}</b></div>
+      <div><span>${esc(t("m.dd"))}</span><b class="neg">${fmtNum(champ.metrics.max_drawdown_pct, 1)}%</b></div>
+      <div><span>${esc(t("m.exposure"))}</span><b>${fmtNum(champ.metrics.exposure_pct ?? 0, 1)}%</b></div>
+      <div><span>${esc(t("m.trades"))}</span><b>${champ.metrics.trades}</b></div>
     </div>
   </div>` : "";
 
@@ -2990,7 +3658,7 @@ function renderMining(snap, finished) {
      El orden entre progreso y campeón se invierte al terminar. Se hace con CSS
      y no moviendo nodos, porque mover un nodo lo repinta igual que recrearlo. */
   const histHtml = snap.best_history?.length > 1 ? `<div class="card">
-       <h2>Evolución del mejor fitness <span class="hint">cómo fue mejorando la búsqueda</span></h2>
+       <h2>${esc(t("run.history"))} <span class="hint">${esc(t("run.history_hint"))}</span></h2>
        <div class="chart-box short" id="m-hist"></div></div>` : "";
 
   if (!live.dataset.partido) {
@@ -3007,7 +3675,26 @@ function renderMining(snap, finished) {
     el.dataset.h = html;
     return true;
   };
-  pintar("#m-goal", goalCard);
+  /* La tarjeta del objetivo se reescribe entera sólo cuando cambió algo que
+     no sea el anillo. Si se reescribiera siempre, el SVG del anillo seria un
+     nodo nuevo en cada vuelta y su transicion no tendria desde donde animar:
+     se veria saltar de un valor al siguiente. Moviendo el anillo por separado,
+     avanza. */
+  const anillo = $("#m-goal .ring", live);
+  const movido = anillo && !finished && Charts.ringUpdate(anillo, frac);
+  if (!movido) pintar("#m-goal", goalCard);
+  else {
+    // el numero de al lado sigue al anillo, sin rehacer la tarjeta
+    const cifra = $("#m-goal .ring-label b", live);
+    const texto = goal ? `${kept}/${goal}` : fmtInt(snap.tested);
+    if (cifra && cifra.textContent !== texto) {
+      cifra.textContent = texto;
+      cifra.classList.remove("sube");
+      void cifra.offsetWidth;          // reinicia la animacion
+      cifra.classList.add("sube");
+    }
+    $("#m-goal", live).dataset.h = goalCard;   // que el proximo cambio real entre
+  }
   pintar("#m-champ", champCardHtml);
   pintar("#m-histbox", histHtml);
 
@@ -3022,20 +3709,19 @@ function renderMining(snap, finished) {
 
   const splitNote = snap.split ? `
     <div class="banner info mt" style="margin-bottom:14px">
-      <span class="b-ic">${icono("marcador")}</span><div>
-        <b>Validado fuera de muestra.</b> La búsqueda usó
-        ${esc(snap.split.is_from)} → ${esc(snap.split.is_to)}
-        (${fmtInt(snap.split.is_bars)} velas) y cada estrategia se volvió a correr sobre
-        ${esc(snap.split.oos_from)} → ${esc(snap.split.oos_to)}
-        (${fmtInt(snap.split.oos_bars)} velas) que nunca vio.
-        La columna <b>Fuera de muestra</b> es la que dice si la ventaja era real.</div>
+      <span class="b-ic">${icono("marcador")}</span><div>${t("run.split_note", {
+        desde: esc(snap.split.is_from), hasta: esc(snap.split.is_to),
+        velas: fmtInt(snap.split.is_bars),
+        odesde: esc(snap.split.oos_from), ohasta: esc(snap.split.oos_to),
+        ovelas: fmtInt(snap.split.oos_bars),
+        columna: t("col.oos_full"),
+      })}</div>
     </div>` : "";
 
   const bankHtml = `
   <div class="card">
     ${splitNote}
-    <h2>Databank <span class="hint">${bank.length} estrategias ordenadas por QF Score
-      (robustez, no rentabilidad) · clic en cualquiera para analizarla a fondo</span></h2>
+    <h2>${esc(t("nav.bank"))} <span class="hint">${esc(t("run.bank_hint", { n: bank.length }))}</span></h2>
     ${bank.length ? `<div class="databank-wrap"><table>
       <!-- OCHO COLUMNAS, NO DIECISEIS.
            La tabla tenia dieciseis y por eso necesitaba scroll horizontal: para
@@ -3046,21 +3732,23 @@ function renderMining(snap, finished) {
            compara de un vistazo; una que no, se lee de a pedazos. -->
       <thead><tr>
         <th>#</th>
-        <th>Estrategia</th>
-        <th>Capital</th>
-        ${th("score", "Score", "Puntaje propio de robustez: qué tan repetible parece la estrategia, no cuánto rindió.")}
-        ${th("cagr", "Anual", "Rendimiento ANUALIZADO: cuánto rindió por año, en promedio compuesto. Es el que sirve para comparar estrategias que corrieron distinta cantidad de tiempo.")}
-        ${th("pf", "PF", "Profit factor: cuántos dólares ganó por cada dólar que perdió. Debajo de 1 la estrategia pierde plata.")}
-        ${th("dd", "Máx. DD", "Máxima caída: lo peor que llegó a bajar la cuenta desde un pico hasta el fondo. Es lo que hay que poder aguantar sin cerrar todo.")}
-        ${th("trades", "Ops.", "Cantidad de operaciones. Pocas operaciones hacen que cualquier métrica sea poco confiable.")}
-        ${th("months", "Meses +", "Porcentaje de meses cerrados en ganancia. Alto significa que gana seguido, no de un solo golpe.")}
-        ${snap.split ? th("oos", "Fuera<br>de muestra", "Profit factor fuera de muestra dividido por el de adentro. Cerca de 1 la ventaja se sostuvo; cerca de 0 la estrategia sólo describía el pasado.") : ""}
+        <th>${esc(t("col.strategy"))}</th>
+        <th>${esc(t("col.equity"))}</th>
+        ${th("score", esc(t("m.score")), t("col.score_help"))}
+        ${th("cagr", esc(t("col.annual")), t("crit.minCagr"))}
+        ${th("pf", "PF", t("crit.minPf"))}
+        ${th("dd", esc(t("col.maxdd")), t("crit.maxDd"))}
+        ${th("trades", esc(t("col.ops")), t("col.ops_help"))}
+        ${th("months", esc(t("col.months_plus")), t("col.months_help"))}
+        ${snap.split ? th("oos", esc(t("col.oos")), t("col.oos_help")) : ""}
       </tr></thead>
       <tbody>${bank.map((r, i) => {
         const m = r.metrics;
-        return `<tr class="clickable" data-row="${i}">
+        // la clave del genoma, para poder distinguir una fila nueva de una
+        // que ya estaba: el indice no sirve, cambia al reordenarse el banco
+        return `<tr class="clickable" data-row="${i}" data-key="${esc(r.id || "")}">
           <td class="rank-cell"><span class="rank">${String(i + 1).padStart(2, "0")}</span></td>
-          <td><span class="strat-name">${esc(r.name)}</span></td>
+          <td><span class="strat-name">${esc(r.name)}</span>${sesionTag(r)}</td>
           <td class="spark-cell">${Charts.sparkSvg(r.spark)}</td>
           <td class="num">${scoreCell(r.score)}</td>
           <td class="num ${m.cagr_pct >= 0 ? "pos" : "neg"}"><b>${fmtPct(m.cagr_pct)}</b></td>
@@ -3073,25 +3761,12 @@ function renderMining(snap, finished) {
       }).join("")}</tbody></table></div>`
       : !finished ? buscandoHtml(snap)
       : `<div class="empty-state">
-           <div class="big">ðŸ”</div>
-           <b>${fmtInt(snap.tested)} probadas, ninguna pasó los filtros.</b>
-           ${snap.diagnosis?.text ? `<p class="mt">${snap.diagnosis.text}</p>` : ""}
-           ${snap.diagnosis?.suggestion ? `
-             <div class="suggestion mt">
-               <div class="sug-title">${icono("idea")} Cómo llegar a ese objetivo</div>
-               <p>${snap.diagnosis.suggestion.text}</p>
-               ${snap.diagnosis.suggestion.warning
-                 ? `<p class="sug-warn">${icono("alerta")} ${esc(snap.diagnosis.suggestion.warning)}</p>` : ""}
-               ${snap.diagnosis.suggestion.unreachable
-                 ? `<button class="btn small mt" id="apply-target"
-                      data-target="${snap.diagnosis.suggestion.realistic_target}">
-                      Fijar objetivo en ${snap.diagnosis.suggestion.realistic_target}% anual y volver a minar</button>`
-                 : `<button class="btn small mt" id="apply-risk"
-                      data-needed="${snap.diagnosis.suggestion.needed}">
-                      Subir a ${snap.diagnosis.suggestion.needed}% y volver a minar</button>`}
-             </div>` : ""}
-           <p class="mt muted">También podés destildar filtros en la sección 5, o cambiar las
-             salidas en la 3 — eso cambia por completo qué estrategias funcionan.</p>
+           <div class="big">${icono("diana", "ico-xl")}</div>
+           <b>${esc(t("empty.none_passed", { n: fmtInt(snap.tested) }))}</b>
+           ${textoDiagnostico(snap.diagnosis)
+             ? `<p class="mt">${textoDiagnostico(snap.diagnosis)}</p>` : ""}
+           ${sugerenciaRiesgo(snap.diagnosis?.suggestion)}
+           <p class="mt muted">${esc(t("empty.also"))}</p>
          </div>`}
   </div>`;
 
@@ -3117,6 +3792,32 @@ function renderMining(snap, finished) {
 
     $$("[data-row]", bankBox).forEach(tr => tr.onclick = () => openInspector(bank[+tr.dataset.row]));
     cablearOrden(bankBox);
+
+    /* Las estrategias que llegaron en esta vuelta entran con un desliz.
+
+       Va aca y no antes: la tabla se pinta unas lineas mas arriba, y correrlo
+       antes marcaba las filas de la vuelta ANTERIOR — una animacion que
+       llegaba tarde y sobre la estrategia equivocada.
+
+       No es decoracion. Durante una busqueda larga la tabla se redibuja cada
+       pocos segundos y una fila nueva aparecia sin mas, indistinguible de las
+       que ya estaban. El desliz contesta lo unico que uno mira mientras espera
+       — ¿encontro algo? — sin tener que acordarse de lo que habia hace
+       tres segundos. */
+    if (!finished) {
+      const primera = !S.vistasBanco;
+      S.vistasBanco = S.vistasBanco || new Set();
+      $$("tr[data-key]", bankBox).forEach(fila => {
+        const k = fila.dataset.key;
+        if (!k || S.vistasBanco.has(k)) return;
+        S.vistasBanco.add(k);
+        // en la primera pintada ya hay filas: marcarlas todas seria una
+        // cascada sin sentido
+        if (primera) return;
+        fila.classList.add("llegando");
+        setTimeout(() => fila.classList.remove("llegando"), 700);
+      });
+    }
   }
 
   /* Aplica una sugerencia y vuelve a minar.
@@ -3145,7 +3846,7 @@ function renderMining(snap, finished) {
   // evalúa ANTES de aplicar el cambio y mostraría el valor viejo
   if (applyRisk) applyRisk.onclick = () => aplicarSugerencia(
     () => { S.cfg.riskPct = +applyRisk.dataset.needed; },
-    `Riesgo ${+applyRisk.dataset.needed}% — buscando de nuevo`);
+    t("sug.risk_again", { pct: +applyRisk.dataset.needed }));
 
   const applyTarget = $("#apply-target", bankBox);
   if (applyTarget) applyTarget.onclick = () => {
@@ -3154,14 +3855,212 @@ function renderMining(snap, finished) {
       S.cfg.minCagr = +applyTarget.dataset.target;
       S.cfg.critOn.minCagr = true;
       S.cfg.riskPct = Math.round(sug.current * 4 * 10) / 10;
-    }, `Objetivo ${+applyTarget.dataset.target}% anual — buscando de nuevo`);
+    }, t("sug.target_again", { pct: +applyTarget.dataset.target }));
   };
 }
 
-/* ------------------------------------------------------------- inspector */
-/* ``ctx`` permite abrir una estrategia GUARDADA sobre el instrumento y los
-   costos con los que se minó, en vez de los que estén configurados ahora en
-   Mining — que pueden ser de otro mercado por completo. */
+function panelNota(ctx) {
+  if (!ctx || !ctx.strategy_id) return "";
+  return `<section id="insp-nota">
+    <h3>${esc(t("note.title"))}</h3>
+    <textarea id="nota-txt" class="nota-campo" rows="3"
+      placeholder="${esc(t("note.placeholder"))}">${esc(ctx.notes || "")}</textarea>
+    <div class="nota-pie">
+      <button class="btn ghost small" id="nota-guardar">${esc(t("note.save"))}</button>
+      <span class="nota-estado" id="nota-estado"></span>
+    </div>
+  </section>`;
+}
+
+/* Las tres vistas de la curva, cuando la corrida reservo un tramo.
+
+   No se calcula nada nuevo: el inspector ya sabe re-correr un backtest sobre
+   un rango, y la corrida ya guardo las fechas del corte. Lo unico que faltaba
+   era ofrecerlo. */
+function cablearMuestras(box, row, ctx) {
+  const host = $("#insp-muestras", box);
+  if (!host) return;
+  const sp = ctx && ctx.split;
+  if (!sp || !sp.oos_from) { host.hidden = true; return; }
+  host.hidden = false;
+
+  const VISTAS = [
+    { id: "is",    desde: sp.is_from,  hasta: sp.is_to },
+    { id: "oos",   desde: sp.oos_from, hasta: sp.oos_to },
+    { id: "todo",  desde: sp.is_from,  hasta: sp.oos_to },
+  ];
+  host.innerHTML = `<div class="muestras" role="tablist">
+      ${VISTAS.map((v, i) => `<button role="tab" data-m="${v.id}"
+        class="${i === 2 ? "on" : ""}" aria-selected="${i === 2}">
+        ${esc(t("ms." + v.id))}</button>`).join("")}
+    </div>
+    <p class="ms-pie" id="ms-pie"></p>`;
+
+  const pintar = async (id) => {
+    const v = VISTAS.find(x => x.id === id);
+    $$("[data-m]", host).forEach(b => {
+      const on = b.dataset.m === id;
+      b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on));
+    });
+    const lienzo = $("#insp-eq", box);
+    lienzo.style.opacity = ".45";
+    try {
+      const { result } = await api.post("/api/backtest", {
+        dataset_id: ctx.dataset_id, timeframe: ctx.timeframe,
+        date_from: v.desde, date_to: v.hasta,
+        spec: row.spec, settings: ctx.settings,
+      });
+      Charts.equity(lienzo, {
+        values: result.equity,
+        labels: result.timestamps.map(x => String(x).slice(0, 10)),
+        initial: result.equity[0], height: 320,
+        // la marca del corte sólo tiene sentido en la vista completa
+        marca: id === "todo" ? String(sp.oos_from).slice(0, 10) : null,
+        marcaTexto: id === "todo" ? t("ms.marca") : "",
+      });
+      const m = result.metrics;
+      $("#ms-pie", host).innerHTML = t("ms.resumen", {
+        desde: esc(String(v.desde).slice(0, 10)), hasta: esc(String(v.hasta).slice(0, 10)),
+        cagr: fmtPct(m.cagr_pct), dd: fmtNum(m.max_drawdown_pct, 1),
+        pf: fmtNum(m.profit_factor, 2), n: fmtInt(m.trades),
+      }) + (id === "todo" ? " " + t("ms.corte") : "");
+    } catch (e) {
+      /* El tramo reservado puede quedar demasiado corto para volver a
+         correrlo: con validación al 20% sobre un histórico diario son unos
+         pocos cientos de velas, y los indicadores necesitan 500 para tener
+         historia. No es un fallo, es una consecuencia de la configuración —
+         así que se dice en esos términos y no con el error del servidor. */
+      const corto = /velas|bars/i.test(e.message || "");
+      $("#ms-pie", host).innerHTML = corto
+        ? `<span class="ms-corto">${icono("info","ico-sm")} ${esc(t("ms.muy_corto"))}</span>`
+        : esc(e.message);
+      // sin datos nuevos, el gráfico anterior seguiría en pantalla como si
+      // fuera el de esta vista
+      lienzo.innerHTML = `<div class="empty-state">${esc(t("ms.sin_curva"))}</div>`;
+    }
+    lienzo.style.opacity = "1";
+  };
+
+  $$("[data-m]", host).forEach(b => b.onclick = () => pintar(b.dataset.m));
+  pintar("todo");
+}
+
+function cablearNota(box, ctx) {
+  const btn = $("#nota-guardar", box);
+  if (!btn || !ctx || !ctx.strategy_id) return;
+  const campo = $("#nota-txt", box);
+  const estado = $("#nota-estado", box);
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      const r = await api.post(`/api/strategies/${ctx.strategy_id}/nota`,
+                               { notes: campo.value });
+      // el contexto se actualiza para que reabrir el inspector sin recargar
+      // la lista no muestre la nota vieja
+      ctx.notes = r.notes;
+      estado.textContent = t("note.saved");
+      toast(t("note.saved"), "ok");
+    } catch (e) { toast(e.message, "err"); }
+    btn.disabled = false;
+  };
+}
+
+/* ==================================================== EL VEREDICTO ARRIBA ===
+   Lo primero que se lee dentro de una estrategia, antes que cualquier número.
+
+   "Aguantó fuera de muestra en 3 de 4 tramos" se entiende sin saber qué es un
+   tramo. "Eficiencia 0.62" no se entiende sin que te lo expliquen, y era lo
+   único que la pantalla anterior mostraba grande.
+
+   Cuando todavía no se probó, este mismo lugar es la invitación a hacerlo: un
+   botón y una frase de por qué conviene. Es lo que convierte una lista de
+   estrategias en algo que tiene un siguiente paso. */
+function panelPrueba(ctx) {
+  if (!AVANZADO) return "";
+  if (!ctx || !ctx.strategy_id) return "";       // una fila del banco no se prueba
+  const v = ctx.validacion || {};
+  if (!v.estado) {
+    return `<section class="prueba-invita">
+      <div>
+        <h3>${esc(t("wf.untested"))}</h3>
+        <p class="help-note">${esc(t("wf.untested_sub"))}</p>
+      </div>
+      <button class="btn" id="insp-probar">${esc(t("wf.test_it"))}</button>
+    </section>`;
+  }
+
+  const ui = ESTADO_UI[v.estado] || ESTADO_UI.no_paso;
+  const mc = v.mc;
+  return `<section class="veredicto v-${ui.cls}">
+    <div class="v-cabeza">
+      <span class="v-ic">${icono(ui.ico, "ico-lg")}</span>
+      <div>
+        <b>${esc(t("est." + v.estado))}</b>
+        <p>${esc(fraseVeredicto(v))}</p>
+      </div>
+      <button class="btn ghost small" id="insp-probar">${esc(t("wf.retest"))}</button>
+    </div>
+
+    <div class="v-datos">
+      <div class="metric"><span>${esc(t("wf.m_efficiency"))}
+          <em title="${esc(t("wf.m_efficiency_help"))}">?</em></span>
+        <b>${fmtNum(v.eficiencia, 2)}</b></div>
+      <div class="metric"><span>${esc(t("wf.m_consistency"))}</span>
+        <b>${v.tramos_ganadores}/${v.tramos}</b></div>
+      <div class="metric"><span>${esc(t("wf.m_oos_return"))}</span>
+        <b class="${(v.retorno_fuera_pct ?? 0) >= 0 ? "pos" : "neg"}">${
+          fmtPct(v.retorno_fuera_pct)}</b></div>
+      ${mc ? `<div class="metric"><span>${esc(t("wf.m_bad_run"))}
+          <em title="${esc(t("wf.m_bad_run_help"))}">?</em></span>
+        <b class="neg">${fmtNum(mc.dd_malo_pct, 1)}%</b></div>` : ""}
+    </div>
+
+    <p class="v-pie">${t("wf.tested_on", {
+      desde: esc(v.periodo?.from || "—"), hasta: esc(v.periodo?.to || "—"),
+      cuando: esc(String(v.probada || "").slice(0, 10)) })}</p>
+    ${mc && mc.ruina_pct > 10 ? `<div class="banner warn">
+      <span class="b-ic">${icono("alerta")}</span>
+      <div>${t("wf.ruin_warn", { pct: fmtNum(mc.ruina_pct, 1) })}</div></div>` : ""}
+  </section>`;
+}
+
+/* Abre la ficha de una estrategia: el backtest se recalcula entero en el
+   momento, no se guarda. La fila del databank trae metricas resumidas; aca
+   hacen falta la curva, el mes a mes y las operaciones. */
+/* Las salidas de la estrategia, dichas como se dicen.
+
+   La cabecera mostraba el genoma tal cual sale del minero:
+
+       RSI reversal \u00b7 level=45,period=23 \u00b7 SL=3\u00d7ATR \u00b7 trail=1.5\u00d7ATR \u00b7 m\u00e1x 12 velas
+
+   Eso es la notacion interna de la busqueda. En la primera linea de la ficha,
+   para alguien que abrio la aplicacion esta semana, no dice nada \u2014 y es lo
+   primero que ve cada vez que entra a una estrategia.
+
+   Los valores crudos no se pierden: siguen enteros en "Reglas de la
+   estrategia", que es la seccion donde alguien los va a buscar a proposito. */
+function salidasEnCastellano(row) {
+  const p = [];
+  // del spec y no de la fila: una guardada no arrastra stop_mult ni max_bars
+  // en su meta, pero su risk siempre está — es lo que se va a exportar
+  const rk = (row.spec && row.spec.risk) || {};
+  const stop = row.stop_mult != null ? row.stop_mult
+    : (rk.stop_type === "atr" ? rk.stop_value : null);
+  const trail = row.trail_mult || rk.trail_atr || 0;
+  const velas = row.max_bars || rk.max_bars_in_trade || 0;
+  if (stop != null) p.push(t("sal.stop", { n: fmtNum(stop, 2) }));
+  if (rk.reward_ratio) p.push(t("sal.rr", { n: fmtNum(rk.reward_ratio, 2) }));
+  if (trail) p.push(t("sal.trail", { n: fmtNum(trail, 2) }));
+  if (velas) p.push(t("sal.max_bars", { n: fmtInt(velas) }));
+  if (row.session && row.session !== "todo") {
+    const h = row.session_hours;
+    p.push(idioma() === "en" && row.session_label_en
+      ? row.session_label_en + (h ? ` (${h})` : "")
+      : (row.session_label || "") + (h ? ` (${h})` : ""));
+  }
+  return p.length ? esc(p.join(" \u00b7 ")) : esc(t("sal.ninguna"));
+}
+
 async function openInspector(row, ctx) {
   if (!row) return;
   const host = document.createElement("div");
@@ -3169,13 +4068,14 @@ async function openInspector(row, ctx) {
   host.innerHTML = `<div class="sheet">
     <div class="sheet-head">
       <div><h2>${esc(row.name)} ${ctx
-        ? `<span class="badge">${esc(ctx.etiqueta || "guardada")}</span>`
+        ? `<span class="badge">${esc(ctx.etiqueta || t("nav.saved"))}</span>`
         : `<span class="badge">fitness ${fmtNum(row.fitness, 3)}</span>`}</h2>
-        <p>${esc(row.blocks || "")} · <span style="font-family:ui-monospace">${esc(row.genes_label)}</span></p></div>
-      <button class="sheet-close">${icono("cerrar")}</button>
+        <p>${esc(row.blocks || "")}</p>
+        <p class="sh-salidas">${salidasEnCastellano(row)}</p></div>
+      <button class="sheet-close" aria-label="${esc(t("ui.close"))}">${icono("cerrar")}</button>
     </div>
     <div id="insp-body"><div class="empty-state"><span class="spinner"></span>
-      Recalculando el backtest completo…</div></div>
+      ${esc(t("insp.recalculating"))}</div></div>
   </div>`;
   document.body.appendChild(host);
   const close = () => host.remove();
@@ -3187,19 +4087,19 @@ async function openInspector(row, ctx) {
 
   try {
     const cfg = S.cfg;
-    // sin bloque risk: el spec ya trae el stop que el minero encontró para
-    // ESTA estrategia — mandar el genérico daría métricas distintas a las
+    // sin bloque risk: el spec ya trae el stop que el minero encontro para
+    // ESTA estrategia — mandar el generico daria metricas distintas a las
     // que muestra el databank
     const { result } = ctx ? await api.post("/api/backtest", {
       dataset_id: ctx.dataset_id, timeframe: ctx.timeframe,
-      // el mismo tramo que se midió al guardarla; sin esto corría sobre toda
-      // la historia y devolvía otra estrategia con el mismo nombre
+      // el mismo tramo que se midio al guardarla; sin esto corria sobre toda
+      // la historia y devolvia otra estrategia con el mismo nombre
       ...(ctx.date_from ? { date_from: ctx.date_from, date_to: ctx.date_to } : {}),
       spec: row.spec, settings: ctx.settings,
     }) : await api.post("/api/backtest", {
       dataset_id: S.sel.dataset_id, timeframe: S.sel.timeframe || "1h",
-      // el mismo tramo que se minó: si no, la curva del inspector no
-      // coincidiría con la fila del databank que el usuario acaba de clickear
+      // el mismo tramo que se mino: si no, la curva del inspector no
+      // coincidiria con la fila del databank que se acaba de clickear
       ...rangePayload(),
       spec: row.spec,
       settings: {
@@ -3210,19 +4110,31 @@ async function openInspector(row, ctx) {
     renderInspector($("#insp-body", host), row, result, ctx);
   } catch (e) {
     $("#insp-body", host).innerHTML =
-      `<div class="empty-state neg">No se pudo recalcular: ${esc(e.message)}</div>`;
+      `<div class="empty-state neg">${esc(t("insp.failed"))}: ${esc(e.message)}</div>`;
   }
 }
 
-const INSPECT_METRICS = [
-  ["cagr_pct", "Rendimiento anual", "pct"], ["net_profit_pct", "Rendimiento total", "pct"],
-  ["exposure_pct", "Tiempo en mercado", "raw"], ["cagr_exposed_pct", "Anual s/ exposición", "raw"],
-  ["profit_factor", "Profit factor", "n"], ["sharpe", "Sharpe", "n"],
-  ["sortino", "Sortino", "n"], ["max_drawdown_pct", "Max drawdown", "dd"],
-  ["recovery_factor", "Recovery", "n"], ["win_rate_pct", "Win rate", "raw"],
-  ["trades", "Trades", "int"], ["avg_trade", "Trade promedio", "money"],
-  ["avg_win", "Ganancia promedio", "money"], ["avg_loss", "Pérdida promedio", "loss"],
-  ["expectancy_r", "Expectancy (R)", "n"], ["final_equity", "Capital final", "money"],
+/* Las metricas de la ficha, en el orden en que se miran: primero cuanto
+   rindio, despues a costa de que, y al final el detalle de las operaciones.
+   Es una funcion y no una constante porque los rotulos salen del diccionario,
+   que cambia al cambiar de idioma. */
+const INSPECT_METRICS = () => [
+  ["cagr_pct", t("m.cagr"), "pct"],
+  ["net_profit_pct", t("m.net"), "pct"],
+  ["exposure_pct", t("m.exposure"), "raw"],
+  ["cagr_exposed_pct", t("m.cagr_exposed"), "raw"],
+  ["profit_factor", t("m.pf"), "n"],
+  ["sharpe", t("m.sharpe"), "n"],
+  ["recovery_factor", t("m.retdd"), "n"],
+  ["max_drawdown_pct", t("m.dd"), "dd"],
+  ["win_rate_pct", t("m.winrate"), "raw"],
+  ["trades", t("m.trades"), "int"],
+  ["trades_per_month", t("m.trades_month"), "n"],
+  ["avg_trade", t("m.avg_trade"), "money"],
+  ["avg_win", t("m.avg_win"), "money"],
+  ["avg_loss", t("m.avg_loss"), "loss"],
+  ["expectancy_r", t("m.expectancy"), "n"],
+  ["final_equity", t("m.final_equity"), "money"],
 ];
 
 function renderInspector(box, row, res, ctx) {
@@ -3233,11 +4145,8 @@ function renderInspector(box, row, res, ctx) {
      dos cosas distintas sin saberlo. */
   const avisoRango = ctx && ctx.sinRango ? `
     <div class="banner warn" style="margin-bottom:16px"><span class="b-ic">${icono("alerta")}</span><div>
-      <b>Esta estrategia se guardó sin registrar el período.</b> Lo que ves acá se
-      calculó sobre <b>toda la historia</b> del instrumento, así que puede no coincidir
-      con las métricas de la lista, que salieron del tramo que minaste.
-      Volvé a minarla y guardala de nuevo para que queden atadas.</div></div>` : "";
-  const metricCards = INSPECT_METRICS.map(([k, label, kind]) => {
+      ${t("insp.no_range")}</div></div>` : "";
+  const metricCards = INSPECT_METRICS().map(([k, label, kind]) => {
     const v = m[k];
     let txt = fmtNum(v), cls = "";
     if (kind === "pct") { txt = fmtPct(v); cls = v >= 0 ? "pos" : "neg"; }
@@ -3257,10 +4166,10 @@ function renderInspector(box, row, res, ctx) {
   const trades = (res.trades || []).slice(-120).reverse();
   const monthly = res.monthly_returns || [];
 
-  box.innerHTML = avisoRango + `
+  box.innerHTML = avisoRango + panelPrueba(ctx) + `
   <section>
-    <h3>QF Score <span style="text-transform:none;font-weight:400">— qué tan repetible parece,
-      no cuánto rindió</span></h3>
+    <h3>${esc(t("m.score"))} <span style="text-transform:none;font-weight:400">— ${
+      esc(t("insp.score_sub"))}</span></h3>
     <div class="score-panel">
       <div class="score-big">${scoreBadge(res.score, "huge")}</div>
       <div class="score-detail">
@@ -3271,33 +4180,38 @@ function renderInspector(box, row, res, ctx) {
   </section>
 
   <section>
-    <h3>Métricas completas</h3>
+    <h3>${esc(t("insp.metrics"))}</h3>
     <div class="metrics-grid">${metricCards}</div>
   </section>
 
+
   <section>
-    <h3>Curva de capital y caídas</h3>
+    <h3>${esc(t("insp.equity"))}</h3>
+    <!-- las tres vistas, sólo si la corrida reservó un tramo -->
+    <div id="insp-muestras" hidden></div>
     <div class="chart-box tall" id="insp-eq"></div>
   </section>
 
   ${monthly.length ? `<section>
-    <h3>Retornos mensuales</h3>
+    <h3>${esc(t("insp.monthly"))}</h3>
     <div class="scroll-x" id="insp-monthly"></div>
   </section>` : ""}
 
   <section>
-    <h3>Reglas de la estrategia</h3>
-    ${rules(row.spec.entry_long, "Entrada larga")}
-    ${rules(row.spec.entry_short, "Entrada corta")}
+    <h3>${esc(t("insp.rules"))}</h3>
+    ${rules(row.spec.entry_long, t("insp.long_entry"))}
+    ${rules(row.spec.entry_short, t("insp.short_entry"))}
     <div class="stage-note">${esc(riskSummary(row.spec.risk))}</div>
   </section>
 
   <section>
-    <h3>Operaciones <span style="text-transform:none;font-weight:400">(últimas ${trades.length} de ${res.trades.length})</span></h3>
+    <h3>${esc(t("m.trades"))} <span style="text-transform:none;font-weight:400">${
+      esc(t("insp.last_n", { n: trades.length, total: res.trades.length }))}</span></h3>
     <div class="table-scroll"><table>
-      <thead><tr><th>Entrada</th><th>Salida</th><th>Dir</th>
-        <th class="num">Precio ent.</th><th class="num">Precio sal.</th>
-        <th class="num">Resultado</th><th class="num">%</th><th class="num">Barras</th><th>Motivo</th></tr></thead>
+      <thead><tr><th>${esc(t("tr.in"))}</th><th>${esc(t("tr.out"))}</th><th>${esc(t("tr.dir"))}</th>
+        <th class="num">${esc(t("tr.price_in"))}</th><th class="num">${esc(t("tr.price_out"))}</th>
+        <th class="num">${esc(t("tr.result"))}</th><th class="num">%</th>
+        <th class="num">${esc(t("tr.bars"))}</th><th>${esc(t("tr.reason"))}</th></tr></thead>
       <tbody>${trades.map(t => `<tr>
         <td class="muted">${esc(t.entry_time.slice(0, 16))}</td>
         <td class="muted">${esc(t.exit_time.slice(0, 16))}</td>
@@ -3311,16 +4225,25 @@ function renderInspector(box, row, res, ctx) {
       </tbody></table></div>
   </section>
 
+
+  ${panelNota(ctx)}
+
   <div class="controls">
     <button class="btn" id="insp-mql5">${icono("bajar")} MetaTrader 5 (.mq5)</button>
     <button class="btn ghost" id="insp-pine">${icono("bajar")} TradingView (.pine)</button>
-    <button class="btn ghost" id="insp-copiar">${icono("copiar")} Copiar Pine</button>
-    <button class="btn ghost" id="insp-save">${icono("marcador")} Guardar en Mis estrategias</button>
+    <button class="btn ghost" id="insp-copiar">${icono("copiar")} ${esc(t("insp.copy_pine"))}</button>
+    <button class="btn ghost" id="insp-save">${icono("marcador")} ${esc(t("insp.save"))}</button>
   </div>
   <div class="guardado" id="insp-guardado" hidden></div>
-  <p class="stage-note">El <b>.mq5</b> se compila en MetaEditor (F7) y se prueba en el Strategy Tester.
-    El <b>.pine</b> se pega en el Pine Editor de TradingView y se agrega al gráfico.
-    En los dos casos, poné el mismo spread que usaste acá.</p>`;
+  <p class="stage-note">${t("insp.export_note")}</p>`;
+
+  const btnProbar = $("#insp-probar", box);
+  if (btnProbar) btnProbar.onclick = async () => {
+    // se recarga la ficha entera al terminar: el veredicto es lo primero que
+    // se lee, y dejarla abierta con el estado viejo sería mentir en pantalla
+    await correrPrueba({ id: ctx.strategy_id, name: row.name }, btnProbar);
+    box.closest(".overlay")?.remove();
+  };
 
   Charts.equity($("#insp-eq", box), {
     values: res.equity,
@@ -3328,7 +4251,10 @@ function renderInspector(box, row, res, ctx) {
     initial: res.equity[0], height: 320,
   });
 
+  cablearMuestras(box, row, ctx);
   if (monthly.length) Charts.monthlyGrid($("#insp-monthly", box), monthly);
+
+  cablearNota(box, ctx);
 
   $("#insp-save", box).onclick = async () => {
     const btn = $("#insp-save", box);
@@ -3340,7 +4266,7 @@ function renderInspector(box, row, res, ctx) {
       await api.post("/api/strategies", {
         spec: row.spec, name: row.name,
         dataset_id: S.sel.dataset_id,
-        notes: `Minada el ${new Date().toLocaleDateString("es-AR")}`,
+        notes: t("saved.mined_on", { fecha: new Date().toLocaleDateString(localeNum()) }),
         meta: {
           dataset_name: ds ? ds.name : "",
           timeframe: S.sel.timeframe || "1h",
@@ -3382,6 +4308,9 @@ function renderInspector(box, row, res, ctx) {
     dataset_id: ctx ? ctx.dataset_id : S.sel.dataset_id,
     timeframe: (ctx ? ctx.timeframe : S.sel.timeframe) || "1h",
     metrics: m,
+    // sin esto el robot sale con el offset en cero y, si la estrategia tiene
+    // franja horaria, opera en el horario equivocado sin que nada falle
+    server_utc_offset: S.cfg.brokerUtc,
   });
 
   /* MQL5 y Pine comparten todo salvo el formato. El .mq5 va a la carpeta de
@@ -3394,7 +4323,7 @@ function renderInspector(box, row, res, ctx) {
       if (formato === "mql5" && S.mt5.elegido) cuerpo.terminal = S.mt5.elegido;
       const r = await api.post(`/api/export/${formato}/archivo`, cuerpo);
       mostrarGuardado(r, formato, r.terminal
-        ? `Robot instalado en ${r.terminal} — abrilo y compilá con F7`
+        ? t("export.installed", { terminal: r.terminal })
         : aviso);
     } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     btn.disabled = false;
@@ -3421,7 +4350,7 @@ function renderInspector(box, row, res, ctx) {
               opciones ? ` · <a href="#" id="insp-cambiar">cambiar</a>` : ""}`
           : esc(r.carpeta)}</span>
         ${opciones ? `<div class="g-destino" hidden>
-          <span>Tenés ${S.mt5.terminales.length} MetaTrader instalados. Mandarlo a:</span>
+          <span>${esc(t("export.pick_terminal", { n: S.mt5.terminales.length }))}</span>
           <select id="insp-destino">
             ${S.mt5.terminales.map(t => `<option value="${esc(t.id)}"
               ${t.id === S.mt5.elegido ? "selected" : ""}>${esc(t.nombre)}</option>`).join("")}
@@ -3430,7 +4359,7 @@ function renderInspector(box, row, res, ctx) {
       </div>
       <div class="g-acciones">
         <button class="btn small" id="insp-abrir-archivo">${
-          esRobot ? "Abrir en MetaEditor" : "Abrir archivo"}</button>
+          esc(t(esRobot ? "exp.open_editor" : "exp.open_file"))}</button>
         <button class="linkbtn" id="insp-abrir">Ver la carpeta</button>
       </div>`;
 
@@ -3465,9 +4394,9 @@ function renderInspector(box, row, res, ctx) {
   }
 
   $("#insp-mql5", box).onclick = () => exportAs(
-    "insp-mql5", "mql5", "Expert Advisor guardado — copialo a MQL5/Experts y compilá");
+    "insp-mql5", "mql5", t("export.mq5_saved"));
   $("#insp-pine", box).onclick = () => exportAs(
-    "insp-pine", "pine", "Pine guardado — o usá Copiar y pegalo en TradingView");
+    "insp-pine", "pine", t("export.pine_saved"));
 
   /* TradingView no se carga de un archivo: se pega en el Pine Editor. Bajar un
      .pine para después abrirlo y copiarlo a mano es dar una vuelta de más.
@@ -3480,7 +4409,8 @@ function renderInspector(box, row, res, ctx) {
     btn.disabled = true;
     try {
       const r = await fetch("/api/export/pine", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Idioma": idioma() },
         body: JSON.stringify(cuerpoExport()),
       });
       if (!r.ok) {
@@ -3489,10 +4419,10 @@ function renderInspector(box, row, res, ctx) {
       }
       const codigo = await r.text();
       if (await copiar(codigo)) {
-        toast("Pine copiado — pegalo en el Pine Editor de TradingView", "ok");
+        toast(t("exp.pine_copied"), "ok");
       } else {
         const g = await api.post("/api/export/pine/archivo", cuerpoExport());
-        mostrarGuardado(g, "El sistema no dejó copiar, así que lo guardé como archivo");
+        mostrarGuardado(g, t("export.copy_failed"));
       }
     } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     btn.disabled = false;
@@ -3532,29 +4462,30 @@ function scoreVerdict(res) {
   const m = res.metrics;
   const worst = defs.reduce((a, b) => ((parts[a.key] ?? 0) <= (parts[b.key] ?? 0) ? a : b));
   const why = {
-    consistencia: `su Sharpe es ${fmtNum(m.sharpe)}: la curva se mueve mucho para lo que rinde`,
-    recuperacion: `gana ${fmtNum(m.cagr_pct, 1)}% al año pero llega a caer ${fmtNum(m.max_drawdown_pct, 0)}%`,
-    evidencia: `${m.trades} operaciones son poca muestra para confiar en el resultado`,
-    ventaja: `su expectativa es ${fmtNum(m.expectancy_r)}R por operación, un margen fino`,
-    estabilidad: `sólo ${fmtNum(m.months_positive_pct ?? 0, 0)}% de los meses cerraron en verde`,
-    reparto: `la mejor operación aporta el ${fmtNum(m.top_trade_share_pct ?? 0, 0)}% de la ganancia`,
+    consistencia: t("why.consistency", { sharpe: fmtNum(m.sharpe) }),
+    recuperacion: t("why.recovery", { cagr: fmtNum(m.cagr_pct, 1), dd: fmtNum(m.max_drawdown_pct, 0) }),
+    evidencia: t("why.evidence", { n: m.trades }),
+    ventaja: t("why.edge", { r: fmtNum(m.expectancy_r) }),
+    estabilidad: t("why.stability", { pct: fmtNum(m.months_positive_pct ?? 0, 0) }),
+    reparto: t("why.spread", { pct: fmtNum(m.top_trade_share_pct ?? 0, 0) }),
   }[worst.key] || "";
   const tier = scoreTier(res.score || 0);
-  return `<b>${tier.label}.</b> Lo que más le baja el puntaje es
-    <b>${esc(worst.label.toLowerCase())}</b>: ${why}.`;
+  return `<b>${tier.label}.</b> ${t("why.lowers", {
+    parte: esc(worst.label.toLowerCase()), motivo: why })}`;
 }
 
 /* descripción legible de las salidas de una estrategia */
 function riskSummary(risk) {
   if (!risk) return "";
-  if (risk.stop_type === "none") return "sin stop ni target, sale por señal";
+  if (risk.stop_type === "none") return t("risk.no_stop");
   const rr = risk.stop_value ? risk.target_value / risk.stop_value : 0;
   if (risk.stop_type === "atr") {
-    return `Arriesga ${risk.size_value}% del capital por operación · stop a ` +
-           `${(+risk.stop_value).toFixed(2)}× la volatilidad (ATR ${risk.atr_period}) · ` +
-           `relación 1:${rr.toFixed(2).replace(/\.?0+$/, "")}`;
+    return t("risk.atr", {
+      pct: risk.size_value, mult: (+risk.stop_value).toFixed(2),
+      atr: risk.atr_period, rr: rr.toFixed(2).replace(/\.?0+$/, ""),
+    });
   }
-  const unit = { points: "puntos", percent: "% del precio", money: "$" };
+  const unit = { points: t("risk.points"), percent: t("risk.pct_price"), money: "$" };
   const u = unit[risk.stop_type] || risk.stop_type;
   return `stop ${risk.stop_value} ${u} · target ${risk.target_value} ` +
          `${unit[risk.target_type] || risk.target_type}`;
@@ -3589,12 +4520,19 @@ function applyTheme(theme, redraw) {
   root.setAttribute("data-theme", light ? "light" : "dark");
   try { localStorage.setItem("qf.theme", light ? "light" : "dark"); } catch (e) { /* noop */ }
   const btn = $("#theme-btn");
-  if (btn) btn.title = light ? "Cambiar a tema oscuro" : "Cambiar a tema claro";
+  if (btn) btn.title = light ? t("nav.theme_dark") : t("nav.theme_light");
   if (redraw) navigate(S.page);
-  // dos cuadros: uno para aplicar los colores nuevos, otro para devolver las
-  // transiciones sin que el navegador las vea como un cambio animable
-  requestAnimationFrame(() => requestAnimationFrame(
-    () => root.classList.remove("theme-switching")));
+  // Dos cuadros: uno para aplicar los colores nuevos, otro para devolver las
+  // transiciones sin que el navegador las vea como un cambio animable.
+  //
+  // Con red de seguridad por tiempo: requestAnimationFrame NO corre mientras
+  // la ventana está oculta, así que arrancar minimizado dejaba esta clase
+  // pegada — y con ella toda la aplicación sin una sola transición, hasta
+  // recargar. Se siente como que el programa está trabado y no hay nada en
+  // pantalla que lo explique.
+  const soltar = () => root.classList.remove("theme-switching");
+  requestAnimationFrame(() => requestAnimationFrame(soltar));
+  setTimeout(soltar, 260);
 }
 
 function initTheme() {
@@ -3637,7 +4575,7 @@ function renderAuth() {
     b.className = "acct-in";
     b.href = "/api/auth/google/start?next=/app";
     b.append(googleMark(), Object.assign(document.createElement("span"),
-                                         { textContent: "Entrar con Google" }));
+                                         { textContent: t("auth.sign_in") }));
     caja.appendChild(b);
     return;
   }
@@ -3657,10 +4595,10 @@ function renderAuth() {
   const e = document.createElement("span"); e.textContent = u.email;
   txt.append(n, e);
   const out = document.createElement("button");
-  out.className = "acct-out"; out.title = "Cerrar sesión"; out.textContent = "Salir";
+  out.className = "acct-out"; out.title = t("auth.sign_out"); out.textContent = t("auth.sign_out");
   out.onclick = async () => {
     try { await api.post("/api/auth/logout", {}); } catch (err) { /* igual salimos */ }
-    S.auth.usuario = null; renderAuth(); toast("Sesión cerrada", "ok");
+    S.auth.usuario = null; renderAuth(); toast(t("auth.signed_out"), "ok");
   };
   chip.append(txt, out);
   caja.appendChild(chip);
@@ -3687,20 +4625,17 @@ function pedirCuenta(status) {
   fondo.className = "gate-back";
   fondo.innerHTML = `
     <div class="gate" role="dialog" aria-modal="true" aria-labelledby="gate-t">
-      <h3 id="gate-t">Se cerró tu sesión</h3>
-      <p>Volvé a entrar para seguir. Lo que tengas guardado no se pierde: las
-         estrategias del databank y los instrumentos siguen donde estaban.</p>
-      <p class="gate-fine">Google nos da tu nombre, tu correo y tu foto. Nada más:
-         no pedimos permiso sobre tu correo ni tus archivos, y no vas a escribir
-         ninguna contraseña acá.</p>
+      <h3 id="gate-t">${esc(t("auth.expired"))}</h3>
+      <p>${esc(t("auth.gate_body"))}</p>
+      <p class="gate-fine">${esc(t("auth.gate_fine"))}</p>
       <div class="gate-row">
-        <button class="btn ghost" data-x>Cerrar</button>
+        <button class="btn ghost" data-x>${esc(t("ui.close"))}</button>
         <a class="btn" href="/api/auth/google/start?next=/app"></a>
       </div>
     </div>`;
   const entrar = $("a", fondo);
   entrar.append(googleMark(), Object.assign(document.createElement("span"),
-                                            { textContent: "Entrar con Google" }));
+                                            { textContent: t("auth.sign_in") }));
   const cerrar = () => fondo.remove();
   $("[data-x]", fondo).onclick = cerrar;
   fondo.onclick = (ev) => { if (ev.target === fondo) cerrar(); };
@@ -3718,12 +4653,17 @@ function pedirCuenta(status) {
     S.meta = await api.get("/api/meta");
     $("#version").textContent = `v${S.meta.version}`;
     await refreshDatasets();
-  } catch (e) { toast(`No se pudo conectar con el backend: ${e.message}`, "err"); }
+  } catch (e) { toast(`${t("err.no_backend")}: ${e.message}`, "err"); }
+  pintarChrome();
   refreshAuth();
   initTheme();
   refreshSavedCount();
   refreshBancoCount();
   refreshMt5();
   $$("#nav button").forEach(b => b.onclick = () => navigate(b.dataset.page));
-  navigate(S.datasets.length ? "mining" : "data");
+  // los contadores ya se pidieron arriba, pero sin esperarlos: la bienvenida
+  // necesita saber si hay algo hecho ANTES de decidir si aparece
+  await Promise.allSettled([refreshSavedCount(), refreshBancoCount()]);
+  navigate(tocaBienvenida() ? "bienvenida"
+    : S.datasets.length ? "mining" : "data");
 })();

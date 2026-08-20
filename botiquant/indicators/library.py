@@ -319,3 +319,96 @@ class Momentum(Indicator):
         n = int(p["period"])
         roc = 100.0 * (df["close"] / df["close"].shift(n) - 1.0)
         return {"value": _arr(roc)}
+
+
+# ---------------------------------------------------------------------------
+# Indicadores de contexto.
+#
+# Los doce disparadores de entrada dicen CUÁNDO entrar; los filtros dicen
+# cuándo NO. Hasta acá había cinco filtros contra doce disparadores, y esa
+# desproporción se nota en los resultados: la búsqueda encuentra la señal pero
+# no tiene con qué descartar los momentos en los que esa misma señal falla.
+#
+# Los tres que siguen están normalizados a propósito —en múltiplos de ATR, en
+# porcentaje del rango de la vela, en día de la semana—, así el mismo umbral
+# significa lo mismo en el S&P que en EURUSD. Un filtro cuyo nivel hubiera que
+# recalibrar por instrumento sería un filtro que en la práctica nadie usa.
+
+
+@register
+class ClosePosition(Indicator):
+    """Dónde cerró la vela dentro de su propio rango, de 0 a 100.
+
+    100 = cerró en el máximo (los compradores se quedaron con la vela);
+    0 = cerró en el mínimo. Es la forma más simple y más robusta de leer la
+    fuerza de una vela: no depende de la escala del instrumento ni de si el
+    cuerpo es grande o chico, sólo de quién ganó el pulso.
+    """
+
+    name = "ClosePosition"
+    label = "Close within the bar (%)"
+    category = "momentum"
+    params = ()
+
+    @classmethod
+    def compute(cls, df: pd.DataFrame, **p: float) -> dict[str, np.ndarray]:
+        rango = (df["high"] - df["low"]).astype("float64")
+        # una vela sin rango —posible en horas muertas— es 50: ni compradores
+        # ni vendedores. Dejarla en NaN cortaría la condición entera.
+        pos = np.where(rango > 0, (df["close"] - df["low"]) / rango.replace(0, np.nan) * 100.0, 50.0)
+        return {"value": np.asarray(pos, dtype="float64")}
+
+
+@register
+class DistATR(Indicator):
+    """Distancias medidas en volatilidad, no en puntos.
+
+    ``to_high`` / ``to_low``: a cuántos ATR está el cierre del máximo y del
+    mínimo de las últimas ``period`` velas. Cerca de 0 significa que el precio
+    está pegado al extremo —territorio de ruptura—; un valor grande significa
+    que viene de retroceder, que es lo contrario.
+
+    ``bar_range``: cuánto mide la vela actual en ATR. Por encima de 1 es una
+    vela de expansión; por debajo, una vela apretada.
+
+    El extremo se calcula EXCLUYENDO la vela evaluada, igual que el canal de
+    Donchian: si se incluyera, "el cierre está a menos de X del máximo" sería
+    casi siempre cierto por construcción y el filtro no filtraría nada.
+    """
+
+    name = "DistATR"
+    label = "Distance to range extremes (ATR)"
+    category = "volatility"
+    params = (ParamDef("period", 20, 5, 200, 5),)
+    outputs = ("to_high", "to_low", "bar_range")
+
+    @classmethod
+    def compute(cls, df: pd.DataFrame, **p: float) -> dict[str, np.ndarray]:
+        n = int(p["period"])
+        atr = _wilder(_true_range(df), n).replace(0, np.nan)
+        techo = df["high"].shift(1).rolling(n).max()
+        piso = df["low"].shift(1).rolling(n).min()
+        return {
+            "to_high": _arr((techo - df["close"]) / atr),
+            "to_low": _arr((df["close"] - piso) / atr),
+            "bar_range": _arr((df["high"] - df["low"]) / atr),
+        }
+
+
+@register
+class DayOfWeek(Indicator):
+    """Día de la semana de cada vela: 1 = lunes ... 5 = viernes.
+
+    Se numera desde 1 y no desde 0 para que coincida con cómo lo dice
+    cualquiera —"el día 1 es lunes"— y para que un cero accidental en la
+    configuración no signifique "lunes" sin que nadie lo haya pedido.
+    """
+
+    name = "DayOfWeek"
+    label = "Day of the week"
+    category = "other"
+    params = ()
+
+    @classmethod
+    def compute(cls, df: pd.DataFrame, **p: float) -> dict[str, np.ndarray]:
+        return {"value": np.asarray(df.index.dayofweek, dtype="float64") + 1.0}

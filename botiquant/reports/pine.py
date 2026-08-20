@@ -34,6 +34,17 @@ _PINE: dict[str, dict[str, str]] = {
     "Donchian": {"upper": "ta.highest(high[1], {period})",
                  "lower": "ta.lowest(low[1], {period})"},
     "VolumeSMA": {"value": "ta.sma(volume, {period})"},
+    # El extremo excluye la vela evaluada (high[1]/low[1]) por lo mismo que
+    # Donchian: incluirla haría que la distancia al máximo fuera casi siempre
+    # cero y el filtro no filtraría nada.
+    "DistATR": {
+        "to_high": "((ta.highest(high[1], {period}) - close) / ta.atr({period}))",
+        "to_low": "((close - ta.lowest(low[1], {period})) / ta.atr({period}))",
+        "bar_range": "((high - low) / ta.atr({period}))",
+    },
+    "ClosePosition": {"value": "(high == low ? 50.0 : (close - low) / (high - low) * 100)"},
+    # Pine numera el domingo como 1; el backtest numera el lunes como 1
+    "DayOfWeek": {"value": "(math.max(dayofweek - 1, 0))"},
     "VWAP": {"value": "ta.vwap(hlc3)"},
     "Ichimoku": {"tenkan": "_donchMid({tenkan})", "kijun": "_donchMid({kijun})",
                  "senkou_a": "((_donchMid({tenkan}) + _donchMid({kijun})) / 2)",
@@ -91,6 +102,9 @@ class _Builder:
             return f"({left_prev} <= {right_prev} and {left_now} > {right_now})"
         if op == "cross_below":
             return f"({left_prev} >= {right_prev} and {left_now} < {right_now})"
+        if op in ("==", "!="):
+            signo = "<" if op == "==" else ">="
+            return f"(math.abs({left_now} - {right_now}) {signo} 1e-9)"
         pine_op = {">": ">", "<": "<", ">=": ">=", "<=": "<="}.get(op, ">")
         return f"({left_now} {pine_op} {right_now})"
 
@@ -165,6 +179,20 @@ qty       = InpUseFixedQty ? math.max(qtyRisk, 1) : na"""
     def join(conds: list[str]) -> str:
         return "\n     and ".join(conds) if conds else "false"
 
+    # La franja horaria en la que se minó. TradingView evalúa las sesiones en
+    # la zona del gráfico, así que se le pasa "UTC" explícito: los datos con
+    # los que se buscó están en UTC y el usuario no tiene por qué acordarse de
+    # poner su gráfico en esa zona.
+    tf = spec.time_filter
+    usa_horario = bool(tf and tf.enabled)
+    if usa_horario:
+        fin = 2359 if tf.end_hour >= 24 else tf.end_hour * 100
+        # Pine numera el domingo como 1 y el backtest el lunes como 0
+        dias_pine = "".join(str((d + 1) % 7 + 1) for d in sorted(tf.days))
+        sesion_str = f"{tf.start_hour * 100:04d}-{fin:04d}:{dias_pine}"
+    else:
+        sesion_str = "0000-2400:1234567"
+
     return f"""{chr(10).join(header)}
 //@version=5
 strategy("{name}", overlay=true, initial_capital=10000,
@@ -182,14 +210,21 @@ InpMaxBars    = input.int({int(risk.max_bars_in_trade)}, "Cerrar tras N velas (0
 InpATRPeriod  = input.int({int(risk.atr_period)}, "Período del ATR de riesgo", minval=1)
 InpAllowLong  = input.bool({str(bool(want_long)).lower()}, "Permitir largos")
 InpAllowShort = input.bool({str(bool(want_short)).lower()}, "Permitir cortos")
+InpUseSession = input.bool({str(usa_horario).lower()}, "Operar solo en la franja horaria minada")
+InpSession    = input.session("{sesion_str}", "Franja horaria (hora UTC)")
 
 {helpers}
 
 atrRisk = ta.atr(InpATRPeriod)
 
 // ------------------------------------------------------------------ reglas
-goLong  = InpAllowLong and ({join(long_conds) if want_long else 'false'})
-goShort = InpAllowShort and ({join(short_conds) if want_short else 'false'})
+// La franja se evalúa en UTC porque en UTC están los datos con los que se
+// minó. Filtra ENTRADAS: una posición abierta se sigue gestionando fuera de
+// horario, igual que en el backtest.
+enSesion = not InpUseSession or not na(time(timeframe.period, InpSession, "UTC"))
+
+goLong  = InpAllowLong and enSesion and ({join(long_conds) if want_long else 'false'})
+goShort = InpAllowShort and enSesion and ({join(short_conds) if want_short else 'false'})
 
 // ----------------------------------------------------------------- tamaño
 {qty_block}

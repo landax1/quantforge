@@ -29,6 +29,9 @@ _HANDLES: dict[str, dict[str, Any]] = {
                   "buf": {"middle": 0, "upper": 1, "lower": 2}},
     "Donchian": {"call": None, "buf": {"upper": 0, "lower": 1}},      # emulated
     "VolumeSMA": {"call": None, "buf": {"value": 0}},                  # emulated
+    "ClosePosition": {"call": None, "buf": {"value": 0}},              # emulated
+    "DistATR": {"call": None, "buf": {"to_high": 0, "to_low": 1, "bar_range": 2}},
+    "DayOfWeek": {"call": None, "buf": {"value": 0}},                  # emulated
     "Supertrend": {"call": None, "buf": {"direction": 0}},             # unsupported
     "Ichimoku": {"call": 'iIchimoku(_Symbol, _Period, {tenkan}, {kijun}, {senkou})',
                  "buf": {"tenkan": 0, "kijun": 1, "senkou_a": 2, "senkou_b": 3}},
@@ -89,6 +92,18 @@ class _Builder:
         if name == "VolumeSMA":
             self.emulated.add("VolumeSMA")
             return f"VolumeAverage((int){params.get('period', '20')}, {shift})"
+        if name == "ClosePosition":
+            self.emulated.add("ClosePosition")
+            return f"ClosePositionPct({shift})"
+        if name == "DayOfWeek":
+            self.emulated.add("DayOfWeek")
+            return f"BarDayOfWeek({shift})"
+        if name == "DistATR":
+            self.emulated.add("DistATR")
+            p = params.get("period", "20")
+            fn = {"to_high": "DistToHighATR", "to_low": "DistToLowATR",
+                  "bar_range": "BarRangeATR"}.get(op.output or "to_high", "DistToHighATR")
+            return f"{fn}((int){p}, {shift})"
 
         var = self._handle_var(op)
         buf = _HANDLES[name]["buf"].get(op.output or "value", 0)
@@ -105,6 +120,11 @@ class _Builder:
             return f"({left_prev} <= {right_prev} && {left_now} > {right_now})"
         if op == "cross_below":
             return f"({left_prev} >= {right_prev} && {left_now} < {right_now})"
+        if op in ("==", "!="):
+            # se comparan con tolerancia por lo mismo que en el backtest: son
+            # enteros viajando como double
+            signo = "<" if op == "==" else ">="
+            return f"(MathAbs({left_now} - {right_now}) {signo} 1e-9)"
         mql_op = {">": ">", "<": "<", ">=": ">=", "<=": "<="}.get(op, ">")
         return f"({left_now} {mql_op} {right_now})"
 
@@ -116,8 +136,16 @@ def _fmt_num(v: Any) -> str:
 
 def export_mql5(spec: StrategySpec, *, ea_name: str = "BQ_Strategy",
                 symbol_hint: str = "", timeframe_hint: str = "",
-                metrics: dict[str, float] | None = None) -> str:
-    """Render a full .mq5 Expert Advisor source for ``spec``."""
+                metrics: dict[str, float] | None = None,
+                server_utc_offset: int = 0) -> str:
+    """Render a full .mq5 Expert Advisor source for ``spec``.
+
+    ``server_utc_offset`` son las horas que el servidor del bróker adelanta
+    respecto de UTC. Sale de la configuración del usuario y viene ya puesto en
+    el EA porque dejarlo en cero es un error silencioso: la estrategia opera en
+    la franja equivocada y los resultados no se parecen a los del backtest, sin
+    que nada falle. Sólo tiene efecto en estrategias con restricción horaria.
+    """
     b = _Builder()
     long_conds = [b.condition(c) for c in (spec.entry_long or [])]
     short_conds = [b.condition(c) for c in (spec.entry_short or [])]
@@ -146,11 +174,27 @@ def export_mql5(spec: StrategySpec, *, ea_name: str = "BQ_Strategy",
                 + ", ".join(sorted(b.unsupported)) + ".\n"
                 "//|  El EA NO reproduce esa lógica — revisá el código marcado NO SOPORTADO.\n")
 
+    # ------------------------------------------------------------- horario
+    # Si la estrategia se minó restringida a una franja y el EA no la
+    # respetara, en MetaTrader operaría las veinticuatro horas: no sería la
+    # misma estrategia, y la diferencia aparecería recién con dinero real.
+    tf = spec.time_filter
+    usa_horario = bool(tf and tf.enabled)
+    dias = sorted(tf.days) if usa_horario else [0, 1, 2, 3, 4]
+    # MQL5 numera el domingo como 0 y el backtest numera el lunes como 0
+    dias_mql = ",".join(str((d + 1) % 7) for d in dias)
+
     helpers = _HELPERS_BASE
     if "Donchian" in b.emulated:
         helpers += _HELPER_DONCHIAN
     if "VolumeSMA" in b.emulated:
         helpers += _HELPER_VOLUME
+    if "ClosePosition" in b.emulated:
+        helpers += _HELPER_CLOSE_POS
+    if "DayOfWeek" in b.emulated:
+        helpers += _HELPER_DOW
+    if "DistATR" in b.emulated:
+        helpers += _HELPER_DIST_ATR
     if "money" in (risk.stop_type, risk.target_type):
         helpers += _HELPER_MONEY
 
@@ -190,6 +234,11 @@ input int    InpSlippage    = 30;      // Desviacion maxima (points)
 input bool   InpVerbose     = true;    // Explicar en el log por que no opera
 input bool   InpAllowLong   = {'true' if want_long else 'false'};    // Permitir largos
 input bool   InpAllowShort  = {'true' if want_short else 'false'};   // Permitir cortos
+input bool   InpUseSession  = {'true' if usa_horario else 'false'};   // Operar solo en la franja horaria minada
+input int    InpStartHourUTC = {int(tf.start_hour) if usa_horario else 0};      // Franja: hora de inicio (UTC, incluida)
+input int    InpEndHourUTC   = {int(tf.end_hour) if usa_horario else 24};      // Franja: hora de fin (UTC, excluida)
+input string InpDaysCSV      = "{dias_mql}";  // Dias permitidos (0=domingo ... 5=viernes)
+input int    InpServerUTCOffset = {int(server_utc_offset)};    // Horas que adelanta el servidor del broker respecto de UTC
 
 CTrade   trade;
 datetime g_lastBar = 0;
@@ -220,6 +269,18 @@ int OnInit()
                   SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE),
                   SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE),
                   (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS));
+      // La franja se declara al arrancar con la hora UTC que el EA cree que
+      // es. Si no coincide con la hora real, InpServerUTCOffset esta mal y se
+      // ve aca, antes de la primera operacion.
+      if(InpUseSession)
+        {{
+         MqlDateTime ahora;
+         TimeToStruct(TimeCurrent() - (long)InpServerUTCOffset * 3600, ahora);
+         PrintFormat("[QF] Franja horaria activa: %02d:00-%02d:00 UTC, dias %s | "
+                     "para el EA ahora son las %02d:%02d UTC (offset del servidor: %d h)",
+                     InpStartHourUTC, InpEndHourUTC, InpDaysCSV,
+                     ahora.hour, ahora.min, InpServerUTCOffset);
+        }}
      }}
    return INIT_SUCCEEDED;
   }}
@@ -251,6 +312,15 @@ void OnTick()
    g_lastBar = bar;
 
    if(ManageOpenPosition()) return;   // trailing y salida por tiempo
+
+   // El horario filtra ENTRADAS, no salidas: una posicion abierta dentro de la
+   // franja se sigue gestionando cuando la franja termina, igual que en el
+   // backtest. Cerrarla al sonar la campana seria otra estrategia.
+   if(!InSession())
+     {{
+      if(InpVerbose) Print("[QF] Fuera de la franja horaria minada");
+      return;
+     }}
 
    bool goLong  = InpAllowLong && ({join(long_conds) if want_long else 'false'});
    bool goShort = InpAllowShort && ({join(short_conds) if want_short else 'false'});
@@ -513,6 +583,33 @@ void ReportSize(const string side, const bool isLong, const double vol,
                "(pedido: %.2f%%)", side, vol, MathAbs(loss), pct, InpRiskPct);
   }
 //+------------------------------------------------------------------+
+//| Franja horaria: los datos con los que se mino estan en UTC, y el  |
+//| servidor del broker casi nunca lo esta. InpServerUTCOffset son    |
+//| las horas que el servidor adelanta respecto de UTC (un broker en  |
+//| UTC+3 lleva 3). Si queda mal puesto, la estrategia opera en la    |
+//| franja equivocada y los numeros no se parecen a los del backtest: |
+//| por eso el log lo dice en la primera vela y en cada rechazo.      |
+//|                                                                   |
+//| Con InpUseSession en false no filtra nada, que es como corre una  |
+//| estrategia minada sin restriccion de horario.                     |
+//+------------------------------------------------------------------+
+bool InSession()
+  {
+   if(!InpUseSession) return true;
+
+   MqlDateTime t;
+   TimeToStruct(TimeCurrent() - (long)InpServerUTCOffset * 3600, t);
+
+   if(StringFind("," + InpDaysCSV + ",", "," + IntegerToString(t.day_of_week) + ",") < 0)
+      return false;
+
+   int desde = InpStartHourUTC, hasta = InpEndHourUTC;
+   if(desde == hasta) return true;              // franja vacia = sin filtro
+   if(desde < hasta)  return (t.hour >= desde && t.hour < hasta);
+   // franja que cruza la medianoche, por ejemplo 22:00 a 05:00
+   return (t.hour >= desde || t.hour < hasta);
+  }
+//+------------------------------------------------------------------+
 //| Por que fallo la orden, con el codigo que devuelve el servidor    |
 //+------------------------------------------------------------------+
 void ReportFailure(const string side, const double vol, const double price,
@@ -568,5 +665,78 @@ double VolumeAverage(const int period, const int shift)
    for(int i = shift; i < shift + period; i++)
       total += iVolume(_Symbol, _Period, i);
    return (period > 0) ? (double)total / period : 0.0;
+  }
+"""
+
+_HELPER_CLOSE_POS = """//+------------------------------------------------------------------+
+//| Donde cerro la vela dentro de su propio rango, de 0 a 100.        |
+//| Una vela sin rango vale 50: ni compradores ni vendedores.          |
+//+------------------------------------------------------------------+
+double ClosePositionPct(const int shift)
+  {
+   double hi = iHigh(_Symbol, _Period, shift);
+   double lo = iLow(_Symbol, _Period, shift);
+   double rango = hi - lo;
+   if(rango <= 0.0) return 50.0;
+   return (iClose(_Symbol, _Period, shift) - lo) / rango * 100.0;
+  }
+"""
+
+_HELPER_DOW = """//+------------------------------------------------------------------+
+//| Dia de la semana de la vela: 1 = lunes ... 5 = viernes.           |
+//| Se convierte desde la numeracion de MQL5 (0 = domingo) a la misma |
+//| que usa el backtest, o el filtro saltearia el dia equivocado.     |
+//+------------------------------------------------------------------+
+double BarDayOfWeek(const int shift)
+  {
+   MqlDateTime t;
+   TimeToStruct(iTime(_Symbol, _Period, shift), t);
+   return (double)((t.day_of_week + 6) % 7 + 1);
+  }
+"""
+
+_HELPER_DIST_ATR = """//+------------------------------------------------------------------+
+//| Distancias medidas en ATR. El maximo y el minimo del rango        |
+//| EXCLUYEN la vela evaluada (se arranca en shift+1), igual que el   |
+//| canal de Donchian: incluirla haria que "el cierre esta a menos de |
+//| X del maximo" fuera casi siempre cierto y el filtro no filtraria. |
+//|                                                                   |
+//| El handle del ATR se crea una sola vez por periodo pedido: uno    |
+//| nuevo en cada vela agota los handles del terminal en una tarde.   |
+//+------------------------------------------------------------------+
+int    g_distAtrPeriod = 0;
+int    g_distAtrHandle = INVALID_HANDLE;
+
+double DistATRValue(const int period, const int shift)
+  {
+   if(g_distAtrHandle == INVALID_HANDLE || g_distAtrPeriod != period)
+     {
+      if(g_distAtrHandle != INVALID_HANDLE) IndicatorRelease(g_distAtrHandle);
+      g_distAtrHandle = iATR(_Symbol, _Period, period);
+      g_distAtrPeriod = period;
+     }
+   return Buf(g_distAtrHandle, 0, shift);
+  }
+double DistToHighATR(const int period, const int shift)
+  {
+   double atr = DistATRValue(period, shift);
+   if(atr <= 0.0) return 0.0;
+   int idx = iHighest(_Symbol, _Period, MODE_HIGH, period, shift + 1);
+   if(idx < 0) return 0.0;
+   return (iHigh(_Symbol, _Period, idx) - iClose(_Symbol, _Period, shift)) / atr;
+  }
+double DistToLowATR(const int period, const int shift)
+  {
+   double atr = DistATRValue(period, shift);
+   if(atr <= 0.0) return 0.0;
+   int idx = iLowest(_Symbol, _Period, MODE_LOW, period, shift + 1);
+   if(idx < 0) return 0.0;
+   return (iClose(_Symbol, _Period, shift) - iLow(_Symbol, _Period, idx)) / atr;
+  }
+double BarRangeATR(const int period, const int shift)
+  {
+   double atr = DistATRValue(period, shift);
+   if(atr <= 0.0) return 0.0;
+   return (iHigh(_Symbol, _Period, shift) - iLow(_Symbol, _Period, shift)) / atr;
   }
 """

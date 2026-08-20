@@ -218,6 +218,83 @@ def _atr_f(g: dict[str, float]):
     return c, list(c)
 
 
+# --------------------------------------------------- filtros de contexto
+#
+# Los cinco de arriba miran indicadores clásicos. Estos cinco miran la
+# ESTRUCTURA de lo que acaba de pasar: dónde está el precio dentro de su
+# rango reciente, cómo cerró la última vela, qué día es. Son las preguntas que
+# un operador se hace antes de apretar el botón y que la búsqueda no podía
+# hacerse, y todos están normalizados —ATR, porcentaje, día— así que el mismo
+# umbral significa lo mismo en cualquier instrumento.
+
+
+@template("breakout_ready_filter", "Price at the edge of its range", "filter", "channel",
+          (Gene("period", 20, 10, 100, 10), Gene("dist", 1.0, 0.25, 3.0, 0.25)))
+def _breakout_ready(g: dict[str, float]):
+    """Sólo cuando el precio ya está pegado al extremo del rango.
+
+    Es el filtro que le falta a toda estrategia de ruptura: entra únicamente
+    si el precio llegó a la puerta, y descarta las señales que aparecen en el
+    medio del rango, donde una ruptura todavía tiene que recorrer todo el
+    camino antes de ser una ruptura.
+    """
+    d = dict(period=g["period"])
+    long = [cond(ind("DistATR", output="to_high", **d), "<", const(g["dist"]))]
+    short = [cond(ind("DistATR", output="to_low", **d), "<", const(g["dist"]))]
+    return long, short
+
+
+@template("pullback_filter", "Price pulled back from the extreme", "filter", "channel",
+          (Gene("period", 20, 10, 100, 10), Gene("dist", 1.5, 0.5, 5.0, 0.5)))
+def _pullback(g: dict[str, float]):
+    """El complemento exacto del anterior: sólo cuando el precio retrocedió.
+
+    Las estrategias de reversión compran barato dentro de una tendencia, y
+    "barato" no es un precio: son unos cuantos ATR por debajo de donde estuvo.
+    """
+    d = dict(period=g["period"])
+    long = [cond(ind("DistATR", output="to_high", **d), ">", const(g["dist"]))]
+    short = [cond(ind("DistATR", output="to_low", **d), ">", const(g["dist"]))]
+    return long, short
+
+
+@template("strong_close_filter", "Bar closed strong", "filter", "momentum",
+          (Gene("level", 65, 55, 90, 5),))
+def _strong_close(g: dict[str, float]):
+    """La última vela cerró en su tercio superior (o inferior, para cortos)."""
+    c = ind("ClosePosition")
+    return ([cond(c, ">", const(g["level"]))],
+            [cond(c, "<", const(100 - g["level"]))])
+
+
+@template("expansion_filter", "Expansion bar", "filter", "volatility",
+          (Gene("period", 20, 10, 100, 10), Gene("mult", 1.2, 0.6, 3.0, 0.2)))
+def _expansion(g: dict[str, float]):
+    """Sólo cuando la vela mide más que su volatilidad habitual.
+
+    Distinto de "volatilidad expandiéndose", que mira la tendencia del ATR:
+    esto mira si ESTA vela, la que dio la señal, tuvo tamaño de verdad. Una
+    señal en una vela minúscula suele ser ruido con forma de señal.
+    """
+    c = [cond(ind("DistATR", output="bar_range", period=g["period"]), ">", const(g["mult"]))]
+    return c, list(c)
+
+
+@template("skip_weekday_filter", "Skip one weekday", "filter", "other",
+          (Gene("day", 1, 1, 5, 1),))
+def _skip_weekday(g: dict[str, float]):
+    """No operar un día concreto de la semana (1 = lunes ... 5 = viernes).
+
+    No se solapa con las franjas horarias: una franja recorta las HORAS de
+    todos los días, y esto saca un día entero. El lunes abre con el hueco del
+    fin de semana y el viernes cierra posiciones antes del cierre semanal; que
+    a una estrategia le convenga saltearse alguno es una hipótesis vieja y
+    barata de comprobar.
+    """
+    c = [cond(ind("DayOfWeek"), "!=", const(g["day"]))]
+    return c, list(c)
+
+
 def drivers() -> list[RuleTemplate]:
     return [t for t in TEMPLATES.values() if t.kind == "driver"]
 
