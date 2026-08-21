@@ -72,9 +72,22 @@ const DEFAULT_CFG = {
   brokerUtc: 0,
   minPf: 1.0, minSharpe: 0.30, maxDd: 25, minNet: 20, minWinRate: 50,
   maxFilters: 2, direction: "long", minTrades: 30,
-  minCagr: 5, minExposure: 5, minRetDd: 1.5, minTradesMonth: 4,
-  /* Una sola vara prendida de fábrica, y es la que nadie discute: que la
-     estrategia haya ganado plata.
+  /* 3 y no 5, y prendido de fábrica. Medido sobre S&P y oro, doce años:
+
+                             sólo PF>=1      + anual>=3%
+         S&P 500  media           2.49%           4.99%
+                  sobre 5%            2               9
+         Oro      media           3.80%           5.84%
+                  sobre 5%           10              13
+
+     Duplica la calidad de lo primero que ve cualquiera. Cuesta pasar de 18 a
+     74 segundos en el S&P — con la pantalla mostrando cuánto falta, se banca.
+
+     Con 5 en vez de 3 la búsqueda se va a 518 segundos, que ya es demasiado
+     para lo primero que alguien prueba. */
+  minCagr: 3, minExposure: 5, minRetDd: 1.5, minTradesMonth: 4,
+  /* Dos varas prendidas de fábrica: que la estrategia haya ganado plata, y
+     que haya ganado algo que valga la pena mirar.
 
      Antes no venía ninguna, con el argumento de mostrar primero que la
      búsqueda encuentra cosas. Medido, eso significaba llenar el databank en
@@ -84,9 +97,14 @@ const DEFAULT_CFG = {
      promesa que el producto no cumple.
 
      Profit factor 1 y no 1.10 a propósito: 1 es la línea que significa algo
-     —ganó contra perdió— y es la más barata de satisfacer, así que es la que
-     menos alarga la búsqueda. El resto de las varas las sube el usuario. */
-  critOn: { minPf: true },
+     —ganó contra perdió— y es la más barata de satisfacer.
+
+     Pero PF>=1 solo devolvía 2.49% anual de media en el S&P: honesto y
+     aburrido. Nadie se entusiasma con eso, y el entusiasmo de la primera
+     corrida es lo que decide si alguien vuelve. Con anual>=3% la media sube a
+     4.99% y las que pasan el 5% van de dos a nueve. El resto de las varas las
+     sube el usuario. */
+  critOn: { minPf: true, minCagr: true },
   // el número que manda: cuántas estrategias APROBADAS tiene que juntar el
   // databank antes de parar. Cuántas candidatas hagan falta no se sabe de
   // antemano — depende de qué tan exigentes sean los criterios.
@@ -828,11 +846,13 @@ function cablearSesiones(root) {
     const vigentes = sesionesElegidas();
     $$("button", host).forEach(x => x.classList.toggle("on", vigentes.includes(x.dataset.ses)));
     const nota = $("#m-sesnote", root);
-    if (nota) nota.textContent = notaSesiones();
+    // innerHTML y no textContent: el aviso lleva negritas sobre lo que importa
+    // ("para CADA candidata"), y con textContent se veian las etiquetas crudas
+    if (nota) nota.innerHTML = notaSesiones();
     saveCfg();
   });
   const nota = $("#m-sesnote", root);
-  if (nota) nota.textContent = notaSesiones();
+  if (nota) nota.innerHTML = notaSesiones();
 }
 
 function progressHtml(id) {
@@ -1594,7 +1614,10 @@ PAGES.data = async (main) => {
   };
 
   $$("[data-del]", main).forEach(b => b.onclick = async () => {
-    if (!confirm(t("data.confirm_delete"))) return;
+    // con el nombre adentro: "¿Borrar este dataset?" no dice CUAL, y la
+    // pantalla tiene cuatro botones iguales uno debajo del otro
+    const ds = (S.datasets || []).find(d => d.id === b.dataset.del);
+    if (!confirm(t("data.confirm_delete", { nombre: ds ? ds.name : "" }))) return;
     await api.del(`/api/datasets/${b.dataset.del}`);
     toast(t("data.deleted"), "ok");
     navigate("data");
@@ -2062,6 +2085,30 @@ async function cargarBanco({ corridas = true, mas = false } = {}) {
    ahora. Y no es siempre el total del banco: con una corrida elegida, la
    poblacion es la de esa corrida. Sin esta distincion no hay forma de saber
    si falta traer mas ni de rotular honestamente el encabezado. */
+/* Lo escrito en el buscador del Databank. Vive fuera de S.banco porque no es
+   parte de lo que trae el servidor: es una vista sobre lo que ya llego. */
+let FILTRO_BANCO = "";
+
+/* Las filas que pasan el filtro. Busca en el nombre, en los bloques que la
+   componen y en el instrumento de su corrida — que son las tres formas en que
+   uno se acuerda de una estrategia. */
+function filasVisibles() {
+  const b = S.banco;
+  const q = FILTRO_BANCO.trim().toLowerCase();
+  if (!q) return b.filas;
+  const porId = Object.fromEntries(b.corridas.map(c => [c.id, c]));
+  return b.filas.filter(f => {
+    const c = porId[f.corrida_id] || {};
+    /* `blocks` es lo que se busca de verdad: "Donchian breakout + EMA trend
+       filter". `etiquetaGenes` devuelve los PARAMETROS —fast=10, SL=1.75×ATR—
+       que nadie recuerda. Se incluyen los dos, mas el instrumento y la franja,
+       que son las otras formas en que uno se acuerda de una estrategia. */
+    return [f.name, f.blocks, etiquetaGenes(f), f.session_label,
+            f.session_label_en, c.dataset_name, c.timeframe]
+      .filter(Boolean).join(" ").toLowerCase().includes(q);
+  });
+}
+
 function poblacionBanco() {
   const b = S.banco;
   if (!b.corrida) return b.total;
@@ -2208,7 +2255,12 @@ function pintarBanco() {
 
   // ¿la vista mezcla corridas con distinto riesgo? Es lo que decide si las
   // columnas de rendimiento y caída significan lo mismo de una fila a otra.
-  const riesgos = new Set(b.filas.map(f => riesgoDe(porId[f.corrida_id] || {})));
+  // lo que se dibuja es lo que pasa el buscador; `b.filas` sigue siendo todo
+  // lo que llego, que es lo que hace falta para contar y para el "ver mas"
+  const filas = filasVisibles();
+  const filtrando = FILTRO_BANCO.trim().length > 0;
+
+  const riesgos = new Set(filas.map(f => riesgoDe(porId[f.corrida_id] || {})));
   const mezcla = todas && riesgos.size > 1;
   // cuantas hay de verdad, contra cuantas llegaron en las paginas pedidas
   const hay = poblacionBanco();
@@ -2221,13 +2273,18 @@ function pintarBanco() {
       title="${esc(ayuda)}${activa ? "" : ` · ${esc(t("col.click_sort"))}`}">${label}<i>${flecha}</i></th>`;
   };
 
-  const todosTildados = b.filas.length && b.filas.every(f => b.sel.has(f.banco_id));
+  const todosTildados = filas.length && filas.every(f => b.sel.has(f.banco_id));
 
   host.innerHTML = `<div class="card">
     <h2>${todas ? esc(t("bank.all_strategies")) : etiquetaCorrida(porId[b.corrida] || {})}
-      <span class="hint">${esc(hay > b.filas.length
-        ? t("bank.in_view_of", { n: b.filas.length, hay: fmtInt(hay) })
-        : t("bank.in_view", { n: b.filas.length }))}</span></h2>
+      <span class="hint">${esc(filtrando
+        ? t("bank.filtradas", { n: filas.length, total: b.filas.length })
+        : hay > b.filas.length
+          ? t("bank.in_view_of", { n: b.filas.length, hay: fmtInt(hay) })
+          : t("bank.in_view", { n: b.filas.length }))}</span>
+      <input type="search" class="banco-buscar" id="banco-buscar"
+        placeholder="${esc(t("bank.buscar"))}" value="${esc(FILTRO_BANCO)}"
+        aria-label="${esc(t("bank.buscar"))}"></h2>
 
     ${mezcla ? `<div class="banner info mt" style="margin-bottom:14px">
       <span class="b-ic">${icono("info")}</span><div>${t("bank.mixed_risk", {
@@ -2238,11 +2295,12 @@ function pintarBanco() {
     <div class="seleccion ${b.sel.size ? "activa" : ""}">
       <span class="sel-n">${esc(t("ui.selected", { n: b.sel.size }))}</span>
       <button class="btn small" id="sel-guardar">${icono("marcador","ico-sm")} ${esc(t("insp.save"))}</button>
+      <button class="btn small" id="sel-exportar">${icono("bajar","ico-sm")} ${esc(t("bank.export_all"))}</button>
       <button class="btn ghost small" id="sel-borrar">${icono("basura","ico-sm")} ${esc(t("bank.remove"))}</button>
       <button class="linkbtn" id="sel-limpiar">${esc(t("ui.clear"))}</button>
     </div>
 
-    ${b.filas.length ? `<div class="databank-wrap"><table class="banco">
+    ${filas.length ? `<div class="databank-wrap"><table class="banco">
       <thead><tr>
         <th class="tick"><input type="checkbox" id="sel-todas" ${todosTildados ? "checked" : ""}
           aria-label="${esc(t("ui.select_all"))}"></th>
@@ -2252,7 +2310,7 @@ function pintarBanco() {
             s.key === "puesto" ? icono("sube","ico-sm") : ""}</i></th>`}
         ${BANCO_COLS().map(([k, l, a]) => th(k, l, a)).join("")}
       </tr></thead>
-      <tbody>${b.filas.map(f => {
+      <tbody>${filas.map(f => {
         const m = f.metrics || {}, c = porId[f.corrida_id] || {};
         return `<tr class="clickable ${b.sel.has(f.banco_id) ? "tildada" : ""}" data-fila="${esc(f.banco_id)}">
           <td class="tick"><input type="checkbox" data-tick="${esc(f.banco_id)}"
@@ -2278,10 +2336,75 @@ function pintarBanco() {
         <span class="muted">${esc(t("bank.in_view_of", {
           n: b.filas.length, hay: fmtInt(hay) }))}</span>
       </div>` : ""}`
-      : bancoVacioHtml(porId[b.corrida])}
+      : filtrando
+        ? `<div class="empty-state"><b>${esc(t("bank.sin_coincidencias",
+             { q: FILTRO_BANCO }))}</b></div>`
+        : bancoVacioHtml(porId[b.corrida])}
   </div>`;
 
   cablearBanco(host);
+
+  /* Exportar todo lo tildado de una.
+
+     Sin esto habia que abrir cada ficha, esperar a que recalcule el backtest
+     —segundos por estrategia, para un archivo que no necesita ese calculo— y
+     exportar. Diez estrategias eran diez vueltas de lo mismo. */
+  /* Filtra mientras se escribe, sin ir al servidor. Se repinta solo la tabla
+     y se devuelve el foco: sin eso, escribir la segunda letra es imposible
+     porque el campo se acaba de redibujar. */
+  const buscar = $("#banco-buscar", host);
+  if (buscar) buscar.oninput = () => {
+    const pos = buscar.selectionStart;
+    FILTRO_BANCO = buscar.value;
+    pintarBanco();
+    const nuevo = $("#banco-buscar");
+    if (nuevo) { nuevo.focus(); nuevo.setSelectionRange(pos, pos); }
+  };
+
+  const exportar = $("#sel-exportar", host);
+  if (exportar) exportar.onclick = async () => {
+    const elegidas = S.banco.filas.filter(f => S.banco.sel.has(f.banco_id));
+    if (!elegidas.length) return;
+    exportar.disabled = true;
+    const original = exportar.innerHTML;
+
+    let listas = 0;
+    const fallaron = [];
+    let carpeta = "", terminal = "";
+    for (const [i, f] of elegidas.entries()) {
+      exportar.innerHTML = `<span class="spinner"></span>${esc(
+        t("bank.exporting", { i: i + 1, n: elegidas.length }))}`;
+      // el contexto de SU corrida, no el de la pantalla: dos filas tildadas
+      // pueden ser de instrumentos distintos
+      const c = S.banco.corridas.find(x => x.id === f.corrida_id) || {};
+      const cuerpo = {
+        spec: f.spec, name: `BQ_${String(f.name).replace("-", "_")}`,
+        dataset_id: c.dataset_id, timeframe: c.timeframe || "1h",
+        metrics: f.metrics, server_utc_offset: S.cfg.brokerUtc,
+      };
+      if (S.mt5.elegido) cuerpo.terminal = S.mt5.elegido;
+      try {
+        const r = await api.post("/api/export/mql5/archivo", cuerpo);
+        listas++; carpeta = r.carpeta; terminal = r.terminal || "";
+      } catch (e) {
+        if (pedirCuenta(e.status)) break;
+        fallaron.push(f.name);
+      }
+    }
+
+    exportar.innerHTML = original;
+    exportar.disabled = false;
+    if (listas) {
+      toast(terminal
+        ? t("bank.exported_mt5", { n: listas, terminal })
+        : t("bank.exported", { n: listas, carpeta }), "ok");
+    }
+    // los que fallaron se nombran: "3 de 5" sin decir cuales dos obliga a
+    // revisar las cinco
+    if (fallaron.length) {
+      toast(t("bank.export_failed", { nombres: fallaron.join(", ") }), "err");
+    }
+  };
 
   const mas = $("#banco-mas", host);
   if (mas) mas.onclick = async () => {

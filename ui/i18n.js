@@ -206,7 +206,12 @@ const STR = {
   "data.none": ["No data yet", "Todavía no hay datos"],
   "data.none_help": ["Download an instrument from the library above, or import your own CSV.",
                      "Descargá un instrumento de la biblioteca de arriba, o importá tu propio CSV."],
-  "data.confirm_delete": ["Delete this dataset?", "¿Borrar este dataset?"],
+  /* "¿Borrar este dataset?" no decía ni qué se pierde ni si vuelve. Los cuatro
+     que trae la aplicación se pueden volver a bajar; uno propio, importado de
+     un CSV, no. Son dos situaciones distintas y hay que decir cuál es. */
+  "data.confirm_delete": [
+    "Delete {nombre}?\n\nStrategies already found stay in place. If it is one of the four that ship with Botiquant you can download it again from Data; if you imported it yourself, you will need the original file.",
+    "¿Borrar {nombre}?\n\nLas estrategias que ya encontraste no se tocan. Si es uno de los cuatro que trae Botiquant lo podés volver a bajar desde Datos; si lo importaste vos, vas a necesitar el archivo original."],
   "data.deleted": ["Dataset deleted", "Dataset borrado"],
 
   /* ------------------------------------------------- ayudas de configuración */
@@ -540,6 +545,17 @@ const STR = {
   "bank.in_view_of": ["{n} of {hay} in view · click a row to analyse it",
     "{n} de {hay} a la vista · clic en una fila para analizarla"],
   "bank.load_more": ["Show more", "Ver más"],
+  "bank.buscar": ["Filter by name or block\u2026", "Filtrar por nombre o bloque\u2026"],
+  "bank.filtradas": ["{n} of {total} shown", "{n} de {total} a la vista"],
+  "bank.sin_coincidencias": ["Nothing matches \u201c{q}\u201d", "Nada coincide con \u201c{q}\u201d"],
+  /* Exportar en masa. Reemplaza abrir cada ficha, esperar el recalculo del
+     backtest y exportar, una por una. */
+  "bank.export_all": ["Export to MetaTrader", "Exportar a MetaTrader"],
+  "bank.exporting": ["Exporting {i} of {n}\u2026", "Exportando {i} de {n}\u2026"],
+  "bank.exported": ["{n} robots saved in {carpeta}", "{n} robots guardados en {carpeta}"],
+  "bank.exported_mt5": ["{n} robots installed in {terminal}",
+                        "{n} robots instalados en {terminal}"],
+  "bank.export_failed": ["Could not export: {nombres}", "No se pudieron exportar: {nombres}"],
   "bank.risk": ["risk", "riesgo"],
   "bank.no_results": ["no results", "sin resultados"],
   "bank.no_filters": ["no filters", "sin filtros"],
@@ -882,11 +898,11 @@ const STR = {
   "session.sub": ["When the strategy is allowed to open trades",
                   "Cuándo puede abrir operaciones la estrategia"],
   "session.help": [
-    "Every hour of the day trades differently. A rule that works between the New York open and the close can lose money running overnight, when the same instrument moves on a tenth of the volume and a much wider spread. Pick one session, or tick several and let the search choose per strategy.",
-    "Cada hora del día se opera distinto. Una regla que funciona entre la apertura de Nueva York y el cierre puede perder plata de madrugada, cuando el mismo instrumento se mueve con una décima parte del volumen y un spread mucho más ancho. Elegí una franja, o tildá varias y dejá que la búsqueda elija por estrategia."],
+    "Every hour of the day trades differently. A rule that works between the New York open and the close can lose money running overnight, when the same instrument moves on a tenth of the volume and a much wider spread. Pick the one that fits the instrument. Ticking several lets the search choose per strategy, which explores more but also overfits more.",
+    "Cada hora del día se opera distinto. Una regla que funciona entre la apertura de Nueva York y el cierre puede perder plata de madrugada, cuando el mismo instrumento se mueve con una décima parte del volumen y un spread mucho más ancho. Elegí la que le corresponda al instrumento. Tildar varias deja que la búsqueda elija por estrategia, que explora más pero también sobreajusta más."],
   "session.searched": [
-    "The search picks the best of the {n} sessions you ticked, per strategy. More sessions means a wider search, and each window ends up with less history behind it — worth keeping in mind when you compare the results.",
-    "La búsqueda elige la mejor de las {n} franjas que tildaste, por estrategia. Más franjas es una búsqueda más amplia, y cada franja queda con menos historia detrás — conviene tenerlo presente al comparar los resultados."],
+    "The search picks the best of the {n} windows you ticked — <b>for each candidate</b>. That is {n} chances to fit noise, and it shows: measured over twelve years, enabling all nine windows drops the average annual return from <b>2.49% to 1.85%</b> on the S&P 500 and from 3.80% to 2.22% on gold. Picking <b>one</b> window on purpose is the version that helps.",
+    "La búsqueda elige la mejor de las {n} franjas que tildaste — <b>para cada candidata</b>. Eso son {n} oportunidades de pegarle al ruido, y se nota: medido sobre doce años, habilitar las nueve baja el rendimiento medio de <b>2,49% a 1,85%</b> anual en el S&P 500 y de 3,80% a 2,22% en oro. Elegir <b>una sola</b> a propósito es la versión que sí ayuda."],
   "session.fixed": ["Every strategy will trade only in this window.",
                     "Todas las estrategias van a operar sólo en esta franja."],
   "session.utc": ["Hours are UTC, the timezone of the price data.",

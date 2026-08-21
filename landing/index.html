@@ -168,6 +168,17 @@ footer{border-top:1px solid var(--border-soft);padding:40px 0;color:var(--text-d
   background:var(--card);border:1px solid var(--border);border-radius:999px;padding:4px 12px 4px 4px}
 .chip img{width:24px;height:24px;border-radius:50%;display:block}
 @media(max-width:620px){.chip span{display:none}.chip{padding:4px}}
+/* En un teléfono, los enlaces del pie medían 21 px de alto: más chico que la
+   yema de un dedo, y la guía de accesibilidad pide 44. Importa acá porque el
+   tráfico viene de YouTube —o sea de teléfonos— y porque en ese pie están
+   Privacidad y Términos, que son justo los que alguien busca cuando está
+   decidiendo si confía.
+   Sólo el área tocable, y sólo en pantallas chicas: con un mouse se apunta
+   fino y el relleno extra separaría los enlaces sin motivo. */
+@media(max-width:760px){
+  .foot-row a,.nav a{display:inline-flex;align-items:center;min-height:44px;padding:2px 4px}
+  .foot-row{gap:2px 14px}
+}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}html{scroll-behavior:auto}}
 </style>
 </head>

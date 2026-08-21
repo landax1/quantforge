@@ -2603,3 +2603,19 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 }
 .lic-fila span { color: var(--text-dim); }
 .lic-fila b { color: var(--text); font-weight: 600; }
+
+/* El buscador del Databank. Va en el rótulo de la tabla y no arriba de todo
+   porque pertenece a la tabla: filtra sus filas, no la pantalla. */
+.banco-buscar {
+  margin-left: auto;
+  min-width: 200px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.banco-buscar::placeholder { color: var(--text-dim); }
+.banco-buscar:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
