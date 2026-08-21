@@ -416,7 +416,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                                                 else None) or "both",
                         # como lo puede llamar el broker: hace falta al
                         # exportar, para enganchar el bot al grafico correcto
-                        "aliases": (entry.get("aliases") if entry else None) or []})
+                        "aliases": (entry.get("aliases") if entry else None) or [],
+                        # que rendimiento anual tiene sentido pedirle a ESTE
+                        # mercado: el techo del S&P y el de EURUSD no se parecen
+                        "min_cagr": entry.get("min_cagr") if entry else None})
         return out
 
     @app.post("/api/datasets/upload")

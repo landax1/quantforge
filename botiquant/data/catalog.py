@@ -25,6 +25,12 @@ mercado en la lista de simbolos de un broker. No es cosmetico: al probar
 el EA del S&P en el tester, MetaTrader contesto "symbol SP500 not exist"
 porque ese servidor lo llama US500. El bot estaba bien y no operaba nunca.
 
+``min_cagr`` es el rendimiento anual que conviene exigir en ese mercado, y
+tambien sale de medir. Los techos, sobre 200 candidatas con la misma vara:
+S&P 14,95%, oro 20,20%, Bitcoin 21,84% y EURUSD 4,05%. Pedirle 3% a los
+cuatro trata como iguales a mercados que no lo son: en EURUSD eso equivale a
+exigir casi el maximo posible, y la busqueda se va a decenas de minutos.
+
 ``contract_size`` y ``min_lot`` son REFERENCIAS, igual que el spread: cada
 broker define las suyas y la pantalla dice que hay que comprobarlas. Existen
 para poder contestar la unica pregunta que el capital inicial deberia contestar
@@ -63,6 +69,7 @@ CATALOG: list[dict[str, Any]] = [
         "target_points": 80.0,
         "contract_size": 100,
         "min_lot": 0.1,
+        "min_cagr": 3.0,
         "aliases": ["SP500", "US500", "SPX500", "S&P500", "USA500", "US500Cash"],
         "direction": "long",
         "mejor_rendimiento": True,
@@ -80,6 +87,7 @@ CATALOG: list[dict[str, Any]] = [
         "target_points": 0.0120,
         "contract_size": 100000,
         "min_lot": 0.01,
+        "min_cagr": 1.0,
         "aliases": ["EURUSD"],
         "direction": "both",
     },
@@ -96,6 +104,7 @@ CATALOG: list[dict[str, Any]] = [
         "target_points": 36.0,
         "contract_size": 100,
         "min_lot": 0.01,
+        "min_cagr": 3.0,
         "aliases": ["XAUUSD", "GOLD", "XAUUSD.spot"],
         "direction": "long",
     },
@@ -112,6 +121,7 @@ CATALOG: list[dict[str, Any]] = [
         "target_points": 1800.0,
         "contract_size": 1,
         "min_lot": 0.01,
+        "min_cagr": 3.0,
         "aliases": ["BTCUSD", "BTCUSDT", "Bitcoin"],
         "direction": "long",
     },

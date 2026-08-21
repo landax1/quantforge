@@ -717,6 +717,12 @@ function adoptInstrumentDefaults() {
   // el volumen mínimo también es propio del instrumento: 0.1 en un índice y
   // 0.01 en divisas, y heredar el del anterior da un chequeo que no sirve
   if (ds && ds.min_lot) S.cfg.minLot = ds.min_lot;
+  /* Y el rendimiento que tiene sentido pedirle. Los techos medidos no se
+     parecen: 14,95% anual en el S&P, 20,20% en oro, 21,84% en Bitcoin y 4,05%
+     en EURUSD. Pedirle 3% a los cuatro trata como iguales a mercados que no lo
+     son — en EURUSD equivale a exigir casi el máximo posible, y la búsqueda se
+     va a decenas de minutos buscando lo que casi no existe. */
+  if (ds && ds.min_cagr != null) S.cfg.minCagr = ds.min_cagr;
   saveCfg();
 }
 
@@ -2202,19 +2208,43 @@ function pintarCorridas() {
   const b = S.banco;
   const activa = b.corridas.find(c => c.id === b.corrida);
 
+  /* Las que no tienen ninguna estrategia van aparte.
+
+     No se borran: una búsqueda que no encontró nada es el experimento que más
+     conviene tener anotado —dice que con esa vara, sobre ese mercado, no pasó
+     ninguna de novecientas— y sin ese registro se vuelve a intentar lo mismo
+     dentro de un mes.
+
+     Pero tampoco pueden ocupar el mismo lugar que las que sí encontraron algo:
+     con quince búsquedas fallidas la pantalla se llena de burbujas que dicen
+     "sin resultados" y parece que la aplicación está rota. Van agrupadas
+     detrás de una línea que se abre si hacen falta. */
+  const conAlgo = b.corridas.filter(c => c.n);
+  const vacias = b.corridas.filter(c => !c.n);
+
   host.innerHTML = `<div class="card">
     <h2>${esc(t("bank.runs"))} <span class="hint">${esc(t("bank.runs_hint"))}</span></h2>
     <div class="corridas-lista">
       <button class="corrida-chip ${b.corrida ? "" : "on"}" data-corrida="">
         <b>${esc(t("bank.all"))}</b><span>${fmtInt(b.total)} ${esc(t("ui.strategies"))}</span></button>
-      ${b.corridas.map(c => `
-        <button class="corrida-chip ${b.corrida === c.id ? "on" : ""} ${c.n ? "" : "vacia"}"
+      ${conAlgo.map(c => `
+        <button class="corrida-chip ${b.corrida === c.id ? "on" : ""}"
           data-corrida="${esc(c.id)}" title="${esc(varaDe(c))}">
           <b>${esc(etiquetaCorrida(c))}</b>
           <span>${c.n ? `${c.n} · ${esc(t("bank.risk"))} ${esc(riesgoDe(c))}`
             : esc(t("bank.no_results"))}</span>
         </button>`).join("")}
     </div>
+      ${vacias.length ? `<details class="corridas-vacias">
+        <summary>${esc(t("bank.vacias", { n: vacias.length }))}</summary>
+        <div class="corridas-lista">
+          ${vacias.map(c => `
+            <button class="corrida-chip vacia ${b.corrida === c.id ? "on" : ""}"
+              data-corrida="${esc(c.id)}" title="${esc(varaDe(c))}">
+              <b>${esc(etiquetaCorrida(c))}</b>
+              <span>${esc(t("bank.no_results"))}</span></button>`).join("")}
+        </div>
+      </details>` : ""}
     ${activa ? `
       <div class="corrida-ficha">
         <div class="cf-datos">
