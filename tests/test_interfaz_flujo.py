@@ -31,7 +31,7 @@ INDEX = (UI_DIR / "index.html").read_text(encoding="utf-8")
 #: encontrar leyendo el archivo. Se listan sus familias para no dar falsos
 #: positivos, y cada familia se comprueba aparte más abajo.
 FAMILIAS = ("s.", "est.", "wf.frase_", "dir.", "ended.", "crit.",
-            "cat.", "inst.", "tf.", "ms.")
+            "cat.", "inst.", "tf.", "ms.", "score.")
 
 
 def _claves_del_diccionario() -> set[str]:
@@ -568,3 +568,23 @@ def test_los_controles_de_minado_no_se_manipulan_sueltos():
     assert not sueltos, (
         "el botón de minar se está habilitando o deshabilitando fuera de "
         "pintarEstadoMinado; eso es lo que causó el bug")
+
+
+def test_el_desglose_del_score_esta_traducido():
+    """Los rótulos del score los arma el backend, en castellano.
+
+    `metrics.py` no sabe de idiomas: define SCORE_PARTS con textos fijos como
+    "Consistencia (Sharpe)". La pantalla los mostraba tal cual, así que con la
+    aplicación en inglés —que es el idioma por omisión— el título decía "Score
+    — how repeatable it looks" y las barras de abajo salían en castellano.
+
+    Cada parte del score tiene que tener su clave en el diccionario. Si alguien
+    agrega una séptima en el backend y se olvida del texto, esto la encuentra.
+    """
+    from botiquant.backtesting.metrics import SCORE_PARTS
+
+    tiene = _claves_del_diccionario()
+    faltan = [k for k, _label, _peso in SCORE_PARTS if f"score.{k}" not in tiene]
+    assert not faltan, (
+        "estas partes del score no tienen texto en el diccionario y se van a "
+        f"dibujar en castellano con la app en inglés: {faltan}")

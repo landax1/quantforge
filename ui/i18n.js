@@ -63,6 +63,16 @@ const STR = {
   "m.worst_month": ["Worst month", "Peor mes"],
   "m.months_positive": ["Winning months", "Meses en ganancia"],
   "m.top_trade": ["Biggest trade's share", "Peso de la mejor operación"],
+  /* El desglose del score. El backend arma estos rotulos en castellano
+     (metrics.py no sabe de idiomas) y la pantalla los mostraba tal cual: con la
+     app en ingles el titulo decia "Score - how repeatable it looks" y las barras
+     de abajo "Consistencia (Sharpe)". Ahora la clave manda sobre el rotulo. */
+  "score.consistencia": ["Consistency (Sharpe)", "Consistencia (Sharpe)"],
+  "score.recuperacion": ["Profit vs. drawdown", "Ganancia vs. caída"],
+  "score.evidencia":    ["Evidence (no. of trades)", "Evidencia (nº de operaciones)"],
+  "score.ventaja":      ["Edge per trade", "Ventaja por operación"],
+  "score.estabilidad":  ["Month-to-month stability", "Estabilidad mes a mes"],
+  "score.reparto":      ["Profit spread out", "Ganancia repartida"],
   "m.score": ["Score", "Score"],
   "m.session": ["Session", "Horario"],
   "gene.trail": ["trail", "trailing"],

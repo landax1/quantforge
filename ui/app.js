@@ -594,14 +594,22 @@ function scoreCell(v) {
   return `<span class="score-cell ${t.cls}" title="${t.label}">${fmtNum(v ?? 0, 0)}</span>`;
 }
 
-/* barras del desglose: se ve de dónde sale el puntaje y qué lo hunde */
+/* Barras del desglose: se ve de dónde sale el puntaje y qué lo hunde.
+
+   El rótulo sale del DICCIONARIO y no del que manda el servidor. El backend
+   define las partes en metrics.py con textos fijos en castellano —no sabe de
+   idiomas— y la pantalla los dibujaba tal cual, así que con la aplicación en
+   inglés, que es el idioma por omisión, el título decía "Score — how repeatable
+   it looks" y las barras de abajo "Consistencia (Sharpe)".
+
+   Hay una prueba que comprueba que cada parte del backend tenga su texto acá. */
 function scoreBars(parts) {
   const defs = S.meta?.score_parts || [];
   if (!parts || !defs.length) return "";
   return `<div class="score-bars">${defs.map(d => {
     const v = +(parts[d.key] ?? 0);
     return `<div class="sb-row">
-      <span class="sb-label">${esc(d.label)}</span>
+      <span class="sb-label">${esc(t("score." + d.key))}</span>
       <span class="sb-track"><i style="width:${(v * 100).toFixed(0)}%"
         class="${v >= 0.66 ? "hi" : v >= 0.33 ? "mid" : "lo"}"></i></span>
       <span class="sb-val">${Math.round(v * d.weight)}<u>/${d.weight}</u></span>
@@ -4717,8 +4725,11 @@ function scoreVerdict(res) {
     reparto: t("why.spread", { pct: fmtNum(m.top_trade_share_pct ?? 0, 0) }),
   }[worst.key] || "";
   const tier = scoreTier(res.score || 0);
+  // el nombre de la parte sale del diccionario, no del rótulo que manda el
+  // servidor: si no, la frase queda "What drags its score down most is ventaja
+  // por operación" — inglés con un pedazo en castellano en el medio
   return `<b>${tier.label}.</b> ${t("why.lowers", {
-    parte: esc(worst.label.toLowerCase()), motivo: why })}`;
+    parte: esc(t("score." + worst.key).toLowerCase()), motivo: why })}`;
 }
 
 /* descripción legible de las salidas de una estrategia */
