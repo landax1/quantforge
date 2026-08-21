@@ -721,6 +721,20 @@ const STR = {
 
   "empty.none_passed": ["{n} tested, none cleared the filters.",
                         "{n} probadas, ninguna pasó los filtros."],
+  /* El arreglo de un clic cuando la busqueda no encontro nada.
+
+     El diagnostico ya dice que filtro bloquea, que se pidio y hasta donde se
+     llego. Sin esto habia que subir, abrir la seccion 5, encontrar ese filtro
+     entre nueve, cambiar el numero y volver a minar: cinco pasos para aplicar
+     una conclusion que la aplicacion ya saco.
+
+     El boton dice QUE va a cambiar. Nadie aprieta uno que diga "arreglar". */
+  "fix.bajar": ["Lower {criterio} to {valor} and search again",
+                "Bajar {criterio} a {valor} y buscar de nuevo"],
+  "fix.apagar": ["Turn off {criterio} and search again",
+                 "Apagar {criterio} y buscar de nuevo"],
+  "fix.aplicado": ["Filter adjusted \u2014 searching again",
+                   "Filtro ajustado \u2014 buscando de nuevo"],
   "empty.also": [
     "You can also untick filters in section 5, or change the exits in section 3 — that completely changes which strategies work.",
     "También podés destildar filtros en la sección 5, o cambiar las salidas en la 3 — eso cambia por completo qué estrategias funcionan."],

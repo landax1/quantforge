@@ -3456,6 +3456,9 @@ const vistaBuscar = async (main) => {
         // el objetivo manda; max_candidates es solo el tope de seguridad
         target_keep: cfg.goal, keep_top: Math.max(cfg.goal, 100),
         oos_pct: +cfg.oosPct || 0,
+        // sólo cuando se viene del botón de arreglo: repetir las mismas
+        // candidatas es justo lo que hace que el arreglo funcione
+        ...(SEMILLA_REINTENTO ? { seed: +SEMILLA_REINTENTO } : {}),
         max_candidates: cfg.maxCandidates, max_filters: cfg.maxFilters,
         sessions: sesionesElegidas(),
         method: cfg.method, population: 40,
@@ -3468,6 +3471,12 @@ const vistaBuscar = async (main) => {
           commission_pct: cfg.commission, initial_capital: cfg.capital,
         },
       }, j => {
+        /* La semilla se consume acá, en la primera vuelta del sondeo: ya viajó
+           en el pedido. Si quedara puesta, TODAS las corridas siguientes
+           repetirían las mismas candidatas y la aplicación dejaría de
+           encontrar cosas nuevas — con la misma configuración devolvería
+           siempre lo mismo, que es lo contrario de lo que hace. */
+        SEMILLA_REINTENTO = null;
         setProgress("m-prog", j);
         // el botón se sincroniza con el servidor y no con el clic: si el pedido
         // de pausa se perdió, la pantalla no puede seguir diciendo que pausó
@@ -3746,6 +3755,89 @@ function textoDiagnostico(d) {
     criterio: nombre, n: d.rejected,
     pedido: fmtNum(d.limit, 2), llego: fmtNum(d.best_reached, 2),
   });
+}
+
+/* La semilla que hay que reusar en el próximo minado, si lo pidió el botón de
+   arreglo. Se consume una vez: la corrida siguiente vuelve a sortear sola. */
+let SEMILLA_REINTENTO = null;
+
+/* Aplicar el arreglo y volver a buscar.
+
+   Por delegación en el documento y no atado al nodo: la pantalla del minado se
+   redibuja en cada vuelta del sondeo, así que cualquier manejador colgado de un
+   botón concreto se pierde en el redibujo siguiente. Con esto no hay nodo que
+   perder. */
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest?.("#m-arreglar");
+  if (!b) return;
+  const clave = b.dataset.clave;
+  const valor = b.dataset.valor;
+  if (valor === "") S.cfg.critOn[clave] = false;
+  else { S.cfg[clave] = +valor; S.cfg.critOn[clave] = true; }
+  /* Si la búsqueda se cortó por el tope y no por falta de candidatas buenas,
+     bajar la vara sin levantar el tope la deja parando en el mismo lugar por
+     el mismo motivo. */
+  if (b.dataset.tope) {
+    S.cfg.maxCandidates = Math.min(20000, (+S.cfg.maxCandidates || 2000) * 5);
+  }
+  saveCfg();
+  // la semilla de la corrida fallida: regenera las mismas candidatas, así que
+  // las que estaban cerca entran seguro en vez de depender del azar
+  SEMILLA_REINTENTO = b.dataset.semilla || null;
+  // se redibuja la pantalla para que la sección 5 MUESTRE lo que se tocó —el
+  // usuario tiene que poder ver qué cambió— y desde ahí arranca sola
+  navigate("mining", "buscar").then(() => {
+    toast(t("fix.aplicado"), "ok");
+    $("#m-run")?.click();
+  });
+});
+
+/* El botón. Dice exactamente qué va a cambiar antes de cambiarlo: nadie
+   aprieta un botón que dice "arreglar" sin saber qué toca. */
+function botonArreglo(d, snap) {
+  const a = arregloSugerido(d);
+  if (!a) return "";
+  /* La semilla de ESTA corrida viaja con el botón. Al volver a buscar con
+     ella se regeneran exactamente las mismas candidatas, así que las que
+     estaban cerca entran con seguridad. Sin esto el arreglo es una apuesta:
+     medido, bajar la vara y volver a sortear encontró cero. */
+  return `<button class="btn mt" id="m-arreglar"
+    data-semilla="${esc(String(snap?.seed ?? ""))}"
+    data-tope="${snap?.hit_cap ? "1" : ""}"
+    data-clave="${esc(a.clave)}" data-valor="${a.apagar ? "" : a.valor}">${
+    esc(a.apagar
+      ? t("fix.apagar", { criterio: a.nombre })
+      : t("fix.bajar", { criterio: a.nombre, valor: a.valor }))}</button>`;
+}
+
+/* El arreglo que la aplicación ya dedujo, listo para aplicar de un clic.
+
+   El diagnóstico dice qué criterio bloquea, qué se pidió y hasta dónde se
+   llegó — y después manda al usuario a cambiarlo a mano: subir, abrir la
+   sección 5, encontrar ese filtro entre nueve, cambiar el número, y volver a
+   minar. Cinco pasos para aplicar una conclusión que ya está sacada.
+
+   Devuelve null cuando no hay nada sensato que ofrecer. */
+function arregloSugerido(d) {
+  if (!d || !d.reason || d.best_reached == null) return null;
+  const clave = CRIT_POR_CAMPO[d.reason];
+  if (!clave) return null;                       // min_trades y desconocidos
+  const cr = CRIT_BY_KEY()[clave];
+  if (!cr) return null;
+
+  const esMaximo = clave === "maxDd";            // el único donde menos es más
+  // un pelín más flojo que el techo alcanzado: pedir exactamente el máximo
+  // dejaría pasar una sola candidata, que no es una búsqueda
+  const holgura = esMaximo ? 1.05 : 0.95;
+  let valor = +(d.best_reached * holgura);
+  valor = +valor.toFixed(valor < 10 ? 2 : 0);
+
+  // Si ni aflojando llega al mínimo que el criterio admite, bajarlo es fingir
+  // que el mercado da algo que no da. Ahí lo honesto es apagarlo.
+  if (!esMaximo && cr.min != null && valor < cr.min) {
+    return { clave, apagar: true, nombre: nombreDeRechazo(d.reason) };
+  }
+  return { clave, valor, apagar: false, nombre: nombreDeRechazo(d.reason) };
 }
 
 /* "Pediste 20% anual y el techo de este mercado es 5%": qué haría falta y qué
@@ -4050,6 +4142,7 @@ function renderMining(snap, finished) {
            ${textoDiagnostico(snap.diagnosis)
              ? `<p class="mt">${textoDiagnostico(snap.diagnosis)}</p>` : ""}
            ${sugerenciaRiesgo(snap.diagnosis?.suggestion)}
+           ${botonArreglo(snap.diagnosis, snap)}
            <p class="mt muted">${esc(t("empty.also"))}</p>
          </div>`}
   </div>`;
@@ -4078,6 +4171,7 @@ function renderMining(snap, finished) {
     // curva, que es lo que se acaba de pedir al reservar un tramo de validacion
     $$("[data-row]", bankBox).forEach(tr =>
       tr.onclick = () => openInspector(bank[+tr.dataset.row], ctxDeLaCorrida(snap)));
+
     cablearOrden(bankBox);
 
     /* Las estrategias que llegaron en esta vuelta entran con un desliz.
