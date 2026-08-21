@@ -34,6 +34,47 @@ for _var in ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
     os.environ.pop(_var, None)
 
 
+def soltar_la_marca_de_internet() -> int:
+    """Le saca a los archivos propios la marca de "bajado de internet".
+
+    Sin esto la aplicación no abre en la máquina de nadie que la haya
+    descargado, que son todas. Está medido: mismo binario, con la marca muere
+    con un Traceback y sin la marca abre la ventana.
+
+    Windows marca el ZIP al descargarlo y el Explorador propaga esa marca a
+    cada archivo que extrae. .NET Framework se niega a cargar un ensamblado
+    marcado, así que ``Python.Runtime.dll`` —que es lo que pywebview necesita
+    para dibujar la ventana— no carga nunca.
+
+    La marca es un flujo alternativo de NTFS colgado del archivo
+    (``algo.dll:Zone.Identifier``) y se borra como se borra cualquier archivo.
+    Se hace acá, al principio de todo, porque después de importar ``webview``
+    ya es tarde.
+
+    Devuelve cuántas quitó. Nunca levanta excepción: si falla, lo peor que
+    puede pasar es el error que ya teníamos.
+    """
+    if not getattr(sys, "frozen", False):
+        return 0                      # en desarrollo no hay nada descargado
+    # En un empaquetado de carpeta, _MEIPASS es `_internal`, que es donde viven
+    # los DLL. El .exe está justo afuera.
+    interno = Path(getattr(sys, "_MEIPASS", "") or RAIZ)
+    quitadas = 0
+    for archivo in list(interno.rglob("*")) + [Path(sys.executable)]:
+        try:
+            if not archivo.is_file():
+                continue
+            # borrar el flujo, no el archivo. Si no existe, FileNotFoundError.
+            os.remove(f"{archivo}:Zone.Identifier")
+            quitadas += 1
+        except OSError:
+            # no existe (lo normal), o la carpeta es de sólo lectura. En el
+            # segundo caso el arranque va a fallar igual y el mensaje de más
+            # abajo lo explica; acá no hay nada que hacer.
+            continue
+    return quitadas
+
+
 def puerto_libre() -> int:
     """Un puerto que el sistema garantiza libre AHORA.
 
@@ -66,7 +107,27 @@ def esperar_al_servidor(puerto: int, timeout: float = 30.0) -> bool:
 
 def main() -> int:
     import uvicorn
-    import webview
+
+    # ANTES de importar webview, que es lo que arrastra a .NET. Después de esta
+    # línea ya no se puede arreglar: el import falla y se lleva el proceso.
+    soltar_la_marca_de_internet()
+
+    try:
+        import webview
+    except Exception as exc:      # noqa: BLE001 — cualquier fallo del import
+        # Si a pesar de la limpieza .NET sigue sin cargar, el usuario merece
+        # una frase y no ochenta líneas de Traceback que no le dicen nada.
+        # El caso conocido es una carpeta donde no se puede escribir: dentro
+        # del propio ZIP, en una carpeta de red, o en Archivos de programa.
+        print(
+            "Botiquant no pudo abrir su ventana.\n\n"
+            "Casi siempre es porque se está ejecutando desde adentro del ZIP o "
+            "desde una carpeta protegida.\n"
+            "Extraé la carpeta Botiquant a tu Escritorio o a Documentos y abrí "
+            "Botiquant.exe desde ahí.\n\n"
+            f"Detalle técnico: {exc}",
+            file=sys.stderr)
+        return 1
 
     from botiquant import __version__
 
