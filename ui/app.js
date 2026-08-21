@@ -855,6 +855,33 @@ function cablearSesiones(root) {
   if (nota) nota.innerHTML = notaSesiones();
 }
 
+/* Cuánto espacio hay arriba del panel de configuración, publicado como
+   variable CSS para que el panel pueda limitarse a lo que queda.
+
+   Se mide en vez de asumirse. El CSS restaba sesenta píxeles fijos y el panel
+   arranca a ciento ochenta y seis —arriba tiene el título de la pantalla y la
+   pastilla de contexto—, así que a 1366x768 el botón de arrancar quedaba en
+   y=765 con la ventana en 768. Y no se alcanzaba scrolleando: el panel es
+   pegajoso, se detiene, y el botón se queda donde está.
+
+   Se recalcula al cambiar el tamaño de la ventana, así que no puede volver a
+   quedar viejo cuando cambie el encabezado. */
+function medirHuecoDelPanel() {
+  const panel = document.querySelector(".setup");
+  if (!panel) return;
+  // el margen de abajo que el panel deja respirar, igual que el de arriba
+  const AIRE = 24;
+  const arriba = panel.getBoundingClientRect().top + (document.querySelector("main")?.scrollTop || 0);
+  document.documentElement.style.setProperty(
+    "--setup-hueco", Math.max(60, Math.round(arriba + AIRE)) + "px");
+}
+
+let _huecoPendiente = null;
+window.addEventListener("resize", () => {
+  clearTimeout(_huecoPendiente);
+  _huecoPendiente = setTimeout(medirHuecoDelPanel, 120);
+});
+
 function progressHtml(id) {
   return `<div class="progress-wrap" id="${id}">
     <div class="progress-bar"><div></div></div>
@@ -3055,6 +3082,10 @@ const vistaBuscar = async (main) => {
   // y una vez al dibujar: la linea que explica el porcentaje se arma aca, asi
   // que sin esta llamada el paso abre en blanco justo debajo de los botones
   pintarOos();
+
+  // el panel ya está en su lugar: recién ahora se puede medir cuánto espacio
+  // le queda, y sin eso el botón de arrancar se sale de la ventana
+  medirHuecoDelPanel();
 
   $$("#rk-sizing button", main).forEach(b => b.onclick = () => {
     S.cfg.sizing = b.dataset.v;

@@ -712,11 +712,20 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
 .setup {
   position: sticky; top: 0;
   display: flex; flex-direction: column;
-  max-height: calc(100vh - 60px);
+  /* El hueco lo mide la aplicación y lo publica acá: el panel no arranca
+     pegado al borde —arriba tiene el título de la pantalla— y restar un número
+     fijo dejaba el botón de arrancar fuera de la ventana. Medido a 1366x768,
+     que es la resolución de laptop más común: el botón caía en y=765 y NO se
+     alcanzaba ni scrolleando, porque el panel es pegajoso y se detiene.
+     El respaldo es para el primer pintado, antes de que se mida. */
+  max-height: calc(100vh - var(--setup-hueco, 200px));
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--r-lg); box-shadow: var(--sh-1); overflow: hidden;
 }
-@media (max-width: 1180px) { .setup { position: static; max-height: none; } }
+/* En angosto el panel deja de ser pegajoso —las dos columnas se apilan y un
+   panel fijo taparía los resultados— pero conserva el límite de altura: sin él
+   crece entero y el botón de arrancar se va igual de lejos. */
+@media (max-width: 1180px) { .setup { position: static; } }
 
 /* Este panel es pegajoso Y tiene scroll propio adentro de una página que
    también scrollea. Esa combinación trae dos problemas distintos:
@@ -838,7 +847,12 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
 }
 .lock-note b { color: var(--text); }
 
+/* Pegado al pie de la columna: la acción principal no puede quedar fuera de
+   la pantalla. Medido en 1024x680 —el tamaño mínimo que la ventana permite—
+   el botón caía en y=763, o sea abajo del todo y sin verse.
+   `bottom: 0` en vez de `top` porque es el pie de la columna, no su cabecera. */
 .setup-run {
+  position: sticky; bottom: 0; z-index: 15;
   border-top: 1px solid var(--border); background: var(--card-2);
   padding: 16px 16px; display: flex; flex-direction: column; gap: 12px;
 }
