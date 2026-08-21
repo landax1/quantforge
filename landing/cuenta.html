@@ -73,6 +73,26 @@ h1{font-size:30px;letter-spacing:-.03em;margin-bottom:6px}
   border-radius:var(--r);padding:12px 15px;font-size:14px;color:var(--text-2);margin-top:14px}
 .aviso b{color:var(--warn)}
 .mini{color:var(--text-dim);font-size:12.5px;margin-top:10px}
+
+/* El cartel de Windows, dibujado. No es una captura: es un dibujo con CSS que
+   alcanza para que se reconozca de un vistazo cuando aparezca de verdad.
+   Reconocerlo es todo el punto — lo que asusta es no saber qué es. */
+.win{border:1px solid var(--border);border-radius:10px;overflow:hidden;
+     margin:14px 0;background:#f3f3f3;color:#1a1a1a;max-width:420px}
+.win-top{background:#0a5ca8;color:#fff;padding:11px 14px;font-size:14px;font-weight:600}
+.win-cuerpo{padding:12px 14px;font-size:12.5px;line-height:1.55;color:#333}
+.win-cuerpo em{font-style:normal;color:#666;display:block;margin-top:6px;font-size:11.5px}
+.win-pie{display:flex;gap:8px;justify-content:flex-end;padding:10px 14px 14px}
+.win-b{border:1px solid #adadad;background:#e1e1e1;border-radius:3px;
+       padding:5px 14px;font-size:12px;color:#1a1a1a}
+.win-b.marcado{border-color:#0a5ca8;box-shadow:0 0 0 2px rgba(10,92,168,.28);font-weight:600}
+.pasos-win{margin:12px 0 0;padding-left:18px;color:var(--text-2);font-size:14px}
+.pasos-win li{margin-bottom:5px}
+.pasos-win b{color:var(--text)}
+.una-vez{margin-top:14px;padding:11px 14px;border-radius:10px;
+         background:rgba(45,212,191,.09);border:1px solid rgba(45,212,191,.24);
+         font-size:13.5px;color:var(--text-2)}
+.una-vez b{color:var(--text)}
 footer{border-top:1px solid var(--border-soft);padding:28px 0;color:var(--text-dim);font-size:13px}
 </style>
 </head>
@@ -181,6 +201,35 @@ const kb = (n) => n >= 1e6 ? (n/1e6).toFixed(0) + " MB" : (n/1e3).toFixed(0) + "
       <div class="row">${botonDescarga}</div>
       ${notaDescarga}
     </div>
+
+    ${descarga.disponible ? `
+    <div class="card">
+      <h2>Al abrirlo, Windows te va a avisar</h2>
+      <p>La primera vez que abras Botiquant vas a ver esta pantalla azul. Aparece
+         porque la aplicación es nueva y todavía no acumuló historial de
+         descargas — no porque tenga nada malo.</p>
+
+      <div class="win">
+        <div class="win-top">Windows protegió su PC</div>
+        <div class="win-cuerpo">
+          Microsoft Defender SmartScreen impidió el inicio de una aplicación
+          desconocida. Si la ejecuta, podría poner en riesgo su PC.
+          <em>Aplicación: Botiquant.exe · Editor: desconocido</em>
+        </div>
+        <div class="win-pie">
+          <span class="win-b marcado">Más información</span>
+          <span class="win-b">No ejecutar</span>
+        </div>
+      </div>
+
+      <ol class="pasos-win">
+        <li>Hacé clic en <b>Más información</b></li>
+        <li>Después en <b>Ejecutar de todas formas</b>, que aparece recién ahí</li>
+      </ol>
+
+      <div class="una-vez"><b>Sale una sola vez.</b> Del segundo arranque en
+        adelante Windows ya no pregunta nada.</div>
+    </div>` : ""}
 
     <div class="card">
       <h2>Tu licencia</h2>
