@@ -117,6 +117,63 @@ def test_lo_avanzado_esta_apagado_pero_entero():
         assert ruta in api, f"{ruta} se borró; tenía que quedar para el futuro"
 
 
+def test_las_franjas_horarias_estan_apagadas_pero_enteras():
+    """Mismo trato que lo avanzado: un interruptor, no una poda.
+
+    Se apagaron por lo que dio medirlas. Restringir la búsqueda a una franja
+    sube mucho UNA estrategia fija, pero cuando la búsqueda elige entre nueve
+    el promedio baja —S&P de 2,49% a 1,85% anual, oro de 3,80% a 2,22%—:
+    cada franja recorta la muestra, así que hay menos operaciones por candidata
+    y más chance de que una racha buena pase la vara por azar.
+
+    El motor queda entero y con sus tests corriendo, y las estrategias ya
+    minadas con una franja la siguen mostrando: son el registro de lo que se
+    hizo. Poner SESIONES en true las devuelve a la pantalla.
+    """
+    assert "const SESIONES = false;" in APP, "SESIONES cambió de valor o de nombre"
+    for pieza in ("cablearSesiones", "sesionesElegidas", "notaSesiones", "sesionDeFiltro"):
+        assert pieza in APP, f"{pieza} se borró en vez de apagarse"
+    # y el motor no se toca
+    motor = Path(__file__).resolve().parents[1] / "tests" / "test_sesiones.py"
+    assert motor.exists(), "se borraron las pruebas del motor de franjas"
+
+
+def test_apagadas_no_dejan_una_franja_escondida():
+    """Lo peligroso de apagar una perilla que se guarda en el navegador.
+
+    La elección vive en localStorage. Sin este corte, alguien que la semana
+    pasada eligió Londres seguiría minando restringido a Londres, sin ningún
+    control en pantalla que lo diga ni con qué apagarlo. Una restricción
+    invisible es peor que la perilla que se quiso sacar.
+    """
+    cuerpo = APP[APP.index("function sesionesElegidas()"):]
+    cuerpo = cuerpo[:cuerpo.index("\n}")]
+    assert 'if (!SESIONES) return ["todo"];' in cuerpo, (
+        "sesionesElegidas volvió a leer la elección guardada con las franjas "
+        "apagadas: se puede estar minando con una restricción que no se ve")
+
+
+def test_reservar_un_tramo_vive_donde_se_elige_la_data():
+    """Y no en un paso al final.
+
+    Estaba de sexto, casi al final del panel: uno terminaba de armar el robot y
+    recién ahí le aparecía la opción de guardarse un pedazo de historia sin
+    mirar. No es un paso final — es una decisión sobre la data, la de partir en
+    dos el período que se acaba de elegir unas líneas más arriba.
+    """
+    assert 'id="m-sect-oos"' not in APP, "volvió a ser un paso aparte"
+    # el interruptor cae adentro del primer <details>, antes de que abra el segundo
+    primer_paso = APP.index('<details class="sect">')
+    segundo_paso = APP.index('<details class="sect">', primer_paso + 10)
+    oos = APP.index('id="m-oos-sw"')
+    assert primer_paso < oos < segundo_paso, (
+        "el interruptor de tramo reservado se fue del paso donde se elige la data")
+
+    # y el texto no puede mandar al paso 1 estando en el paso 1
+    assert "step 1" not in DICC and "paso 1" not in DICC, (
+        "la explicación sigue mandando al paso 1, y ahora ESTÁ en el paso 1")
+
+
 def test_los_consejos_estan_completos():
     """Cada consejo necesita título y cuerpo, en los dos idiomas."""
     consejos = re.findall(r'clave: "tip\.(\w+)"', APP)
@@ -325,11 +382,72 @@ def test_no_quedan_tamanos_de_letra_fuera_de_escala():
     assert not decimales, f"tamaños con decimales: {decimales}"
     assert not chicas, f"tamaños por debajo de 10 px: {chicas}"
 
+    # Y la escala entera, no sólo los decimales. Mirando nada más los medios
+    # puntos se habían escapado doce declaraciones en 15, 17, 19, 22, 26, 34 y
+    # 38 px: ninguna era un error visible por sí sola, y juntas son otra vez
+    # una interfaz sin ritmo. Agregar un paso es una decisión de diseño y se
+    # toma acá, sumándolo a esta lista y diciendo por qué.
+    escala = {9, 10, 11, 12, 13, 14, 16, 18, 20, 24, 30, 36}
+    fuera = sorted(x for x in medidas if x not in escala)
+    assert not fuera, (
+        f"tamaños de letra fuera de la escala: {fuera}. "
+        "Si hace falta un paso nuevo, se agrega acá y en el encabezado del CSS.")
+
 
 @pytest.mark.parametrize("vista", ["is", "oos", "todo"])
 def test_las_tres_vistas_de_la_curva_tienen_su_rotulo(vista):
     """Se arman concatenando —t("ms." + v.id)— así que el examen general no las ve."""
     assert f'"ms.{vista}"' in DICC, f"falta el rótulo de la vista {vista}"
+    assert f'"ms.{vista}_help"' in DICC, (
+        f"falta la explicación en llano de {vista}. Los rótulos son los términos "
+        "del oficio —in sample, out of sample— y el globito es donde se dice qué "
+        "significan sin jerga; sin él, quien no los conoce se queda afuera.")
+
+
+def test_elegir_un_tramo_repinta_la_ficha_entera():
+    """Y no sólo la curva, que fue el fallo.
+
+    Con la data partida, tocar "out of sample" cambiaba el gráfico y la fecha
+    del pie. Las cuatro cifras grandes, las doce de la lista, el score, el mapa
+    mensual y la tabla de operaciones seguían siendo del tramo donde buscó: la
+    pantalla decía "out of sample" arriba de un +13,88% anual cuando el tramo
+    reservado daba -2,88%. No es confuso, es incorrecto.
+
+    El arreglo es que haya UN solo camino de repintado —`mostrarResultado`— que
+    usan por igual la apertura y las pestañas. Mientras fueron dos caminos, uno
+    se olvidaba de la mitad de la pantalla.
+    """
+    assert "const mostrarResultado = (r) =>" in APP, (
+        "desapareció el repintado único de la ficha")
+    # todo lo que depende del período pasa por ahí
+    cuerpo = APP[APP.index("const mostrarResultado = (r) =>"):]
+    cuerpo = cuerpo[:cuerpo.index("\n  };")]
+    for pieza, que in (("insp-score", "el score"),
+                       ("insp-metricas", "las métricas"),
+                       ("insp-trades", "las operaciones"),
+                       ("insp-sec-mensual", "el mapa mensual"),
+                       ("Charts.equity", "la curva")):
+        assert pieza in cuerpo, f"{que} dejó de repintarse al cambiar de tramo"
+
+    # y las pestañas lo llaman de verdad
+    assert "cablearMuestras(box, row, ctx, mostrarResultado)" in APP, (
+        "las pestañas dejaron de recibir el repintado")
+    assert "mostrarResultado(d.res);" in APP, (
+        "elegir una pestaña volvió a dibujar sólo el gráfico")
+
+
+def test_el_control_de_tramo_va_antes_de_lo_que_gobierna():
+    """Estaba adentro de la sección de la curva, debajo de las métricas.
+
+    Un control que manda sobre las cifras de arriba y vive abajo de ellas no se
+    lee como que las manda. Ahora abre la ficha: gobierna el score, las cifras,
+    la curva, los meses y las operaciones, así que va antes que todos.
+    """
+    muestras = APP.index('<div id="insp-muestras" hidden></div>')
+    score = APP.index('esc(t("m.score"))', muestras - 4000)
+    metricas = APP.index('id="insp-h3-metricas"')
+    assert muestras < score < metricas, (
+        "el selector de tramo volvió a quedar por debajo de lo que gobierna")
 
 
 def test_el_score_pondera_el_tramo_reservado():
@@ -386,8 +504,16 @@ def test_hay_una_escala_de_espaciado():
     """
     import re
     css = (Path(__file__).resolve().parents[1] / "ui" / "styles.css").read_text(encoding="utf-8")
-    valores = {float(x) for x in re.findall(
-        r"\b(?:margin|padding|gap|row-gap|column-gap)[a-z-]*:\s*([\d.]+)px", css)}
+    # TODOS los valores de cada declaración, no sólo el primero. Mirando sólo
+    # el primero, `padding: 16px 19px` pasaba limpio: la escala se rompía en la
+    # segunda mitad de la regla, que es justo donde nadie mira. Al cerrar ese
+    # hueco aparecieron tres sueltos —19, 28 y 10 px— que estaban desde antes.
+    valores: set[float] = set()
+    for regla in re.findall(
+            r"\b(?:margin|padding|gap|row-gap|column-gap)[a-z-]*:\s*([^;}]+)", css):
+        # los negativos no cuentan: son correcciones contra otro espaciado, y
+        # su valor sale del que corrigen y no de la escala
+        valores.update(float(v) for v in re.findall(r"(?<![\w.-])(\d+(?:\.\d+)?)px", regla))
     # el paso de la escala, más los hairlines de 1 y 2 px
     permitidos = {1, 2, 4, 6, 8, 12, 16, 20, 24, 30, 32, 34, 40, 48}
     fuera = sorted(v for v in valores if v not in permitidos and v < 32)

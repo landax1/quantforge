@@ -792,6 +792,13 @@ function harvestCfg(root, { normalizar = false } = {}) {
  *  Nunca devuelve vacío: sin ninguna, el minero no podría construir ni una
  *  candidata. */
 function sesionesElegidas() {
+  /* Con las franjas apagadas, siempre "todo el día".
+
+     No alcanza con no dibujar los botones: la elección vive en localStorage,
+     así que alguien que la semana pasada eligió Londres seguiría minando
+     restringido a Londres sin ningún control en pantalla que lo diga ni con
+     qué apagarlo. Una restricción invisible es peor que la perilla. */
+  if (!SESIONES) return ["todo"];
   const validas = new Set((S.meta?.sessions || []).map(s => s.id));
   const elegidas = (S.cfg.sessions || []).filter(x => !validas.size || validas.has(x));
   return elegidas.length ? elegidas : ["todo"];
@@ -1111,7 +1118,8 @@ function resultadoPF(r) {
       <div class="stat"><span>${esc(t("m.cagr"))}</span>
         <b class="${m.cagr_pct >= 0 ? "pos" : "neg"}">${fmtPct(m.cagr_pct)}</b></div>
       <div class="stat"><span>${esc(t("m.dd"))}</span>
-        <b class="neg">${fmtNum(m.max_drawdown_pct, 1)}<u>%</u></b></div>
+        <b class="${nivelDD(m.max_drawdown_pct, riesgoActual())}">${
+          fmtNum(m.max_drawdown_pct, 1)}<u>%</u></b></div>
       <div class="stat"><span>${esc(t("m.sharpe"))}</span><b>${fmtNum(m.sharpe)}</b></div>
       <div class="stat"><span>${esc(t("pf.correlation"))}</span>
         <b class="pf-${j.cls}">${prom == null ? "—" : fmtNum(prom, 2)}</b></div>
@@ -1401,7 +1409,10 @@ const GRAFICOS = { historia: gHistoria, horario: gHorario, spread: gSpread,
 
 const CONSEJOS = () => [
   { id: "historia", ico: "pico", clave: "tip.historia" },
-  { id: "horario",  ico: "diana", clave: "tip.horario" },
+  /* El de las franjas horarias sólo si las franjas están: un consejo sobre
+     una perilla que no existe en la pantalla es peor que no tenerlo — manda a
+     buscar algo que no se va a encontrar. */
+  ...(SESIONES ? [{ id: "horario", ico: "diana", clave: "tip.horario" }] : []),
   { id: "spread",   ico: "alerta", clave: "tip.spread" },
   { id: "vara",     ico: "estrella", clave: "tip.vara" },
   { id: "riesgo",   ico: "baja", clave: "tip.riesgo" },
@@ -1478,7 +1489,11 @@ PAGES.data = async (main) => {
   main.innerHTML = `
   ${pageHead(t("nav.data"), esc(t("data.sub")), ctxPill())}
 
-  <div class="card">
+  <!-- Sin caja alrededor: adentro ya hay cinco tarjetas con su propio borde,
+       y encerrarlas en otra dibuja un borde que no agrupa nada que el título
+       no agrupara ya. Es el caso mas claro de tarjeta dentro de tarjeta que
+       tenia la aplicacion. -->
+  <div class="card llana">
     <h2>${esc(t("data.library"))} <span class="hint">${esc(t("data.library_hint"))}</span></h2>
     <div class="inst-grid">${cards}</div>
     ${progressHtml("dl-prog")}
@@ -1572,7 +1587,7 @@ PAGES.data = async (main) => {
                              n: meta.rows.toLocaleString(localeNum()) }), "ok");
       navigate("data");
     } catch (e) {
-      toast(`Descarga fallida: ${e.message}`, "err");
+      toast(t("data.download_failed", { motivo: e.message }), "err");
       hideProgress("dl-prog");
       $$("[data-dl]", main).forEach(x => x.disabled = false);
       b.textContent = "↓ Descargar";
@@ -1748,6 +1763,27 @@ function pintarNavBanco(total) {
 */
 const AVANZADO = false;
 
+/* LAS FRANJAS HORARIAS, APAGADAS.
+
+   Medido: restringir la búsqueda a una franja sube mucho UNA estrategia fija
+   —una Donchian del S&P pasó de 0,89% a 5,38% anual limitándola a Nueva York—
+   pero cuando la BÚSQUEDA elige entre nueve franjas, el promedio baja: S&P de
+   2,49% a 1,85%, oro de 3,80% a 2,22%. Las dos cosas son ciertas y la segunda
+   es la que importa acá, porque es lo que hace la aplicación.
+
+   Por qué baja: cada franja recorta la muestra, así que hay menos operaciones
+   por candidata y más chance de que una racha buena pase la vara por azar. Se
+   gana un grado de libertad y se pierde evidencia.
+
+   Ocupaba nueve botones, más de un tercio del primer paso, para una perilla
+   que en promedio empeora el resultado y que hay que entender para usar bien.
+
+   Se apaga y no se borra, igual que AVANZADO: el código queda entero, sus
+   tests siguen corriendo y las estrategias ya minadas con una franja la siguen
+   mostrando —son un registro de lo que se hizo—. Poner esto en `true` la
+   devuelve a la pantalla. */
+const SESIONES = false;
+
 const ESTADO_UI = {
   aprobada:  { cls: "ok",  ico: "tilde" },
   aceptable: { cls: "mid", ico: "info" },
@@ -1838,6 +1874,8 @@ PAGES.saved = async (main) => {
             aria-label="${esc(t("pf.pick_one", { nombre: s.name }))}"></td>` : ""}
       <td><span class="strat-name">${esc(s.name)}</span>${sesionTag(s.spec?.time_filter
             ? { session: sesionDeFiltro(s.spec.time_filter) } : {})}
+          ${ctx.saved_at ? `<div class="strat-nota">${esc(t("saved.mined_on", {
+              fecha: new Date(ctx.saved_at).toLocaleDateString(localeNum()) }))}</div>` : ""}
           ${s.notes ? `<div class="strat-nota">${esc(s.notes)}</div>` : ""}
           <div class="strat-blocks">${esc(ctx.blocks || "")}</div></td>
       <td>${esc((ctx.dataset_name || "—").replace(/ M1.*/, ""))}
@@ -1845,8 +1883,8 @@ PAGES.saved = async (main) => {
             · ${esc(t("dir." + (ctx.direction || "long")).toLowerCase())}</div></td>
       <td class="num ${(m.cagr_pct ?? 0) >= 0 ? "pos" : "neg"}"><b>${
         m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
-      <td class="num neg">${m.max_drawdown_pct != null
-        ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
+      <td class="num ${nivelDD(m.max_drawdown_pct, riesgoDeCtx(ctx))}">${
+        m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
       ${AVANZADO ? `<td>${estadoChip(s)}</td>` : ""}
       <td class="num" style="white-space:nowrap">
         ${AVANZADO ? `<button class="btn ghost small" data-probar="${esc(s.id)}">${
@@ -2003,6 +2041,56 @@ async function openSaved(s) {
   });
 }
 
+/* ══════════════════════════════════════════════ LA CAÍDA, GRADUADA ════════
+   El drawdown estaba SIEMPRE en rojo, en los siete lugares donde se dibuja.
+   Una caída del 4,6% y una del 33,8% salían idénticas, así que el color no
+   distinguía nada: pintar todo de rojo es lo mismo que no pintar nada, salvo
+   que además gasta la señal para cuando de verdad hace falta.
+
+   Las bandas salen de medir el banco, no de una intuición. Sobre las 150
+   estrategias que había: la mediana cae 12,3%, tres de cada cuatro se quedan
+   por debajo de 18,7% y la décima parte más brava pasa de 25%. Con los cortes
+   en 15 y 25, el ámbar marca "mirala antes de confiar" y el rojo marca ese
+   último décimo — que es lo que un color de alarma tiene que hacer.
+
+   Y escalan con el riesgo por operación, porque la caída escala con él igual
+   que el rendimiento —está dicho en COLS_CON_RIESGO y es la razón de que esas
+   dos columnas no se puedan comparar entre corridas—. Al 3% por operación
+   todo se multiplica por tres: una banda fija llamaría grave a una estrategia
+   que arriesga el triple y cae exactamente lo mismo.
+
+   Con lotes fijos no hay perilla que leer, así que se usa la banda base y se
+   dice acá que es una aproximación, en vez de inventar una normalización. */
+const DD_ATENCION = 15, DD_GRAVE = 25;        /* al 1% por operación */
+
+function nivelDD(dd, riesgo) {
+  if (dd == null || !isFinite(dd)) return "";
+  /* El tope evita que un riesgo absurdo —0,05% o 20%— convierta la escala en
+     otra cosa. Fuera de ese rango la normalización deja de tener sentido
+     físico y es más honesto quedarse cerca de la banda base. */
+  const k = Math.max(0.25, Math.min(4, +riesgo || 1));
+  const rel = Math.abs(dd) / k;
+  if (rel >= DD_GRAVE) return "dd-grave";
+  if (rel >= DD_ATENCION) return "dd-atencion";
+  return "dd-calma";
+}
+
+/* El riesgo por operación de un contexto guardado, en por ciento.
+
+   Devuelve null con lotes fijos: ahí el tamaño no se expresa como fracción
+   del capital y no hay con qué normalizar. */
+function riesgoDeCtx(ctx) {
+  if (!ctx) return null;
+  const modo = ctx.sizing ?? ctx.size_mode;
+  if (modo === "lots" || modo === "fixed_units") return null;
+  return ctx.riskPct ?? ctx.size_value ?? null;
+}
+
+/* El riesgo de la configuración que está en pantalla ahora mismo. */
+function riesgoActual() {
+  return S.cfg.sizing === "lots" ? null : S.cfg.riskPct;
+}
+
 /* ========================================================= página DATABANK ==
    El banco es donde queda TODO lo minado, corrida por corrida.
 
@@ -2038,17 +2126,49 @@ const VARA = () => [
    tamaño, así que sí comparan de verdad. */
 const COLS_CON_RIESGO = new Set(["cagr", "dd"]);
 
-const BANCO_COLS = () => [
+/* `hayOos` decide si vale la pena gastar una columna.
+
+   Salía siempre, y cuando ninguna corrida a la vista reservó un tramo son
+   ciento cincuenta guiones debajo de un encabezado que además parte en dos
+   líneas. Una columna entera vacía no es información: es ancho que le falta
+   a las que sí tienen algo que decir. */
+const BANCO_COLS = (hayOos = true) => [
   ["score", t("m.score"), t("col.score_help")],
   ["cagr", t("col.annual"), t("bank.cagr_help")],
   ["pf", "PF", t("bank.pf_help")],
   ["dd", t("col.maxdd"), t("bank.dd_help")],
   ["trades", t("col.ops"), t("col.ops_help")],
   ["months", t("col.months_plus"), t("col.months_help")],
-  ["oos", t("col.oos"), t("col.oos_help")],
+  ...(hayOos ? [["oos", t("col.oos"), t("col.oos_help")]] : []),
 ];
 
 const nombreCorto = (s) => String(s || "—").replace(/ M1.*/, "");
+
+/* Cuándo corrió, dicho como se acuerda uno.
+
+   Ocho búsquedas sobre el mismo instrumento y la misma temporalidad daban
+   ocho burbujas idénticas —"SP500 · 1h" arriba, "25 · riesgo 1%" abajo, en
+   todas— y elegir una era una lotería. La hora es lo que las separa porque es
+   lo que uno recuerda: "la de recién", "la de ayer".
+
+   La `Z` del final no es adorno. El servidor guarda en UTC (`db.py`) y sin
+   ella el navegador lo lee como hora local: en Buenos Aires una corrida de
+   hace un minuto aparecía tres horas en el futuro. */
+function cuando(iso) {
+  if (!iso) return "";
+  const s = String(iso).trim().replace(" ", "T");
+  const d = new Date(/[Z+]|-\d\d:\d\d$/.test(s) ? s : s + "Z");
+  if (isNaN(d.getTime())) return "";
+  const hoy = new Date();
+  const ayer = new Date(hoy); ayer.setDate(hoy.getDate() - 1);
+  const dia = x => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+  const hora = d.toLocaleTimeString(localeNum(), { hour: "2-digit", minute: "2-digit" });
+  if (dia(d) === dia(hoy)) return t("time.today", { hora });
+  if (dia(d) === dia(ayer)) return t("time.yesterday", { hora });
+  return d.toLocaleDateString(localeNum(), d.getFullYear() === hoy.getFullYear()
+    ? { day: "numeric", month: "short" }
+    : { day: "numeric", month: "short", year: "2-digit" });
+}
 
 function etiquetaCorrida(c) {
   return `${nombreCorto(c.dataset_name)} · ${c.timeframe || "1h"}`;
@@ -2202,6 +2322,50 @@ function pintarCabecera() {
 /* Las corridas como una lista, no como pestañas: son hasta cuarenta y cada
    una necesita decir su instrumento, su temporalidad, su riesgo y su vara.
    Eso no entra en una pestaña. */
+/* Las cuatro etapas por las que pasa una candidata, con sus números.
+
+   Los datos ya estaban todos en la corrida; lo que faltaba era decir que son
+   etapas de una misma cosa y no seis números técnicos sueltos. Puestos en
+   fila se lee el recorrido: se construyeron tantas, se tiraron tantas, quedan
+   tantas en el banco y tantas están guardadas.
+
+   La proporción es el dato que más se perdía. De tres mil candidatas pasan
+   veinticinco: ese 0,8% es lo que uno compra cuando deja la máquina buscando,
+   y no estaba escrito en ningún lado.
+
+   Las guardadas se cuentan por `meta.corrida_id`, que es lo que graba el
+   servidor al copiar del banco. Las guardadas de antes de ese campo no suman
+   — es preferible quedarse corto que inventar una atribución. */
+function embudoCorrida(c) {
+  if (!c) return "";
+  const construidas = c.tested ?? 0;
+  const pasaron = c.encontradas ?? c.n ?? 0;
+  const tiradas = Math.max(0, construidas - pasaron);
+  const enBanco = c.n ?? 0;
+  const guardadas = (S.saved || []).filter(s => (s.meta || {}).corrida_id === c.id).length;
+  const tasa = construidas ? (pasaron / construidas) * 100 : 0;
+
+  const paso = (n, clave, cls = "", nota = "") => `
+    <div class="et ${cls}"><b>${fmtInt(n)}</b><span>${esc(t(clave))}${
+      nota ? `<u class="et-nota">${esc(nota)}</u>` : ""}</span></div>`;
+
+  /* Que queden menos de las que pasaron significa que el usuario borró
+     algunas, y eso no es lo mismo que no haberlas encontrado nunca. Dicho al
+     lado del número, la etapa deja de contradecir a la de su izquierda. */
+  const borradas = Math.max(0, pasaron - enBanco);
+
+  return `<div class="embudo">
+    ${paso(construidas, "state.built")}
+    ${paso(tiradas, "state.discarded", "et-tirada")}
+    ${paso(enBanco, "state.kept", "et-banco",
+           borradas ? t("state.removed", { n: fmtInt(borradas) }) : "")}
+    ${paso(guardadas, "state.saved", "et-guardada")}
+  </div>
+  <p class="embudo-tasa">${esc(t("state.rate", {
+    tasa: tasa >= 10 ? fmtNum(tasa, 0) : fmtNum(tasa, 1),
+    n: fmtInt(pasaron), total: fmtInt(construidas) }))}</p>`;
+}
+
 function pintarCorridas() {
   const host = $("#banco-corridas");
   if (!host) return;
@@ -2230,9 +2394,8 @@ function pintarCorridas() {
       ${conAlgo.map(c => `
         <button class="corrida-chip ${b.corrida === c.id ? "on" : ""}"
           data-corrida="${esc(c.id)}" title="${esc(varaDe(c))}">
-          <b>${esc(etiquetaCorrida(c))}</b>
-          <span>${c.n ? `${c.n} · ${esc(t("bank.risk"))} ${esc(riesgoDe(c))}`
-            : esc(t("bank.no_results"))}</span>
+          <b>${esc(etiquetaCorrida(c))}<i class="chip-n">${fmtInt(c.n)}</i></b>
+          <span>${esc(cuando(c.created))} · ${esc(t("bank.risk"))} ${esc(riesgoDe(c))}</span>
         </button>`).join("")}
     </div>
       ${vacias.length ? `<details class="corridas-vacias">
@@ -2242,16 +2405,18 @@ function pintarCorridas() {
             <button class="corrida-chip vacia ${b.corrida === c.id ? "on" : ""}"
               data-corrida="${esc(c.id)}" title="${esc(varaDe(c))}">
               <b>${esc(etiquetaCorrida(c))}</b>
-              <span>${esc(t("bank.no_results"))}</span></button>`).join("")}
+              <span>${esc(cuando(c.created))} · ${esc(t("bank.no_results"))}</span>
+            </button>`).join("")}
         </div>
       </details>` : ""}
     ${activa ? `
       <div class="corrida-ficha">
+        <!-- Primero el recorrido —qué le pasó a cada candidata— y recién
+             después los datos técnicos de la corrida. Estaban todos mezclados
+             en una grilla de seis, así que las etapas no se leían como
+             etapas: la semilla pesaba lo mismo que cuántas sobrevivieron. -->
+        ${embudoCorrida(activa)}
         <div class="cf-datos">
-          <div><span>${esc(t("bank.searched"))}</span><b>${fmtInt(activa.tested)}</b></div>
-          <div><span>${esc(t("bank.found"))}</span><b>${activa.encontradas ?? activa.n}${
-            activa.n !== (activa.encontradas ?? activa.n)
-              ? `<u class="cf-quedan"> · ${esc(t("bank.remaining", { n: activa.n }))}</u>` : ""}</b></div>
           <div><span>${esc(t("bank.took"))}</span><b>${fmtDur(activa.elapsed)}</b></div>
           <div><span>${esc(t("bank.ended"))}</span><b>${esc(t("ended." + activa.ended))}</b></div>
           <div><span>${esc(t("bank.seed"))}</span><b>${activa.seed ?? "—"}</b></div>
@@ -2331,6 +2496,10 @@ function pintarBanco() {
   };
 
   const todosTildados = filas.length && filas.every(f => b.sel.has(f.banco_id));
+  /* ¿Alguna de las que se ven reservó un tramo fuera de muestra? Si ninguna,
+     la columna es ciento cincuenta guiones y se saca. Se mira lo que está a
+     la vista y no el banco entero: la columna acompaña a la tabla. */
+  const hayOos = filas.some(f => f.oos);
 
   host.innerHTML = `<div class="card">
     <h2>${todas ? esc(t("bank.all_strategies")) : etiquetaCorrida(porId[b.corrida] || {})}
@@ -2349,12 +2518,18 @@ function pintarBanco() {
         score: t("m.score"), meses: t("col.months_plus") })}</div>
     </div>` : ""}
 
+    <!-- Con nada tildado, una línea que dice cómo se usa. Los cuatro botones
+         estaban siempre puestos: apagados de verdad, pero a simple vista los
+         dos llenos de acento seguían leyéndose como disponibles y ocupaban
+         una fila entera para no hacer nada. -->
     <div class="seleccion ${b.sel.size ? "activa" : ""}">
-      <span class="sel-n">${esc(t("ui.selected", { n: b.sel.size }))}</span>
-      <button class="btn small" id="sel-guardar">${icono("marcador","ico-sm")} ${esc(t("insp.save"))}</button>
-      <button class="btn small" id="sel-exportar">${icono("bajar","ico-sm")} ${esc(t("bank.export_all"))}</button>
-      <button class="btn ghost small" id="sel-borrar">${icono("basura","ico-sm")} ${esc(t("bank.remove"))}</button>
-      <button class="linkbtn" id="sel-limpiar">${esc(t("ui.clear"))}</button>
+      <span class="sel-n">${esc(b.sel.size
+        ? t("ui.selected", { n: b.sel.size }) : t("bank.sel_hint"))}</span>
+      ${b.sel.size ? `
+        <button class="btn small" id="sel-guardar">${icono("marcador","ico-sm")} ${esc(t("insp.save"))}</button>
+        <button class="btn small" id="sel-exportar">${icono("bajar","ico-sm")} ${esc(t("bank.export_all"))}</button>
+        <button class="btn ghost small" id="sel-borrar">${icono("basura","ico-sm")} ${esc(t("bank.remove"))}</button>
+        <button class="linkbtn" id="sel-limpiar">${esc(t("ui.clear"))}</button>` : ""}
     </div>
 
     ${filas.length ? `<div class="databank-wrap"><table class="banco">
@@ -2365,7 +2540,7 @@ function pintarBanco() {
         ${todas ? `<th>${esc(t("bank.run"))}</th>` : `<th class="num orden ${s.key === "puesto" ? "activa" : ""}"
           data-sort="puesto" title="${esc(t("bank.rank_help"))}">#<i>${
             s.key === "puesto" ? icono("sube","ico-sm") : ""}</i></th>`}
-        ${BANCO_COLS().map(([k, l, a]) => th(k, l, a)).join("")}
+        ${BANCO_COLS(hayOos).map(([k, l, a]) => th(k, l, a)).join("")}
       </tr></thead>
       <tbody>${filas.map(f => {
         const m = f.metrics || {}, c = porId[f.corrida_id] || {};
@@ -2382,10 +2557,11 @@ function pintarBanco() {
           <td class="num ${(m.cagr_pct ?? 0) >= 0 ? "pos" : "neg"}"><b>${
             m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
           <td class="num">${m.profit_factor != null ? fmtNum(m.profit_factor) : "—"}</td>
-          <td class="num neg">${m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
+          <td class="num ${nivelDD(m.max_drawdown_pct, riesgoDeCtx((c.contexto || {}).risk))}">${
+            m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
           <td class="num">${fmtInt(m.trades ?? 0)}</td>
           <td class="num">${fmtNum(m.months_positive_pct ?? 0, 0)}%</td>
-          <td class="num">${oosCell(f)}</td>
+          ${hayOos ? `<td class="num">${oosCell(f)}</td>` : ""}
         </tr>`;
       }).join("")}</tbody></table></div>
       ${hay > b.filas.length ? `<div class="banco-mas">
@@ -2535,9 +2711,13 @@ function cablearBanco(host) {
     abrirDelBanco(b.filas.find(f => f.banco_id === tr.dataset.fila));
   });
 
-  $("#sel-limpiar", host).onclick = () => { b.sel.clear(); refrescar(); };
+  /* Los botones sólo existen con algo tildado, así que los enganches
+     tienen que tolerar que no estén. */
+  const conBoton = (id, fn) => { const el = $(id, host); if (el) fn(el); };
 
-  $("#sel-guardar", host).onclick = async () => {
+  conBoton("#sel-limpiar", el => el.onclick = () => { b.sel.clear(); refrescar(); });
+
+  conBoton("#sel-guardar", el => el.onclick = async () => {
     const ids = [...b.sel];
     if (!ids.length) return;
     const btn = $("#sel-guardar", host);
@@ -2553,9 +2733,9 @@ function cablearBanco(host) {
       toast(t("bank.copied", { n }), "ok");
     } catch (e) { toast(e.message, "err"); }
     btn.disabled = false;
-  };
+  });
 
-  $("#sel-borrar", host).onclick = async () => {
+  conBoton("#sel-borrar", el => el.onclick = async () => {
     const ids = [...b.sel];
     if (!ids.length) return;
     if (!confirm(t("bank.confirm_remove", { n: ids.length }) + "\n\n"
@@ -2567,9 +2747,9 @@ function cablearBanco(host) {
       pintarCabecera();
       pintarCorridas();
       pintarBanco();
-      toast(`${ids.length} fuera del banco`, "ok");
+      toast(t("bank.removed", { n: ids.length }), "ok");
     } catch (e) { toast(e.message, "err"); }
-  };
+  });
 }
 
 /* Vuelve a Mining con la configuración exacta de una corrida vieja.
@@ -2659,7 +2839,7 @@ function abrirDelBanco(f) {
     },
     // decir de qué corrida salió, no "guardada": todavía no lo está, y
     // confundir las dos cosas hace creer que ya se rescató algo que no
-    etiqueta: `del banco · ${etiquetaCorrida(c)} · riesgo ${riesgoDe(c)}`,
+    etiqueta: t("bank.from_bank", { corrida: etiquetaCorrida(c), riesgo: riesgoDe(c) }),
   });
 }
 
@@ -2694,7 +2874,30 @@ PAGES.mining = async (main) => {
 
   const host = $("#vista-host", main);
   await (vista === "resultados" ? vistaResultados(host) : vistaBuscar(host));
+  acomodarVistas(main, host);
 };
+
+/* Las pestañas se dibujan arriba y se MUEVEN debajo del título.
+
+   Se emiten acá porque son de la sección y no de cada vista —una sola lista,
+   un solo cableado— pero el título lo escribe la vista, así que al dibujarse
+   quedaban por encima de él: lo primero que se leía era "Buscar | Resultados"
+   y recién después "Minado". Las pestañas son las dos mitades de una sección
+   y no pueden presentarse antes que la sección.
+
+   Se mueven en vez de emitirse en su lugar por una razón concreta: en
+   Resultados el encabezado se reescribe solo cada vez que cambia la cuenta
+   —`pintarCabecera`— y unas pestañas metidas adentro se las llevaría ese
+   repintado. Por eso el ancla es el hijo directo del host que CONTIENE el
+   título, no el título: ese nodo sobrevive. */
+function acomodarVistas(main, host) {
+  const tabs = $(".vistas", main);
+  const head = $(".page-head", host);
+  if (!tabs || !head) return;
+  let ancla = head;
+  while (ancla.parentElement && ancla.parentElement !== host) ancla = ancla.parentElement;
+  if (ancla.parentElement === host) ancla.after(tabs);
+}
 
 const vistaBuscar = async (main) => {
   await refreshDatasets();
@@ -2803,6 +3006,7 @@ const vistaBuscar = async (main) => {
               </div>` : ""}
             <p class="stage-note" id="m-dsnote"></p>
 
+            ${SESIONES ? `
             <div class="stage-sub">${esc(t("session.title"))}
               <span class="hint">${esc(t("session.sub"))}</span></div>
             <p class="help-note">${esc(t("session.help"))}</p>
@@ -2815,7 +3019,42 @@ const vistaBuscar = async (main) => {
                     || (s.restringe ? t("session.all_day") : t("session.no_limit")))}</em>
                 </button>`).join("")}
             </div>
-            <p class="help-note" id="m-sesnote"></p>
+            <p class="help-note" id="m-sesnote"></p>` : ""}
+
+            <!-- RESERVAR UN TRAMO va acá y no en un paso al final.
+
+                 Estaba de sexto, casi al final: uno terminaba de armar el
+                 robot y recién ahí le aparecía la opción de guardarse un
+                 pedazo de historia sin mirar. No es un paso final — es una
+                 decisión sobre LA DATA: partir en dos el período que se acaba
+                 de elegir, tres líneas más arriba. -->
+            <!-- Sin bajada al lado del rótulo: en 300px de ancho entran los
+                 dos en versalitas y se parten en dos renglones cada uno, y
+                 además diría lo mismo que el párrafo de acá abajo. -->
+            <div class="stage-sub">${esc(t("mine.oos"))}</div>
+            <div class="seg full" id="m-oos-sw">
+              <button data-oos="0" class="${+c.oosPct ? "" : "on"}"
+                >${esc(t("oos.off"))}</button>
+              <button data-oos="30" class="${+c.oosPct ? "on" : ""}"
+                >${esc(t("oos.on"))}</button>
+            </div>
+            <p class="help-note mt">${t("oos.what", { pct: 30 })}</p>
+
+            <div id="m-oos-detalle" ${+c.oosPct ? "" : "hidden"}>
+              <div class="stage-sub">${esc(t("oos.how_much"))}</div>
+              <!-- Solo el porcentaje en el boton. Con la frase entera
+                   ("Minar 70% · validar 30% (recomendado)") las tres opciones
+                   no entran a lo ancho de la columna y se rompen en cuatro
+                   renglones cada una: ilegible. Lo que significa el numero lo
+                   dice la linea de abajo, que ademas cambia con la eleccion. -->
+              <div class="seg full" id="m-oos-pct">
+                ${[20, 30, 40].map(v => `<button data-pct="${v}"
+                  class="${+c.oosPct === v ? "on" : ""}">${v}%</button>`).join("")}
+              </div>
+              <p class="stage-note" id="m-oos-nota"></p>
+              <p class="help-note mt">${t("mine.oos_help")}</p>
+              <p class="stage-note">${esc(t("oos.informa"))}</p>
+            </div>
 
           </div>
         </details>
@@ -2944,39 +3183,8 @@ const vistaBuscar = async (main) => {
           </div>
         </details>
 
-        <details class="sect" id="m-sect-oos">
-          <summary><span class="sect-num">6</span>
-            <span class="sect-t"><b>${esc(t("mine.oos"))}</b><em id="sum-oos">—</em></span>
-            <span class="chev">›</span></summary>
-          <div class="sect-body">
-            <div class="seg full" id="m-oos-sw">
-              <button data-oos="0" class="${+c.oosPct ? "" : "on"}"
-                >${esc(t("oos.off"))}</button>
-              <button data-oos="30" class="${+c.oosPct ? "on" : ""}"
-                >${esc(t("oos.on"))}</button>
-            </div>
-            <p class="help-note mt">${t("oos.what", { pct: 30 })}</p>
-
-            <div id="m-oos-detalle" ${+c.oosPct ? "" : "hidden"}>
-              <div class="stage-sub">${esc(t("oos.how_much"))}</div>
-              <!-- Solo el porcentaje en el boton. Con la frase entera
-                   ("Minar 70% · validar 30% (recomendado)") las tres opciones
-                   no entran a lo ancho de la columna y se rompen en cuatro
-                   renglones cada una: ilegible. Lo que significa el numero lo
-                   dice la linea de abajo, que ademas cambia con la eleccion. -->
-              <div class="seg full" id="m-oos-pct">
-                ${[20, 30, 40].map(v => `<button data-pct="${v}"
-                  class="${+c.oosPct === v ? "on" : ""}">${v}%</button>`).join("")}
-              </div>
-              <p class="stage-note" id="m-oos-nota"></p>
-              <p class="help-note mt">${t("mine.oos_help")}</p>
-              <p class="stage-note">${esc(t("oos.informa"))}</p>
-            </div>
-          </div>
-        </details>
-
         <details class="sect">
-          <summary><span class="sect-num">7</span>
+          <summary><span class="sect-num">6</span>
             <span class="sect-t"><b>${esc(t("ui.advanced"))}</b><em id="sum-adv">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
@@ -3385,12 +3593,13 @@ const vistaBuscar = async (main) => {
       // completo lo que la búsqueda puede encontrar, y no se ve sin abrirlo
       + (ses.length === 1 && ses[0] !== "todo" ? ` · ${nombreSesion(ses[0])}`
          : ses.length > 1 ? ` · ${t("sum.sessions", { n: ses.length })}` : "")
+      /* Y el tramo reservado, por lo mismo: ahora vive adentro de este paso,
+         y con el paso plegado no habría forma de saber que la búsqueda se
+         está guardando un pedazo de la historia sin mirar. Sólo cuando está
+         prendido — decir "apagado" en el resumen de un paso que tiene cinco
+         cosas más es gastar la línea en la que no pasa nada. */
+      + (+S.cfg.oosPct ? ` · ${t("oos.sum_on", { pct: S.cfg.oosPct })}` : "")
       );
-    /* El paso cerrado tiene que decir si esta prendido. Antes decia el corte
-       o nada, y "nada" al lado de un titulo se lee como "todavia no lo
-       configure" en vez de "esta apagado", que es una decision. */
-    set("sum-oos", +S.cfg.oosPct
-      ? t("oos.sum_on", { pct: S.cfg.oosPct }) : t("oos.off").toLowerCase());
 
     const drv = $$("#m-drivers .blockitem input", main).filter(x => x.checked).length;
     const flt = $$("#m-filters .blockitem input", main).filter(x => x.checked).length;
@@ -3452,8 +3661,8 @@ const vistaBuscar = async (main) => {
   updateNotes();
   if (fixed) {
     toast(fixed.badCost
-      ? `Costos y salidas ajustados a ${fixed.name}: el spread anterior era ${fixed.costPct.toFixed(1)}% del precio`
-      : `Salidas ajustadas a la escala de ${fixed.name}`, "ok");
+      ? t("data.costs_fixed", { mercado: fixed.name, pct: fixed.costPct.toFixed(1) })
+      : t("data.exits_fixed", { mercado: fixed.name }), "ok");
   }
   if (S.mineResult || S.mineLive) renderMining(S.mineResult || S.mineLive, !!S.mineResult);
   else renderIdle();
@@ -3467,7 +3676,7 @@ const vistaBuscar = async (main) => {
 
   $("#m-stop").onclick = async () => {
     if (S.mineJobId) {
-      try { await api.post(`/api/jobs/${S.mineJobId}/stop`); toast("Deteniendo…"); }
+      try { await api.post(`/api/jobs/${S.mineJobId}/stop`); toast(t("run.stopping")); }
       catch (e) { toast(e.message, "err"); }
     }
   };
@@ -3554,9 +3763,9 @@ const vistaBuscar = async (main) => {
         if (el) { el.classList.add("nuevo"); setTimeout(() => el.classList.remove("nuevo"), 2000); }
       });
       const kept = result.databank.length;
-      if (result.stopped) toast(`Detenido — ${kept} estrategias, guardadas en el Databank`, "ok");
+      if (result.stopped) toast(t("run.stopped_kept", { n: kept }), "ok");
       else if (result.reached_goal)
-        toast(`${kept} estrategias en ${fmtDur(result.elapsed_s)} — quedaron en el Databank`, "ok");
+        toast(t("run.kept", { n: kept, tiempo: fmtDur(result.elapsed_s) }), "ok");
       else toast(t("run.few_passed", { n: fmtInt(result.tested), kept }), "err");
       if (result.podadas) {
         toast(t("bank.pruned", { n: result.podadas }));
@@ -3626,10 +3835,44 @@ function renderIdle() {
       <div class="gstep"><span class="gnum">4</span><b>${esc(t("idle.s4"))}</b>
         <p>${esc(t("idle.s4_sub", { goal: S.cfg.goal }))}</p></div>
     </div>
-  </div>`;
+  </div>${panelUltima()}`;
   if (bankBox) bankBox.innerHTML = "";
   // arranca una busqueda nueva: lo que se vio en la anterior no cuenta
   S.vistasBanco = null;
+
+  const irUltima = $("#idle-ver-ultima", live);
+  if (irUltima) irUltima.onclick = () => {
+    S.banco.corrida = irUltima.dataset.corrida;
+    S.bancoSort = ORDEN_NATURAL(false);
+    S.banco.sel.clear();
+    navigate("mining", "resultados");
+  };
+}
+
+/* Qué pasó la vez anterior, debajo de "Listo para buscar".
+
+   La columna derecha terminaba a media pantalla y abajo quedaban unos 400px
+   vacíos. El hueco no se llena por llenarlo: ahí falta justamente lo que uno
+   quiere saber antes de apretar Iniciar de nuevo — cómo salió la búsqueda
+   pasada—, y sin eso hay que irse a Resultados, mirar, y volver.
+
+   El recorrido lo dibuja `embudoCorrida`, la misma función que usa Resultados.
+   Dos formas de contar lo mismo terminan diciendo cosas distintas del mismo
+   número en cuanto alguien toca una. */
+function panelUltima() {
+  const c = (S.banco?.corridas || [])[0];
+  if (!c) return "";                      // todavía no buscó nunca
+  return `
+  <div class="card ultima">
+    <h2>${esc(t("idle.last_run"))}
+      <span class="hint">${esc(etiquetaCorrida(c))} · ${esc(cuando(c.created))}</span></h2>
+    ${embudoCorrida(c)}
+    <div class="ultima-pie">
+      <button class="btn ghost small" id="idle-ver-ultima"
+        data-corrida="${esc(c.id)}">${esc(t("idle.see_last"))}</button>
+      <span class="muted">${esc(varaDe(c))}</span>
+    </div>
+  </div>`;
 }
 
 /* Cuánto sobrevivió la ventaja fuera de muestra. Es la única columna del
@@ -4077,7 +4320,9 @@ function renderMining(snap, finished) {
       <div><span>${esc(t("m.net"))} ${champ.metrics.years ? `${fmtNum(champ.metrics.years, 1)} ${esc(t("m.years").toLowerCase())}` : ""}</span><b class="${champ.metrics.net_profit_pct >= 0 ? "pos" : "neg"}">${fmtPct(champ.metrics.net_profit_pct)}</b></div>
       <div><span>${esc(t("m.pf"))}</span><b>${fmtNum(champ.metrics.profit_factor)}</b></div>
       <div><span>${esc(t("m.sharpe"))}</span><b>${fmtNum(champ.metrics.sharpe)}</b></div>
-      <div><span>${esc(t("m.dd"))}</span><b class="neg">${fmtNum(champ.metrics.max_drawdown_pct, 1)}%</b></div>
+      <div><span>${esc(t("m.dd"))}</span><b class="${
+        nivelDD(champ.metrics.max_drawdown_pct, riesgoActual())}">${
+        fmtNum(champ.metrics.max_drawdown_pct, 1)}%</b></div>
       <div><span>${esc(t("m.exposure"))}</span><b>${fmtNum(champ.metrics.exposure_pct ?? 0, 1)}%</b></div>
       <div><span>${esc(t("m.trades"))}</span><b>${champ.metrics.trades}</b></div>
     </div>
@@ -4190,7 +4435,8 @@ function renderMining(snap, finished) {
           <td class="num">${scoreCell(r.score)}</td>
           <td class="num ${m.cagr_pct >= 0 ? "pos" : "neg"}"><b>${fmtPct(m.cagr_pct)}</b></td>
           <td class="num">${fmtNum(m.profit_factor)}</td>
-          <td class="num neg">${fmtNum(m.max_drawdown_pct, 1)}%</td>
+          <td class="num ${nivelDD(m.max_drawdown_pct, riesgoActual())}">${
+            fmtNum(m.max_drawdown_pct, 1)}%</td>
           <td class="num">${fmtInt(m.trades)}</td>
           <td class="num">${fmtNum(m.months_positive_pct ?? 0, 0)}%</td>
           ${snap.split ? `<td class="num">${oosCell(r)}</td>` : ""}
@@ -4374,7 +4620,7 @@ function panelNota(ctx) {
    No se calcula nada nuevo: el inspector ya sabe re-correr un backtest sobre
    un rango, y la corrida ya guardo las fechas del corte. Lo unico que faltaba
    era ofrecerlo. */
-function cablearMuestras(box, row, ctx) {
+function cablearMuestras(box, row, ctx, mostrarResultado) {
   const host = $("#insp-muestras", box);
   if (!host) return;
   const sp = ctx && ctx.split;
@@ -4386,73 +4632,150 @@ function cablearMuestras(box, row, ctx) {
     { id: "oos",   desde: sp.oos_from, hasta: sp.oos_to },
     { id: "todo",  desde: sp.is_from,  hasta: sp.oos_to },
   ];
-  /* Abre en "donde se busco" y no en "las dos juntas".
+  /* Abre en el período completo.
 
-     El bloque de metricas de arriba describe el tramo medido, que es el de
-     adentro: 148 operaciones. La curva abria en "las dos juntas" y su pie
-     decia 204. Dos numeros que se contradicen a diez centimetros uno del
-     otro, sin nada que explique por que — es la misma clase de confusion que
-     el encabezado del Databank diciendo el total con la tabla filtrada.
+     Abría en "donde buscó" por una razón que ya no existe: el bloque de
+     métricas de arriba estaba clavado en el tramo de adentro, así que abrir
+     en "las dos juntas" ponía 204 operaciones en el pie de la curva y 148 en
+     las cifras, a diez centímetros una de otra. Ahora las cifras siguen a la
+     pestaña, así que no hay nada que se contradiga.
 
-     Ademas es el orden en que se lee: primero lo que la busqueda encontro,
-     despues si aguanto afuera. Las otras dos vistas siguen a un clic. */
-  const INICIAL = 0;
+     Sin esa restricción, lo natural es lo que hace cualquiera al abrir una
+     estrategia: mirar primero cuánto dio en total, y recién después
+     desglosar en qué parte lo dio. El desglose está a un clic y además ya
+     está entero en la tabla de comparación de arriba. */
+  const INICIAL = 2;
   host.innerHTML = `<div class="muestras" role="tablist">
       ${VISTAS.map((v, i) => `<button role="tab" data-m="${v.id}"
-        class="${i === INICIAL ? "on" : ""}" aria-selected="${i === INICIAL}">
+        class="${i === INICIAL ? "on" : ""}" aria-selected="${i === INICIAL}"
+        title="${esc(t("ms." + v.id + "_help"))}">
         ${esc(t("ms." + v.id))}</button>`).join("")}
     </div>
-    <p class="ms-pie" id="ms-pie"></p>`;
+    <div class="ms-comparar" id="ms-comparar">
+      <span class="ms-cargando">${esc(t("ms.midiendo"))}</span>
+    </div>`;
 
-  const pintar = async (id) => {
+  /* Los tres tramos se piden JUNTOS y se guardan.
+
+     Antes se pedía el de la pestaña abierta y nada más, así que comparar era
+     hacer clic, memorizar cuatro números, hacer clic de nuevo y acordarse.
+     Eso no es comparar: es tomar apuntes. Con los tres a la vista, "afuera
+     rinde un tercio" se ve en vez de deducirse.
+
+     No cuesta más de lo que costaba: pedir los tres es exactamente lo que
+     pasaba en cuanto alguien tocaba las otras dos pestañas, que es lo que uno
+     hace justamente cuando quiere comparar. Y ahora cambiar de pestaña no
+     vuelve a pedir nada. */
+  const medido = new Map();
+
+  const traer = (v) => api.post("/api/backtest", {
+    dataset_id: ctx.dataset_id, timeframe: ctx.timeframe,
+    date_from: v.desde, date_to: v.hasta,
+    spec: row.spec, settings: ctx.settings,
+  }).then(r => ({ v, res: r.result })).catch(e => ({ v, err: e }));
+
+  /* El tramo reservado puede quedar demasiado corto para volver a correrlo:
+     con validación al 20% sobre un histórico diario son unos pocos cientos de
+     velas, y los indicadores necesitan 500 para tener historia. No es un
+     fallo, es una consecuencia de la configuración — así que se dice en esos
+     términos y no con el error del servidor. */
+  const esCorto = (e) => /velas|bars/i.test((e && e.message) || "");
+
+  const pintarTabla = () => {
+    const tabla = $("#ms-comparar", host);
+    if (!tabla) return;
+    const FILAS = [
+      ["cagr_pct", t("m.cagr"), "pct"],
+      ["max_drawdown_pct", t("m.dd"), "dd"],
+      ["profit_factor", t("m.pf"), "n"],
+      ["trades", t("m.trades"), "int"],
+    ];
+    const riesgo = riesgoDeCtx(ctx && ctx.guardar) ?? riesgoActual();
+    const celda = (id, k, kind) => {
+      const d = medido.get(id);
+      if (!d) return `<td class="num muted">…</td>`;
+      if (d.err) return `<td class="num muted" title="${esc(d.err.message || "")}">—</td>`;
+      const val = d.res.metrics[k];
+      if (val == null) return `<td class="num muted">—</td>`;
+      if (kind === "pct") return `<td class="num ${val >= 0 ? "pos" : "neg"}">${fmtPct(val)}</td>`;
+      if (kind === "dd") return `<td class="num ${nivelDD(val, riesgo)}">${fmtNum(val, 1)}%</td>`;
+      if (kind === "int") return `<td class="num">${fmtInt(val)}</td>`;
+      return `<td class="num">${fmtNum(val, 2)}</td>`;
+    };
+    tabla.innerHTML = `<table>
+      <thead><tr><th></th>${VISTAS.map(v => `<th class="num">${esc(t("ms." + v.id))}</th>`).join("")}</tr>
+        <tr class="ms-rango"><td></td>${VISTAS.map(v =>
+          `<td class="num">${esc(String(v.desde).slice(0, 10))} → ${esc(String(v.hasta).slice(0, 10))}</td>`).join("")}</tr>
+      </thead>
+      <tbody>${FILAS.map(([k, lab, kind]) => `<tr>
+        <th scope="row">${esc(lab)}</th>
+        ${VISTAS.map(v => celda(v.id, k, kind)).join("")}
+      </tr>`).join("")}</tbody></table>
+      ${[...medido.values()].some(d => d.err && esCorto(d.err))
+        ? `<p class="ms-corto">${icono("info","ico-sm")} ${esc(t("ms.muy_corto"))}</p>` : ""}`;
+  };
+
+  const pintar = (id) => {
     const v = VISTAS.find(x => x.id === id);
     $$("[data-m]", host).forEach(b => {
       const on = b.dataset.m === id;
       b.classList.toggle("on", on); b.setAttribute("aria-selected", String(on));
     });
     const lienzo = $("#insp-eq", box);
-    lienzo.style.opacity = ".45";
-    try {
-      const { result } = await api.post("/api/backtest", {
-        dataset_id: ctx.dataset_id, timeframe: ctx.timeframe,
-        date_from: v.desde, date_to: v.hasta,
-        spec: row.spec, settings: ctx.settings,
-      });
-      Charts.equity(lienzo, {
-        values: result.equity,
-        labels: result.timestamps.map(x => String(x).slice(0, 10)),
-        initial: result.equity[0], height: 320,
-        // la marca del corte sólo tiene sentido en la vista completa
-        marca: id === "todo" ? String(sp.oos_from).slice(0, 10) : null,
-        marcaTexto: id === "todo" ? t("ms.marca") : "",
-      });
-      const m = result.metrics;
-      $("#ms-pie", host).innerHTML = t("ms.resumen", {
-        desde: esc(String(v.desde).slice(0, 10)), hasta: esc(String(v.hasta).slice(0, 10)),
-        cagr: fmtPct(m.cagr_pct), dd: fmtNum(m.max_drawdown_pct, 1),
-        pf: fmtNum(m.profit_factor, 2), n: fmtInt(m.trades),
-      }) + (id === "todo" ? " " + t("ms.corte") : "");
-    } catch (e) {
-      /* El tramo reservado puede quedar demasiado corto para volver a
-         correrlo: con validación al 20% sobre un histórico diario son unos
-         pocos cientos de velas, y los indicadores necesitan 500 para tener
-         historia. No es un fallo, es una consecuencia de la configuración —
-         así que se dice en esos términos y no con el error del servidor. */
-      const corto = /velas|bars/i.test(e.message || "");
-      $("#ms-pie", host).innerHTML = corto
+    const d = medido.get(id);
+    if (!d) return;                       // todavía no llegó; lo pinta al llegar
+    if (d.err) {
+      $("#ms-pie", box).innerHTML = esCorto(d.err)
         ? `<span class="ms-corto">${icono("info","ico-sm")} ${esc(t("ms.muy_corto"))}</span>`
-        : esc(e.message);
+        : esc(d.err.message);
       // sin datos nuevos, el gráfico anterior seguiría en pantalla como si
       // fuera el de esta vista
       lienzo.innerHTML = `<div class="empty-state">${esc(t("ms.sin_curva"))}</div>`;
+      return;
     }
-    lienzo.style.opacity = "1";
+    /* Repinta la ficha ENTERA, no sólo la curva: cifras, mapa mensual y
+       operaciones son de este período igual que la curva. Mientras esto
+       dibujaba nada más el gráfico, la pestaña "out of sample" convivía con
+       las cifras de in sample justo arriba. */
+    mostrarResultado(d.res);
+    /* La marca del corte sólo tiene sentido en la vista completa, así que se
+       vuelve a dibujar la curva con ella encima de la que ya puso el
+       repintado general. */
+    if (id === "todo") {
+      Charts.equity(lienzo, {
+        values: d.res.equity,
+        labels: d.res.timestamps.map(x => String(x).slice(0, 10)),
+        initial: d.res.equity[0], height: 320,
+        marca: String(sp.oos_from).slice(0, 10),
+        marcaTexto: t("ms.marca"),
+      });
+    }
+    // el rótulo de las métricas dice de qué tramo son las que se están viendo
+    const rot = $("#insp-h3-metricas", box);
+    if (rot) {
+      rot.innerHTML = `${esc(t("insp.metrics"))} <span class="h3-nota">— ${
+        esc(t("ms." + id))}</span>`;
+    }
+    $("#ms-pie", box).innerHTML = t("ms.periodo", {
+      desde: esc(String(v.desde).slice(0, 10)), hasta: esc(String(v.hasta).slice(0, 10)),
+    }) + (id === "todo" ? " " + t("ms.corte") : "");
   };
 
   $$("[data-m]", host).forEach(b => b.onclick = () => pintar(b.dataset.m));
-  // la misma vista que quedo marcada arriba, o el marcado y la curva
-  // arrancarian discrepando
-  pintar(VISTAS[INICIAL].id);
+
+  (async () => {
+    const lienzo = $("#insp-eq", box);
+    if (lienzo) lienzo.style.opacity = ".45";
+    const salidas = await Promise.all(VISTAS.map(traer));
+    // el inspector puede haberse cerrado mientras tanto
+    if (!host.isConnected) return;
+    salidas.forEach(s => medido.set(s.v.id, s));
+    pintarTabla();
+    // la misma vista que quedo marcada arriba, o el marcado y la curva
+    // arrancarian discrepando
+    pintar(VISTAS[INICIAL].id);
+    if (lienzo) lienzo.style.opacity = "1";
+  })();
 }
 
 function cablearNota(box, ctx) {
@@ -4522,7 +4845,8 @@ function panelPrueba(ctx) {
           fmtPct(v.retorno_fuera_pct)}</b></div>
       ${mc ? `<div class="metric"><span>${esc(t("wf.m_bad_run"))}
           <em title="${esc(t("wf.m_bad_run_help"))}">?</em></span>
-        <b class="neg">${fmtNum(mc.dd_malo_pct, 1)}%</b></div>` : ""}
+        <b class="${nivelDD(mc.dd_malo_pct, riesgoActual())}">${
+          fmtNum(mc.dd_malo_pct, 1)}%</b></div>` : ""}
     </div>
 
     <p class="v-pie">${t("wf.tested_on", {
@@ -4630,6 +4954,18 @@ async function openInspector(row, ctx) {
    rindio, despues a costa de que, y al final el detalle de las operaciones.
    Es una funcion y no una constante porque los rotulos salen del diccionario,
    que cambia al cambiar de idioma. */
+/* Las cuatro que deciden.
+
+   No son un gusto: son exactamente las mismas contra las que se pone la vara
+   al minar —operaciones mínimas, profit factor, rendimiento anual, caída
+   máxima—. O sea que el usuario ya eligió que son las importantes cuando
+   configuró la búsqueda; la ficha no hace más que respetarlo.
+
+   El resto son doce datos de consulta. Se leen cuando se los busca, no de un
+   vistazo, y por eso van como lista y no como fichas: doce cajas con borde
+   para eso era media pantalla gastada en dibujar bordes. */
+const INSPECT_CABEZA = ["cagr_pct", "max_drawdown_pct", "profit_factor", "trades"];
+
 const INSPECT_METRICS = () => [
   ["cagr_pct", t("m.cagr"), "pct"],
   ["net_profit_pct", t("m.net"), "pct"],
@@ -4658,53 +4994,116 @@ function renderInspector(box, row, res, ctx) {
   const avisoRango = ctx && ctx.sinRango ? `
     <div class="banner warn" style="margin-bottom:16px"><span class="b-ic">${icono("alerta")}</span><div>
       ${t("insp.no_range")}</div></div>` : "";
-  const metricCards = INSPECT_METRICS().map(([k, label, kind]) => {
+  const riesgoInsp = riesgoDeCtx(ctx && ctx.guardar) ?? riesgoActual();
+  /* Toma el resultado como argumento en vez de leer el de apertura.
+
+     Antes cerraba sobre `m`, las métricas del tramo donde buscó, así que la
+     ficha no tenía forma de mostrar otro período aunque lo tuviera medido. */
+  const pintarMetrica = (m) => ([k, label, kind]) => {
     const v = m[k];
     let txt = fmtNum(v), cls = "";
     if (kind === "pct") { txt = fmtPct(v); cls = v >= 0 ? "pos" : "neg"; }
-    else if (kind === "dd") { txt = `${fmtNum(v, 1)}%`; cls = "neg"; }
+    else if (kind === "dd") { txt = `${fmtNum(v, 1)}%`; cls = nivelDD(v, riesgoInsp); }
     else if (kind === "raw") txt = `${fmtNum(v, 1)}%`;
     else if (kind === "int") txt = (+v).toLocaleString();
     else if (kind === "money") { txt = fmtMoney(v); cls = v >= 0 ? "pos" : ""; }
     else if (kind === "loss") { txt = `-${fmtMoney(Math.abs(v))}`; cls = "neg"; }
-    return `<div class="metric"><span>${label}</span><b class="${cls}">${txt}</b></div>`;
-  }).join("");
+    return { label, txt, cls };
+  };
+
+  const todas = INSPECT_METRICS();
+  /* El orden de arriba lo fija INSPECT_CABEZA y no el orden en que aparecen
+     en la lista larga: los cuatro tienen que salir siempre en la misma
+     posición, porque se los busca por dónde están. */
+  const fichaMetricas = (mm) => {
+    const cabeza = INSPECT_CABEZA
+      .map(k => todas.find(([kk]) => kk === k)).filter(Boolean)
+      .map(pintarMetrica(mm))
+      .map(d => `<div class="m-grande"><span>${d.label}</span><b class="${d.cls}">${d.txt}</b></div>`)
+      .join("");
+    const resto = todas.filter(([k]) => !INSPECT_CABEZA.includes(k))
+      .map(pintarMetrica(mm))
+      .map(d => `<div class="m-fila"><span>${d.label}</span><b class="${d.cls}">${d.txt}</b></div>`)
+      .join("");
+    return `<div class="m-cabeza">${cabeza}</div><div class="m-resto">${resto}</div>`;
+  };
 
   const rules = (list, side) => (list || []).length
     ? `<div><b style="font-size:12px">${side}:</b> ` +
       list.map(c => `<span class="rule-pill">${esc(condLabel(c))}</span>`).join("") + `</div>`
     : "";
 
-  const trades = (res.trades || []).slice(-120).reverse();
+  /* La tabla de operaciones también depende del período elegido: dejarla
+     fija mostraría las 545 del tramo de búsqueda debajo de un encabezado que
+     dice "out of sample", donde hubo 241. */
+  const tablaTrades = (r) => {
+    const ops = (r.trades || []).slice(-120).reverse();
+    if (!ops.length) return `<p class="help-note">${esc(t("insp.no_trades"))}</p>`;
+    return `<div class="table-scroll"><table>
+      <thead><tr><th>${esc(t("tr.in"))}</th><th>${esc(t("tr.out"))}</th><th>${esc(t("tr.dir"))}</th>
+        <th class="num">${esc(t("tr.price_in"))}</th><th class="num">${esc(t("tr.price_out"))}</th>
+        <th class="num">${esc(t("tr.result"))}</th><th class="num">%</th>
+        <th class="num">${esc(t("tr.bars"))}</th><th>${esc(t("tr.reason"))}</th></tr></thead>
+      <tbody>${ops.map(t => `<tr>
+        <td class="muted">${esc(t.entry_time.slice(0, 16))}</td>
+        <td class="muted">${esc(t.exit_time.slice(0, 16))}</td>
+        <td><span class="badge ${t.direction === "long" ? "green" : "red"}">${t.direction === "long" ? "L" : "S"}</span></td>
+        <td class="num">${fmtNum(t.entry_price, 2)}</td>
+        <td class="num">${fmtNum(t.exit_price, 2)}</td>
+        <td class="num ${t.pnl >= 0 ? "pos" : "neg"}">${fmtMoney(t.pnl)}</td>
+        <td class="num ${t.pnl_pct >= 0 ? "pos" : "neg"}">${fmtNum(t.pnl_pct, 2)}%</td>
+        <td class="num">${t.bars}</td>
+        <td class="muted">${esc(t.exit_reason)}</td></tr>`).join("")}
+      </tbody></table></div>`;
+  };
+  const rotuloTrades = (r) => {
+    const ops = (r.trades || []).slice(-120);
+    return esc(t("insp.last_n", { n: ops.length, total: (r.trades || []).length }));
+  };
   const monthly = res.monthly_returns || [];
 
+  /* El panel del score, que también es del tramo elegido.
+
+     El inspector no muestra el score guardado de la corrida: muestra el que
+     `/api/backtest` recalcula sobre el tramo que le pidió. O sea que con la
+     pestaña en "out of sample" ese 84 seguía siendo de in sample. */
+  const panelScore = (r) => `
+    <div class="score-big">${scoreBadge(r.score, "huge")}</div>
+    <div class="score-detail">
+      ${scoreBars(r.score_parts)}
+      <p class="help-note">${scoreVerdict(r)}</p>
+    </div>`;
+
   box.innerHTML = avisoRango + panelPrueba(ctx) + `
+  <!-- Las tres vistas, sólo si la corrida reservó un tramo. Van ACÁ arriba de
+       todo porque mandan sobre todo lo que sigue: el score, las cifras, la
+       curva, el mapa mensual y las operaciones. Un control tiene que ir antes
+       de lo que gobierna — mientras estuvo abajo, dentro de la sección de la
+       curva, tocarlo cambiaba sólo el gráfico y dejaba las cifras del otro
+       tramo: decía "out of sample" arriba de un +13,88% que era de in sample. -->
+  <div id="insp-muestras" hidden></div>
+
   <section>
-    <h3>${esc(t("m.score"))} <span style="text-transform:none;font-weight:400">— ${
+    <h3>${esc(t("m.score"))} <span class="h3-nota">— ${
       esc(t("insp.score_sub"))}</span></h3>
-    <div class="score-panel">
-      <div class="score-big">${scoreBadge(res.score, "huge")}</div>
-      <div class="score-detail">
-        ${scoreBars(res.score_parts)}
-        <p class="help-note">${scoreVerdict(res)}</p>
-      </div>
-    </div>
+    <div class="score-panel" id="insp-score">${panelScore(res)}</div>
   </section>
 
   <section>
-    <h3>${esc(t("insp.metrics"))}</h3>
-    <div class="metrics-grid">${metricCards}</div>
+    <h3 id="insp-h3-metricas">${esc(t("insp.metrics"))}</h3>
+    <div id="insp-metricas">${fichaMetricas(m)}</div>
   </section>
-
 
   <section>
     <h3>${esc(t("insp.equity"))}</h3>
-    <!-- las tres vistas, sólo si la corrida reservó un tramo -->
-    <div id="insp-muestras" hidden></div>
     <div class="chart-box tall" id="insp-eq"></div>
+    <!-- De qué fecha a qué fecha es la curva. Vive acá y no arriba con las
+         pestañas: describe el gráfico, y arriba quedaba a media pantalla de
+         distancia de lo que describía. -->
+    <p class="ms-pie" id="ms-pie"></p>
   </section>
 
-  ${monthly.length ? `<section>
+  ${monthly.length ? `<section id="insp-sec-mensual">
     <h3>${esc(t("insp.monthly"))}</h3>
     <div class="scroll-x" id="insp-monthly"></div>
   </section>` : ""}
@@ -4717,24 +5116,9 @@ function renderInspector(box, row, res, ctx) {
   </section>
 
   <section>
-    <h3>${esc(t("m.trades"))} <span style="text-transform:none;font-weight:400">${
-      esc(t("insp.last_n", { n: trades.length, total: res.trades.length }))}</span></h3>
-    <div class="table-scroll"><table>
-      <thead><tr><th>${esc(t("tr.in"))}</th><th>${esc(t("tr.out"))}</th><th>${esc(t("tr.dir"))}</th>
-        <th class="num">${esc(t("tr.price_in"))}</th><th class="num">${esc(t("tr.price_out"))}</th>
-        <th class="num">${esc(t("tr.result"))}</th><th class="num">%</th>
-        <th class="num">${esc(t("tr.bars"))}</th><th>${esc(t("tr.reason"))}</th></tr></thead>
-      <tbody>${trades.map(t => `<tr>
-        <td class="muted">${esc(t.entry_time.slice(0, 16))}</td>
-        <td class="muted">${esc(t.exit_time.slice(0, 16))}</td>
-        <td><span class="badge ${t.direction === "long" ? "green" : "red"}">${t.direction === "long" ? "L" : "S"}</span></td>
-        <td class="num">${fmtNum(t.entry_price, 2)}</td>
-        <td class="num">${fmtNum(t.exit_price, 2)}</td>
-        <td class="num ${t.pnl >= 0 ? "pos" : "neg"}">${fmtMoney(t.pnl)}</td>
-        <td class="num ${t.pnl_pct >= 0 ? "pos" : "neg"}">${fmtNum(t.pnl_pct, 2)}%</td>
-        <td class="num">${t.bars}</td>
-        <td class="muted">${esc(t.exit_reason)}</td></tr>`).join("")}
-      </tbody></table></div>
+    <h3>${esc(t("m.trades"))} <span class="h3-nota" id="insp-h3-trades">${
+      rotuloTrades(res)}</span></h3>
+    <div id="insp-trades">${tablaTrades(res)}</div>
   </section>
 
 
@@ -4742,14 +5126,19 @@ function renderInspector(box, row, res, ctx) {
 
   ${avisoExportacion(ctx)}
 
-  <div class="controls">
-    <button class="btn" id="insp-mql5">${icono("bajar")} MetaTrader 5 (.mq5)</button>
-    <button class="btn ghost" id="insp-pine">${icono("bajar")} TradingView (.pine)</button>
-    <button class="btn ghost" id="insp-copiar">${icono("copiar")} ${esc(t("insp.copy_pine"))}</button>
-    <button class="btn ghost" id="insp-save">${icono("marcador")} ${esc(t("insp.save"))}</button>
-  </div>
-  <div class="guardado" id="insp-guardado" hidden></div>
-  <p class="stage-note">${t("insp.export_note")}</p>`;
+  <p class="stage-note">${t("insp.export_note")}</p>
+
+  <!-- El pie se pega abajo mientras se lee el resto: es la acción principal
+       de la pantalla y estaba a dos pantallas y media de scroll. -->
+  <div class="insp-pie">
+    <div class="controls">
+      <button class="btn" id="insp-mql5">${icono("bajar")} MetaTrader 5 (.mq5)</button>
+      <button class="btn ghost" id="insp-pine">${icono("bajar")} TradingView (.pine)</button>
+      <button class="btn ghost" id="insp-copiar">${icono("copiar")} ${esc(t("insp.copy_pine"))}</button>
+      <button class="btn ghost" id="insp-save">${icono("marcador")} ${esc(t("insp.save"))}</button>
+    </div>
+    <div class="guardado" id="insp-guardado" hidden></div>
+  </div>`;
 
   const btnProbar = $("#insp-probar", box);
   if (btnProbar) btnProbar.onclick = async () => {
@@ -4759,14 +5148,35 @@ function renderInspector(box, row, res, ctx) {
     box.closest(".overlay")?.remove();
   };
 
-  Charts.equity($("#insp-eq", box), {
-    values: res.equity,
-    labels: res.timestamps.map(t => String(t).slice(0, 10)),
-    initial: res.equity[0], height: 320,
-  });
+  /* Todo lo que depende del período, en una sola función.
 
-  cablearMuestras(box, row, ctx);
-  if (monthly.length) Charts.monthlyGrid($("#insp-monthly", box), monthly);
+     La usa la apertura y la usan las pestañas, así que no hay forma de que
+     una dibuje algo distinto de la otra. Mientras fueron dos caminos, las
+     pestañas repintaban la curva y se olvidaban de las cifras. */
+  const mostrarResultado = (r) => {
+    const cajaS = $("#insp-score", box);
+    if (cajaS) cajaS.innerHTML = panelScore(r);
+    const cajaM = $("#insp-metricas", box);
+    if (cajaM) cajaM.innerHTML = fichaMetricas(r.metrics);
+    const cajaT = $("#insp-trades", box);
+    if (cajaT) cajaT.innerHTML = tablaTrades(r);
+    const rotT = $("#insp-h3-trades", box);
+    if (rotT) rotT.innerHTML = rotuloTrades(r);
+    const secM = $("#insp-sec-mensual", box);
+    if (secM) {
+      const meses = r.monthly_returns || [];
+      secM.hidden = !meses.length;
+      if (meses.length) Charts.monthlyGrid($("#insp-monthly", box), meses);
+    }
+    Charts.equity($("#insp-eq", box), {
+      values: r.equity,
+      labels: r.timestamps.map(x => String(x).slice(0, 10)),
+      initial: r.equity[0], height: 320,
+    });
+  };
+
+  mostrarResultado(res);
+  cablearMuestras(box, row, ctx, mostrarResultado);
 
   cablearNota(box, ctx);
 
@@ -4790,7 +5200,11 @@ function renderInspector(box, row, res, ctx) {
       await api.post("/api/strategies", {
         spec: row.spec, name: row.name,
         dataset_id: dsId,
-        notes: t("saved.mined_on", { fecha: new Date().toLocaleDateString(localeNum()) }),
+        /* El campo de notas es del usuario. Antes salía de fábrica con
+           "Minada el {fecha}" ya traducida, que se congelaba en el idioma de
+           ese día y encima le pisaba el lugar a lo que quisiera escribir él.
+           La fecha vive en `meta.saved_at` y se dibuja en el momento. */
+        notes: "",
         meta: {
           dataset_name: ds ? ds.name : (g ? g.dataset_name : ""),
           timeframe: g ? g.timeframe : (S.sel.timeframe || "1h"),
@@ -4826,7 +5240,7 @@ function renderInspector(box, row, res, ctx) {
           saved_at: new Date().toISOString(),
         },
       });
-      toast(`${row.name} guardada en Mis estrategias`, "ok");
+      toast(t("saved.added", { nombre: row.name }), "ok");
       refreshSavedCount();
     } catch (e) { toast(e.message, "err"); }
     btn.disabled = false;
@@ -5029,8 +5443,9 @@ function riskSummary(risk) {
 
 /* etiqueta legible de una condición */
 function condLabel(c) {
-  const opLbl = { cross_above: "cruza arriba de", cross_below: "cruza abajo de",
-                  rising: "sube", falling: "baja", ">": ">", "<": "<" }[c.op] || c.op;
+  const opLbl = { cross_above: t("rule.cross_above"), cross_below: t("rule.cross_below"),
+                  rising: t("rule.rising"), falling: t("rule.falling"),
+                  ">": ">", "<": "<" }[c.op] || c.op;
   const side = o => {
     if (!o) return "";
     if (o.type === "const") return (+o.value).toLocaleString();

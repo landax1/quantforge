@@ -52,7 +52,12 @@
 }
 
 /* ESCALA TIPOGRÁFICA
-   Once pasos: 9 10 11 12 13 14 16 18 20 24 30.
+   Doce pasos: 9 10 11 12 13 14 16 18 20 24 30, y 36 para titular.
+
+   El 36 se agregó midiendo: había dos titulares en 34 y 38 px, o sea arriba
+   del techo de la escala. Ahí el problema no era el uso sino la escala —no
+   llegaba— y aplastarlos contra 30 los hubiera dejado del mismo tamaño que un
+   encabezado de página, que es justo lo que no son.
 
    Antes había 23 tamaños, con saltos de medio píxel — 12, 12.5, 13, 13.5.
    Nadie distingue medio píxel; lo que sí se nota es el efecto acumulado, que
@@ -183,6 +188,23 @@
   /* alturas de control, para que todo lo clickeable quede parejo */
   --h-ctl: 38px;
   --h-ctl-lg: 44px;
+
+  /* LA MEDIDA DE LECTURA. Un renglón cómodo tiene entre 45 y 75 caracteres;
+     pasando 90 el ojo pierde la línea al volver a la izquierda. Medido acá
+     adentro, la explicación del reloj del bróker corría a 201 caracteres por
+     línea — casi tres veces el máximo.
+
+     Va en `ch` y no en píxeles porque el `ch` se mide contra la fuente y el
+     tamaño del propio elemento: 68ch son 68 caracteres tanto en un párrafo de
+     13px como en una nota de 11px. Con un máximo en píxeles habría que elegir
+     uno por cada tamaño de letra, que es exactamente como se llega a tener
+     veintitrés valores sueltos.
+
+     Es un TOPE, no un ancho: en una columna angosta no hace nada. */
+  /* 54 y no 68: el `ch` es el ancho del cero, y en Outfit el cero es bastante
+     mas ancho que la letra promedio. Medido en pantalla, 68ch daban 90
+     caracteres por linea. 54ch caen en 71, que es donde se queria estar. */
+  --medida: 54ch;
 
   --font: "Outfit", "Inter", system-ui, -apple-system, sans-serif;
   --mono: "Space Mono", ui-monospace, Consolas, monospace;
@@ -582,7 +604,7 @@ main { flex: 1; overflow-y: auto; padding: 32px 34px 90px; scroll-behavior: smoo
 .page-head h1 {
   font-size: 24px; font-weight: 650; letter-spacing: -.025em; line-height: 1.2;
 }
-.page-head p { color: var(--text-2); margin-top: 6px; max-width: 620px; font-size: 13px; }
+.page-head p { color: var(--text-2); margin-top: 6px; max-width: var(--medida); font-size: 13px; }
 
 /* pastilla de contexto: qué instrumento y timeframe están cargados */
 .ctx-pill {
@@ -605,7 +627,7 @@ main { flex: 1; overflow-y: auto; padding: 32px 34px 90px; scroll-behavior: smoo
   border-radius: 999px; padding: 8px 20px; box-shadow: var(--sh-1);
   font-variant-numeric: tabular-nums;
 }
-.ph-pill b { font-size: 15px; font-weight: 680; letter-spacing: -.02em; }
+.ph-pill b { font-size: 16px; font-weight: 680; letter-spacing: -.02em; }
 .ph-pill u { text-decoration: none; color: var(--text-dim); font-size: 12px; }
 .ph-pill em { font-style: normal; color: var(--text-dim); font-size: 10px;
               font-weight: 550; margin-left: 8px; }
@@ -838,7 +860,7 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
 .sect[open] .sect-t em { color: var(--text-2); }
 
 .sect .chev {
-  align-self: center; color: var(--border-strong); font-size: 15px;
+  align-self: center; color: var(--border-strong); font-size: 16px;
   transition: transform .2s var(--ease), color .14s var(--ease);
 }
 .sect > summary:hover .chev { color: var(--text-dim); }
@@ -945,7 +967,8 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
   background: var(--accent-soft); border: 1px solid var(--accent-line);
 }
 .idle-ready h2 { font-size: 18px; font-weight: 700; letter-spacing: -.02em; margin-bottom: 4px; }
-.idle-ready p { color: var(--text-2); font-size: 13px; line-height: 1.6; }
+.idle-ready p { color: var(--text-2); font-size: 13px; line-height: 1.6;
+                max-width: var(--medida); }
 .idle-ready p b { color: var(--text); }
 .idle-warn {
   margin-top: 12px; padding: 8px 12px; border-radius: var(--r-sm);
@@ -1011,6 +1034,10 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
   color: var(--text-2); font-size: 11px; line-height: 1.6; margin-top: 12px;
   background: var(--bg-soft); border: none; border-left: 2px solid var(--border-strong);
   border-radius: 0 var(--r-sm) var(--r-sm) 0; padding: 12px 12px;
+  /* La caja entera se limita, porque su texto va suelto adentro y no hay
+     un párrafo al que ponerle el tope. Se le suma el relleno para que los
+     68 caracteres sean de texto y no de texto más margen interno. */
+  max-width: calc(var(--medida) + 32px);
 }
 .stage-note b { color: var(--text); font-variant-numeric: tabular-nums; }
 .stage-note.danger { background: var(--neg-soft); border-color: var(--neg-line); }
@@ -1073,7 +1100,8 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
   color: var(--accent-2); cursor: pointer; padding: 0;
 }
 .blocklist-actions button:hover { text-decoration: underline; }
-.help-note { color: var(--text-dim); font-size: 11px; line-height: 1.5; margin-top: 6px; }
+.help-note { color: var(--text-dim); font-size: 11px; line-height: 1.5; margin-top: 6px;
+             max-width: var(--medida); }
 /* lo resaltado dentro de una nota tiene que destacar: heredar el gris tenue
    anula el énfasis y además deja el texto más importante en el peor contraste */
 .help-note b { color: var(--text); }
@@ -1579,7 +1607,7 @@ svg.spark { display: block; border-radius: 4px; }
    alarma. Verde para lo que salió bien, neutro para los rangos y para lo que
    hay que bancar, y rojo sólo para el riesgo de ruina alto. */
 .mc-champ { margin-bottom: 20px; }
-.mc-champ h2 { font-size: 22px; font-weight: 650; letter-spacing: -.025em; margin-bottom: 8px; }
+.mc-champ h2 { font-size: 24px; font-weight: 650; letter-spacing: -.025em; margin-bottom: 8px; }
 .mc-porque { font-size: 13px; line-height: 1.65; color: var(--text-2);
              max-width: 62ch; margin-top: 12px; }
 .mc-porque b { color: var(--text); font-weight: 640; }
@@ -1592,11 +1620,11 @@ svg.spark { display: block; border-radius: 4px; }
 }
 .mc-titular.flojo { background: var(--warn-soft); border-color: var(--warn-line); }
 .mc-titular > b {
-  font-size: 38px; font-weight: 700; letter-spacing: -.04em; line-height: 1;
+  font-size: 36px; font-weight: 700; letter-spacing: -.04em; line-height: 1;
   color: var(--pos); font-variant-numeric: tabular-nums; flex: none;
 }
 .mc-titular.flojo > b { color: var(--warn); }
-.mc-titular > b u { text-decoration: none; font-size: 19px; margin-left: 1px; }
+.mc-titular > b u { text-decoration: none; font-size: 20px; margin-left: 1px; }
 .mc-titular > div { font-size: 13px; line-height: 1.55; color: var(--text-2); }
 .mc-titular > div b { color: var(--text); font-weight: 640; }
 .mc-titular span {
@@ -1757,7 +1785,7 @@ td.pf-corr.mal { color: var(--neg); font-weight: 650; }
 .wf-fallo.solida { border-color: var(--accent-line); background: var(--accent-soft); }
 .wf-marca { color: var(--text-dim); }
 .wf-fallo.solida .wf-marca { color: var(--accent-2); }
-.wf-fallo h2 { font-size: 17px; letter-spacing: -.015em; }
+.wf-fallo h2 { font-size: 16px; letter-spacing: -.015em; }
 .wf-fallo p { margin-top: 4px; font-size: 12px; color: var(--text-2); line-height: 1.6; max-width: 62ch; }
 .wf-cifras {
   grid-column: 1 / -1;
@@ -1889,9 +1917,13 @@ td.pf-corr.mal { color: var(--neg); font-weight: 650; }
 .corrida-ficha {
   margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-soft);
 }
+/* Los datos técnicos de la corrida van DESPUÉS del recorrido y separados de
+   él: son dos cosas distintas —qué le pasó a las candidatas, y cómo corrió la
+   búsqueda— y sin aire en el medio la línea de la proporción se leía como el
+   encabezado de la primera columna de esta grilla. */
 .cf-datos {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
-  gap: 16px 20px;
+  gap: 16px 20px; margin-top: 20px;
 }
 .cf-datos span { display: block; font-size: 10px; color: var(--text-dim);
                  font-weight: 550; margin-bottom: 4px; }
@@ -1906,18 +1938,24 @@ td.pf-corr.mal { color: var(--neg); font-weight: 650; }
    que se marca la primera casilla. */
 .seleccion {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  margin-bottom: 16px; padding: 12px 16px; border-radius: var(--r-sm);
+  margin-bottom: 16px; padding: 8px 16px; border-radius: var(--r-sm);
   background: transparent; border: 1px solid transparent;
-  opacity: .55; transition: background .16s var(--ease), border-color .16s var(--ease),
-                            opacity .16s var(--ease);
+  min-height: 40px;   /* la fila no salta de alto al aparecer los botones */
+  transition: background .16s var(--ease), border-color .16s var(--ease);
 }
 .seleccion.activa {
   background: var(--accent-soft); border-color: var(--accent-line); opacity: 1;
 }
 .seleccion .sel-n { font-size: 12px; font-weight: 650; color: var(--text);
                     font-variant-numeric: tabular-nums; margin-right: auto; }
+/* Sin nada tildado el texto es una instrucción, no un dato: va en el tono del
+   texto secundario y sin negrita, para que no compita con el título de al lado. */
+.seleccion:not(.activa) .sel-n { font-weight: 450; color: var(--text-dim); }
 .seleccion button[disabled] { opacity: .5; pointer-events: none; }
-.seleccion:not(.activa) button { pointer-events: none; }
+/* Junto a botones, un subrayado permanente hace que "Limpiar" parezca de otro
+   sistema. El color ya lo distingue; el subrayado queda para el hover. */
+.seleccion .linkbtn { text-decoration: none; }
+.seleccion .linkbtn:hover { text-decoration: underline; }
 
 table.banco td { vertical-align: middle; }
 table.banco .tick { width: 34px; padding-left: 16px; padding-right: 0; }
@@ -1980,13 +2018,18 @@ th.orden.mixta::after {
 .overlay {
   position: fixed; inset: 0; background: var(--overlay); backdrop-filter: blur(5px);
   z-index: 60; display: flex; align-items: flex-start; justify-content: center;
-  padding: 34px 20px; overflow-y: auto; animation: fade .16s var(--ease);
+  /* Sin relleno abajo, y el aire lo pone la hoja con su propio margen.
+     El relleno del contenedor con scroll es parte del scrollport, así que un
+     pie pegajoso con `bottom: 0` se detenía 34px por encima del borde y por
+     ese hueco seguía asomando el contenido — se veía como una barra flotando
+     en el medio del gráfico. */
+  padding: 34px 20px 0; overflow-y: auto; animation: fade .16s var(--ease);
 }
 @keyframes fade { from { opacity: 0; } }
 .sheet {
   background: var(--bg-soft); border: 1px solid var(--border-strong);
   border-radius: var(--r-xl); width: min(1140px, 100%);
-  padding: 0 0 32px; box-shadow: var(--sh-3);
+  padding: 0 0 32px; margin-bottom: 34px; box-shadow: var(--sh-3);
   animation: rise .2s var(--ease);
 }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
@@ -2104,7 +2147,7 @@ th.orden.mixta::after {
 
 .suggestion {
   background: var(--warn-soft); border: 1px solid var(--warn-line);
-  border-radius: var(--r); padding: 16px 19px;
+  border-radius: var(--r); padding: 16px 20px;
   max-width: 660px; margin: 16px auto 0; text-align: left;
 }
 .suggestion .sug-title {
@@ -2241,7 +2284,7 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
   border: 1px dashed var(--border-strong); border-radius: 14px;
   background: var(--card-2);
 }
-.prueba-invita h3 { margin: 0 0 4px; text-transform: none; font-size: 15px; }
+.prueba-invita h3 { margin: 0 0 4px; text-transform: none; font-size: 16px; }
 .prueba-invita p { margin: 0; max-width: 62ch; }
 .prueba-invita .btn { margin-left: auto; flex: none; }
 
@@ -2259,7 +2302,7 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 
 .v-cabeza { display: flex; align-items: flex-start; gap: 16px; }
 .v-cabeza > div { flex: 1; min-width: 0; }
-.v-cabeza b { display: block; font-size: 19px; letter-spacing: -.01em; }
+.v-cabeza b { display: block; font-size: 20px; letter-spacing: -.01em; }
 .v-cabeza p { margin: 4px 0 0; color: var(--text-2); font-size: 14px; }
 .v-cabeza .btn { flex: none; }
 .v-ic { flex: none; margin-top: 2px; }
@@ -2290,10 +2333,10 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 .wel-cab .logo-mark.grande { width: 56px; height: 56px; border-radius: var(--r-lg); margin: 0 auto; }
 .wel-cab .logo-mark.grande .pulpo { width: 34px; height: 34px; }
 .wel-cab h1 {
-  margin: 24px 0 8px; font-size: 34px; letter-spacing: -.02em;
+  margin: 24px 0 8px; font-size: 36px; letter-spacing: -.02em;
   font-family: var(--display, inherit);
 }
-.wel-cab p { margin: 0 auto; max-width: 52ch; color: var(--text-2); font-size: 15px; }
+.wel-cab p { margin: 0 auto; max-width: 52ch; color: var(--text-2); font-size: 16px; }
 
 .wel-pasos {
   list-style: none; margin: 40px 0 36px; padding: 0;
@@ -2315,7 +2358,7 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 .wel-pasos p {
   grid-column: 3; margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.55;
 }
-.btn.grande { padding: 12px 28px; font-size: 15px; }
+.btn.grande { padding: 12px 24px; font-size: 16px; }
 .wel-fina { margin: 20px 0 0; color: var(--text-dim); font-size: 12px; }
 
 @media (max-width: 620px) {
@@ -2330,7 +2373,12 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
    dos mitades de la misma tarea —uno busca y después mira lo que salió—, así
    que van juntas y se alternan sin salir de la sección. */
 .vistas {
-  display: inline-flex; gap: 2px; padding: 4px; margin-bottom: 24px;
+  display: inline-flex; gap: 2px; padding: 4px;
+  /* Pegadas al título de arriba y separadas del contenido de abajo: es lo que
+     las hace leer como "las dos vistas de ESTA sección" y no como una barra
+     de navegación suelta. El margen de arriba es negativo contra el que deja
+     el encabezado, que ya separa lo suyo. */
+  margin: -8px 0 24px;
   border-radius: 12px; background: var(--card-2);
   border: 1px solid var(--border-soft);
 }
@@ -2369,9 +2417,13 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
   margin: 0 0 8px; font-size: 16px; letter-spacing: -.01em;
   text-transform: none; font-weight: 650;
 }
-.consejo p { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.65; }
+.consejo p { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.65;
+             max-width: var(--medida); }
 .consejo p + p { margin-top: 12px; }
-.tips-pie { max-width: 780px; margin-top: 20px; }
+/* Sin esto ganaba su propio `max-width: 780px` —misma especificidad, mas
+   abajo en el archivo— y el pie de Consejos corria a 143 caracteres por linea
+   mientras los parrafos de arriba estaban en 71. */
+.tips-pie { max-width: calc(var(--medida) + 32px); margin-top: 20px; }
 
 @media (max-width: 620px) {
   .consejo { grid-template-columns: 1fr; }
@@ -2388,7 +2440,7 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
   text-transform: uppercase; color: var(--text-dim);
 }
 .reloj-ahora b {
-  font-family: var(--mono); font-size: 26px; font-variant-numeric: tabular-nums;
+  font-family: var(--mono); font-size: 24px; font-variant-numeric: tabular-nums;
   color: var(--accent); letter-spacing: -.01em;
 }
 
@@ -2558,7 +2610,7 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 .inst-sello {
   position: absolute; top: -9px; right: 16px;
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 10px; border-radius: 999px;
+  padding: 4px 12px; border-radius: 999px;
   background: var(--accent); color: var(--accent-ink);
   font-size: 10px; font-weight: 700; letter-spacing: .04em;
   text-transform: uppercase; white-space: nowrap;
@@ -2671,3 +2723,299 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 .corridas-vacias > summary:hover { color: var(--text-2); }
 .corridas-vacias > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .corridas-vacias .corridas-lista { margin-top: 8px; }
+
+/* ═══════════════════════════════════════════ los tres estados de una caída
+   La calma NO tiene color, y eso es la decisión, no un olvido: si el 60% de
+   la columna estuviera pintada, el color volvería a no decir nada. El ámbar
+   pide una mirada; el rojo queda para la décima parte más brava del banco.
+   Las bandas y por qué escalan con el riesgo están en `nivelDD` (app.js). */
+.dd-calma    { color: var(--text); }
+.dd-atencion { color: var(--warn); }
+.dd-grave    { color: var(--neg); }
+
+/* La cuenta de una corrida, adentro de su burbuja.
+
+   Estaba en la línea de abajo, mezclada con el riesgo, y era el único dato que
+   cambiaba entre ocho burbujas por lo demás iguales — o sea que lo que las
+   distinguía era lo más chico y lo peor ubicado. Arriba, al lado del nombre,
+   se lee de un vistazo. */
+.corrida-chip b { display: flex; align-items: center; gap: 8px; }
+.corrida-chip .chip-n {
+  font-style: normal; font-family: var(--mono); font-size: 11px;
+  padding: 1px 6px; border-radius: 999px;
+  background: var(--card-2); color: var(--text-dim);
+}
+.corrida-chip.on .chip-n { background: var(--accent); color: var(--accent-ink); }
+
+/* ═════════════════════════════════ LAS MÉTRICAS, CON DOS PESOS ════════════
+   Eran dieciséis fichas idénticas: el rendimiento anual y el promedio por
+   operación con el mismo borde, el mismo tamaño y el mismo aire. Todo al
+   mismo peso es lo mismo que nada destacado.
+
+   Arriba las cuatro contra las que se pone la vara al minar. Sin caja propia:
+   el tamaño y el aire ya dicen que pesan, y encerrar en un borde algo que ya
+   destaca es repetirlo. La línea que las separa es el fondo asomando por un
+   hueco de 1px — un borde de verdad en cada una sumaría cuatro dobles. */
+.m-cabeza {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--border-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r); overflow: hidden; margin-bottom: 20px;
+}
+.m-grande { background: var(--card); padding: 12px 16px 16px; }
+.m-grande span {
+  display: block; color: var(--text-dim); font-size: 11px; font-weight: 550;
+  margin-bottom: 6px;
+}
+.m-grande b {
+  font-size: 24px; font-weight: 700; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* El resto son datos de consulta: se leen cuando se los busca, no de un
+   vistazo. Como lista alineada a derecha las cifras se comparan entre sí, que
+   es justo lo que una grilla de fichas impide. */
+.m-resto { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 24px; }
+.m-fila {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  padding: 6px 0; border-bottom: 1px solid var(--border-soft);
+}
+.m-fila span { color: var(--text-dim); font-size: 12px; }
+.m-fila b {
+  font-size: 13px; font-weight: 650; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1000px) {
+  .m-cabeza { grid-template-columns: repeat(2, 1fr); }
+  .m-resto  { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 620px) {
+  .m-cabeza, .m-resto { grid-template-columns: 1fr; }
+}
+
+/* ════════════════════════════ EL PIE DEL INSPECTOR, SIEMPRE A MANO ════════
+   La ficha de una estrategia mide unos 2300px. Los botones de exportar
+   estaban al final: dos pantallas y media de scroll —con una tabla de ciento
+   veinte operaciones en el medio— para llegar a lo único que uno vino a
+   buscar, que es el robot.
+
+   Se pega al pie del panel mientras se lee el resto. El margen negativo de
+   abajo se come el `padding-bottom` de la hoja para que la barra llegue al
+   borde y no quede flotando sobre una franja vacía. */
+.insp-pie {
+  position: sticky; bottom: 0; z-index: 4;
+  margin: 20px 0 -32px;
+  padding: 12px 24px 16px;
+  background: var(--sheet-fade);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--border-soft);
+  border-radius: 0 0 var(--r-xl) var(--r-xl);
+}
+.sheet .insp-pie .controls { padding: 0; gap: 8px; }
+.insp-pie .guardado { margin-top: 12px; }
+
+/* En pantallas bajas cuatro botones pegados abajo se comen la ficha. Ahí
+   vuelven al flujo: con 560px de alto, dos tercios de la lectura ocupados por
+   una barra fija es peor que hacer scroll hasta ella. */
+@media (max-height: 620px) {
+  .insp-pie { position: static; margin-bottom: 0; }
+}
+
+/* ══════════════════════════════ EL RECORRIDO DE UNA CANDIDATA ═════════════
+   Cuatro etapas en fila, y la flecha entre una y otra la dibuja el separador.
+   No es una grilla de datos: es una secuencia, y por eso el orden importa y
+   por eso hay una sola dirección de lectura.
+
+   Nada de barras proporcionales: entre 2.975 descartadas y 25 en el banco,
+   una barra a escala dejaría la segunda invisible — que es exactamente el
+   dato que hay que poder leer. El número y la proporción escrita lo dicen
+   mejor que cualquier dibujo. */
+.embudo {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+  background: var(--border-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--r); overflow: hidden;
+}
+.embudo .et { background: var(--card); padding: 12px 16px; position: relative; }
+.embudo .et b {
+  display: block; font-size: 20px; font-weight: 700; letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums; color: var(--text);
+}
+.embudo .et span {
+  display: block; margin-top: 4px; font-size: 11px; color: var(--text-dim);
+}
+/* Lo descartado se dice en gris: es la mayor parte del número y no es un
+   problema — es el trabajo que hizo la máquina. Pintarlo de rojo lo
+   convertiría en un error, que es justo lo que no es. */
+.embudo .et-tirada b { color: var(--text-dim); }
+.embudo .et-banco b { color: var(--accent-2); }
+.embudo .et-guardada b { color: var(--accent-2); }
+
+.embudo-tasa {
+  margin-top: 8px; font-size: 11px; color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 720px) {
+  .embudo { grid-template-columns: repeat(2, 1fr); }
+}
+.embudo .et-nota {
+  display: block; margin-top: 1px; font-style: normal;
+  font-size: 10px; color: var(--text-dim); opacity: .8;
+}
+
+/* ═══════════════════════ DENTRO, FUERA Y LAS DOS JUNTAS, A LA VEZ ═════════
+   Las pestañas siguen mandando la CURVA —tres curvas superpuestas con escalas
+   distintas no se leen— pero los números van los tres al lado. Comparar era
+   hacer clic, memorizar cuatro cifras y hacer clic de nuevo. */
+/* El bloque de pestañas es hijo directo de la hoja, así que el relleno
+   lateral que `.sheet section` le da a todo lo demás no le llega. Sin esto
+   quedaba 23px a la izquierda del resto de la ficha. */
+#insp-muestras { padding: 0 24px; margin-bottom: 20px; }
+
+.ms-comparar { margin: 12px 0 0; }
+/* Los nombres de las métricas de la columna izquierda NO son encabezados de
+   tabla: son etiquetas de fila. `table th` las pone en versalitas espaciadas
+   —que es lo correcto para un encabezado— y ahí se leen como si gritaran, y
+   encima compiten con los tres títulos de arriba, que sí son encabezados. */
+.ms-comparar tbody th {
+  text-transform: none; letter-spacing: 0; font-size: 12px;
+  position: static; background: none;
+}
+.ms-comparar table {
+  width: 100%; border-collapse: collapse;
+  border: 1px solid var(--border-soft); border-radius: var(--r); overflow: hidden;
+}
+.ms-comparar th, .ms-comparar td {
+  padding: 6px 12px; font-size: 12px; text-align: left;
+  border-bottom: 1px solid var(--border-soft);
+}
+.ms-comparar thead th {
+  font-size: 11px; font-weight: 650; color: var(--text-2);
+  background: var(--card-2); text-align: right;
+}
+.ms-comparar thead th:first-child { text-align: left; }
+/* Las fechas de cada tramo: contexto, no dato. En 10px y en el tono más
+   apagado quedan disponibles sin competir con los números de abajo. */
+.ms-comparar .ms-rango td {
+  font-size: 10px; color: var(--text-dim); background: var(--card-2);
+  padding-top: 0; padding-bottom: 6px; font-variant-numeric: tabular-nums;
+}
+.ms-comparar tbody th {
+  font-weight: 500; color: var(--text-dim);
+}
+.ms-comparar td.num {
+  text-align: right; font-variant-numeric: tabular-nums; font-weight: 650;
+}
+.ms-comparar tbody tr:last-child th,
+.ms-comparar tbody tr:last-child td { border-bottom: 0; }
+.ms-cargando { font-size: 12px; color: var(--text-dim); }
+/* Una aclaración dentro de un rótulo de sección: minúscula y en el tono
+   secundario, para que se lea como nota al pie y no como parte del título. */
+.sheet section h3 .h3-nota {
+  text-transform: none; font-weight: 400; color: var(--text-dim);
+  letter-spacing: 0;
+}
+
+/* ═════════════════════ LA BARRA LATERAL, EN PANTALLAS ANGOSTAS ════════════
+   Medía 226px fijos y no colapsaba nunca. En un teléfono de 390px eso deja
+   164px para todo lo demás: la tabla del banco se salía 1147px por la
+   derecha, el título se cortaba y el botón de arrancar quedaba partido.
+
+   Es un programa de escritorio, sí, pero se sirve también en
+   botiquant.com/app y el primer clic de alguien que vio un video suele ser
+   desde el teléfono. Que lo primero que vea sea una pantalla rota es caro.
+
+   No se rehace nada: la barra pasa de columna a franja. El menú queda en una
+   fila que se desliza, el rótulo de columna se va —"Trabajo" arriba de una
+   fila horizontal no rotula nada— y el estado se acomoda al final.
+
+   El corte va en 900px y no en 768: abajo de 900 la barra ya se comía un
+   cuarto del ancho útil, y ahí es donde el panel de configuración de Minado
+   pasa a una columna (1180px) y las tarjetas dejan de entrar de a cuatro. */
+@media (max-width: 900px) {
+  .app { flex-direction: column; height: auto; min-height: 100vh; }
+
+  .sidebar {
+    width: auto; flex-direction: row; align-items: center; flex-wrap: wrap;
+    gap: 8px 16px; padding: 8px 16px;
+    border-right: 0; border-bottom: 1px solid var(--border-soft);
+    /* Queda a la vista al bajar: es la única navegación que hay, y sin esto
+       hay que volver arriba del todo para cambiar de sección. */
+    position: sticky; top: 0; z-index: 40;
+  }
+
+  .logo { padding: 0; gap: 8px; }
+  .logo-mark { width: 32px; height: 32px; border-radius: 8px; }
+  .logo-mark .pulpo { height: 24px; }
+  /* "STRATEGY MINER" es una bajada de marca: en una franja de 48px de alto
+     compite con el menú, que es lo que la persona vino a tocar. */
+  .logo-text em { display: none; }
+  .logo-text { font-size: 14px; }
+
+  /* Un rótulo de columna no rotula una fila. */
+  .nav-rotulo { display: none; }
+
+  #nav {
+    flex-direction: row; flex: 1 1 100%; gap: 4px; order: 3;
+    overflow-x: auto; scrollbar-width: none;
+    /* Sin esto los botones se encogen hasta partir la palabra en vez de
+       dejar deslizar la fila. */
+    padding-bottom: 2px;
+  }
+  #nav::-webkit-scrollbar { display: none; }
+  #nav button { white-space: nowrap; flex: none; font-size: 13px; }
+
+  /* El idioma y el estado se van al final de la primera fila; el idioma es
+     una elección de una sola vez y no puede ocupar el lugar del menú. */
+  .lang-box {
+    order: 2; margin: 0 0 0 auto; flex-direction: row; align-items: center;
+    gap: 8px; padding: 0;
+  }
+  .lang-rot { display: none; }
+  .sidebar-foot { order: 4; flex: 1 1 100%; padding: 0; margin: 0; border: 0; }
+  .acct { order: 2; margin: 0; padding: 0; max-width: 180px; }
+  .corrida { order: 4; flex: 1 1 100%; margin: 0; }
+
+  main { padding: 20px 16px 64px; }
+  .page-head { flex-direction: column; align-items: flex-start; gap: 12px; }
+}
+
+/* Abajo de 620 el menú es lo único que tiene que entrar entero, y el resto se
+   apila. La cuenta y el idioma bajan a su propia fila para no empujarlo. */
+@media (max-width: 620px) {
+  .sidebar { gap: 8px 12px; }
+  .lang-box, .acct { order: 4; flex: 1 1 100%; margin: 0; max-width: none; }
+  main { padding: 16px 12px 56px; }
+  .card { padding: 16px; }
+
+  /* Las cuatro secciones tienen que entrar sin deslizar. Con el punto y su
+     separacion, la cuarta quedaba cortada afuera y sin nada que lo insinuara:
+     una fila que se desliza y parece completa esconde el destino en vez de
+     ofrecerlo. El punto marca cual esta activa, y en una fila el fondo del
+     boton ya lo dice — asi que ahi no hace falta y son 17px por boton. */
+  #nav button { padding: 6px 8px; gap: 6px; font-size: 12px; }
+  #nav .punto { display: none; }
+  #nav button .nav-count { padding: 1px 4px; }
+}
+
+/* Una sección que sólo contiene tarjetas no necesita ser una tarjeta.
+
+   El borde de afuera no agrupa nada que el título no agrupe ya, y sumado al
+   borde de cada hijo da dos líneas paralelas a 24px de distancia — que es
+   exactamente lo que hace que una pantalla se vea armada a fuerza de cajas.
+   Se queda el título, el aire y el ritmo vertical; se va el marco. */
+.card.llana {
+  background: none; border: none; box-shadow: none; padding: 0;
+  margin-bottom: 32px;
+}
+
+/* La última búsqueda, debajo de "Listo para buscar". Llena la columna derecha
+   con lo único que hace falta saber antes de volver a apretar Iniciar. */
+.card.ultima { margin-top: 20px; }
+.ultima-pie {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin-top: 16px;
+}
+.ultima-pie .muted { font-size: 11px; line-height: 1.5; }

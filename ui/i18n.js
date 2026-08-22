@@ -282,7 +282,9 @@ const STR = {
   "mine.use_all": ["Use all {total} years", "Usar los {total} años"],
   "mine.oos": ["Out-of-sample check", "Validación fuera de muestra"],
   "mine.oos_off": ["Off", "Desactivada"],
-  // El paso 6. Apagado de fabrica: reservar un tramo significa minar sobre
+  // Vive adentro del paso de la data, pegado a las fechas: reservar un tramo
+  // es partir en dos el periodo que se acaba de elegir, no un paso aparte al
+  // final. Apagado de fabrica: reservar significa minar sobre
   // menos historia, y eso hace salir menos estrategias. La decision es del
   // usuario y por eso la explicacion vive adentro del paso, no en un tooltip.
   "oos.off": ["Off", "Desactivada"],
@@ -290,8 +292,8 @@ const STR = {
   "oos.sum_on": ["last {pct}% reserved", "último {pct}% reservado"],
   "oos.how_much": ["How much to set aside", "Cuánto reservar"],
   "oos.what": [
-    "With this on, the last <b>{pct}%</b> of the period you chose in step 1 is <b>set aside</b>: the search never sees it. Every strategy that passes is then re-run on that final stretch, and the results table gains a column saying whether the edge held there.",
-    "Activándolo, el último <b>{pct}%</b> del período que elegiste en el paso 1 queda <b>reservado</b>: la búsqueda no lo ve nunca. Después, cada estrategia que pasa se vuelve a correr sobre ese tramo final, y la tabla de resultados suma una columna que dice si la ventaja se sostuvo ahí."],
+    "With this on, the last <b>{pct}%</b> of the period above is <b>set aside</b>: the search never sees it. Every strategy that passes is then re-run on that final stretch, and the results table gains a column saying whether the edge held there.",
+    "Activándolo, el último <b>{pct}%</b> del período de arriba queda <b>reservado</b>: la búsqueda no lo ve nunca. Después, cada estrategia que pasa se vuelve a correr sobre ese tramo final, y la tabla de resultados suma una columna que dice si la ventaja se sostuvo ahí."],
   "oos.informa": [
     "It reports, it does not discard: nothing is thrown out for failing there. Bear in mind the search is left with less history, so fewer strategies come out.",
     "Informa, no descarta: nada se tira por fallar ahí. Tené en cuenta que la búsqueda queda con menos historia, así que salen menos estrategias."],
@@ -590,6 +592,67 @@ const STR = {
                           "¿Quitar {n} estrategias del banco?"],
   "bank.copied": ["{n} strategies in My strategies — they also stay in the databank",
                   "{n} estrategias en Mis estrategias — siguen también en el banco"],
+  /* --------------------------------------- las reglas, en palabras
+     El operador de una condicion se lee como parte de una frase —"EMA(20)
+     cruza arriba de EMA(60)"— asi que se traduce. El indicador y sus
+     parametros NO: EMA(20) se llama igual en las dos lenguas y en MetaTrader. */
+  "rule.cross_above": ["crosses above", "cruza arriba de"],
+  "rule.cross_below": ["crosses below", "cruza abajo de"],
+  "rule.rising": ["rising", "sube"],
+  "rule.falling": ["falling", "baja"],
+
+  /* La hora es lo que distingue una corrida de otra cuando el instrumento y
+     la temporalidad se repiten, que es casi siempre. */
+  "time.today": ["today {hora}", "hoy {hora}"],
+  "time.yesterday": ["yesterday {hora}", "ayer {hora}"],
+
+  /* Con nada tildado la barra dice para qué sirve, en vez de mostrar cuatro
+     botones apagados. Un control deshabilitado no enseña nada; una frase sí. */
+  /* ------------------------------------- las cuatro etapas de una candidata
+     Los nombres importan más de lo que parece: son el vocabulario con el que
+     alguien entiende qué hizo el programa. "Descartadas" y no "fallidas" —no
+     fallaron, no llegaron a la vara que puso el usuario—, y "en el Databank"
+     y no "aceptadas", porque lo que el usuario ve es dónde están. */
+  "data.download_failed": ["Download failed: {motivo}", "Descarga fallida: {motivo}"],
+  "run.stopping": ["Stopping…", "Deteniendo…"],
+  "idle.last_run": ["Your last search", "Tu última búsqueda"],
+  "idle.see_last": ["See what it found", "Ver lo que encontró"],
+  "insp.no_trades": ["No trades in this period.", "Ninguna operación en este tramo."],
+  "ms.midiendo": ["measuring the three periods…", "midiendo los tres tramos…"],
+  /* El pie ya no repite las métricas: están en la tabla, al lado de las otras
+     dos. Sólo queda de qué fechas a qué fechas es la curva que se está viendo. */
+  "ms.periodo": ["Curve from {desde} to {hasta}.", "Curva de {desde} a {hasta}."],
+  "state.built": ["built and tested", "construidas y probadas"],
+  "state.discarded": ["discarded", "descartadas"],
+  "state.kept": ["in the Databank", "en el Databank"],
+  "state.saved": ["saved", "guardadas"],
+  "state.removed": ["{n} you removed", "{n} que borraste"],
+  "state.rate": ["{n} of {total} cleared the bar — {tasa}%",
+                 "{n} de {total} pasaron la vara — {tasa}%"],
+
+  "bank.sel_hint": ["Tick rows to save or export several at once",
+                    "Tildá filas para guardar o exportar varias de una vez"],
+  "bank.removed": ["{n} out of the databank", "{n} fuera del banco"],
+  /* De que corrida salio la fila que se esta mirando. Dice "del banco" y no
+     "guardada" a proposito: todavia no lo esta, y confundirlas hace creer que
+     ya se rescato algo que no. */
+  "bank.from_bank": ["from the databank · {corrida} · risk {riesgo}",
+                     "del banco · {corrida} · riesgo {riesgo}"],
+
+  "run.stopped_kept": ["Stopped — {n} strategies, kept in the Databank",
+                       "Detenido — {n} estrategias, guardadas en el Databank"],
+  "run.kept": ["{n} strategies in {tiempo} — they went to the Databank",
+               "{n} estrategias en {tiempo} — quedaron en el Databank"],
+
+  "data.costs_fixed": [
+    "Costs and exits adjusted to {mercado}: the previous spread was {pct}% of the price",
+    "Costos y salidas ajustados a {mercado}: el spread anterior era {pct}% del precio"],
+  "data.exits_fixed": ["Exits adjusted to the scale of {mercado}",
+                       "Salidas ajustadas a la escala de {mercado}"],
+
+  "saved.added": ["{nombre} saved to My strategies",
+                  "{nombre} guardada en Mis estrategias"],
+
   "bank.pruned": ["The databank was full: the {n} oldest runs were dropped",
                   "El banco estaba lleno: se soltaron las {n} corridas más viejas"],
   "bank.cfg_loaded": ["Settings loaded — press Start", "Configuración cargada — dale a Iniciar"],
@@ -617,9 +680,13 @@ const STR = {
   "bank.pf_help": [
     "Profit factor: dollars made per dollar lost. It does not depend on position size, so it compares well across runs.",
     "Profit factor: cuántos dólares ganó por cada dólar que perdió. No depende del tamaño de posición, así que compara bien entre corridas."],
+  /* El color de esta columna es información, así que la ayuda dice cuándo
+     cambia. Un umbral que nadie puede leer es lo mismo que un umbral inventado. */
   "bank.dd_help": [
-    "Largest fall from a peak. It scales with the risk per trade, same as the return.",
-    "Máxima caída desde un pico. Escala con el riesgo por operación igual que el rendimiento."],
+    "Largest fall from a peak. It scales with the risk per trade, same as the return — "
+    + "so the colour is read against that risk: amber past 15% at 1% per trade, red past 25%.",
+    "Máxima caída desde un pico. Escala con el riesgo por operación igual que el rendimiento — "
+    + "por eso el color se lee contra ese riesgo: ámbar pasando 15% al 1% por operación, rojo pasando 25%."],
 
   /* ------------------------------------------------------- mis estrategias */
   "saved.sub": ["{n} saved. They survive any new search.",
@@ -646,9 +713,26 @@ const STR = {
      Aparecen solo cuando la corrida reservo un tramo. Antes la ficha abria
      mostrando el tramo de busqueda y no lo decia: una curva impecable que era
      la mitad que la estrategia ya conocia. */
-  "ms.is": ["Searched on", "Donde se buscó"],
-  "ms.oos": ["Never seen", "Nunca visto"],
-  "ms.todo": ["Both together", "Las dos juntas"],
+  /* Los nombres del oficio, no la paráfrasis.
+
+     Decían "Searched on / Never seen / Both together": lenguaje llano, elegido
+     para que se entendiera sin jerga. El problema es que el paso que activa
+     esto ya se llama "Out-of-sample check", y quien lo usa lo nombra así — con
+     la app en castellano también. Dos nombres para lo mismo, en la misma
+     pantalla, es peor que la jerga.
+
+     Es la misma regla que rige para profit factor y drawdown: los términos del
+     oficio no se traducen, se reconocen. La explicación en llano no se pierde,
+     pasa al globito de cada pestaña. */
+  "ms.is": ["In sample", "In sample"],
+  "ms.oos": ["Out of sample", "Out of sample"],
+  "ms.todo": ["Full period", "Período completo"],
+  "ms.is_help": ["The stretch the search looked at",
+                 "El tramo que miró la búsqueda"],
+  "ms.oos_help": ["Reserved on purpose: the search never saw it",
+                  "Reservado a propósito: la búsqueda nunca lo vio"],
+  "ms.todo_help": ["Both stretches, end to end",
+                   "Los dos tramos, de punta a punta"],
   "ms.marca": ["from here on, never seen", "de acá en adelante, nunca visto"],
   "ms.muy_corto": [
     "The reserved stretch is too short to re-run on its own — the indicators need more history than it has. Use 'Both together', or reserve a larger share next time.",

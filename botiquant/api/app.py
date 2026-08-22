@@ -1601,10 +1601,16 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "corrida_id": f["corrida_id"],
                 "saved_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             }
+            # El campo de notas es del usuario y se deja vacío. Salía de
+            # fábrica con "Del banco · SP500 1h" escrito en castellano, así que
+            # alguien con la aplicación en inglés veía una frase en español en
+            # su propia nota — y encima ese texto no decía nada que la fila no
+            # dijera ya en sus columnas de mercado y temporalidad. De dónde
+            # salió y cuándo viajan en `meta` (`corrida_id`, `saved_at`), que es
+            # donde van los datos, y la interfaz los dibuja en su idioma.
             sid = db.save_strategy(
                 f["nombre"], fila.get("spec") or {},
-                notes=f"Del banco · {f['dataset_name']} {f['timeframe']}".strip(),
-                meta=meta, user_id=dueno)
+                notes="", meta=meta, user_id=dueno)
             guardadas.append({"id": sid, "name": f["nombre"]})
         return {"guardadas": guardadas}
 
