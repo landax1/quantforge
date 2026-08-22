@@ -989,6 +989,15 @@ function pintarChrome() {
   if (rot) rot.textContent = t("nav.section");
   const rotIdioma = $("#lang-rotulo");
   if (rotIdioma) rotIdioma.textContent = t("nav.language");
+  /* El enlace de soporte. En el escritorio apunta al sitio y no a un archivo
+     local: la página se puede corregir sin que nadie vuelva a descargar nada,
+     y el número de WhatsApp puede cambiar sin dejar tirada a la gente que
+     tiene una versión vieja instalada. */
+  const sop = $("#soporte-link");
+  if (sop) {
+    sop.textContent = t("nav.support");
+    sop.href = ORIGEN_SITIO + "/soporte";
+  }
   const conn = $("#conn-text");
   if (conn) conn.textContent = t("nav.offline");
   const btn = $("#theme-btn");
@@ -1761,6 +1770,13 @@ function pintarNavBanco(total) {
      · la columna Estado en Mis estrategias
      · el portafolio al tildar dos o más
 */
+/* De dónde cuelga el sitio público. En el escritorio la aplicación se sirve
+   desde 127.0.0.1, así que un enlace relativo a /soporte abriría la copia
+   local — que existe, pero queda dentro de la ventana y sin poder corregirse.
+   Apuntando al sitio, la página de ayuda se arregla una vez para todos. */
+const ORIGEN_SITIO = location.hostname === "127.0.0.1" || location.hostname === "localhost"
+  ? "https://botiquant.com" : "";
+
 const AVANZADO = false;
 
 /* LAS FRANJAS HORARIAS, APAGADAS.

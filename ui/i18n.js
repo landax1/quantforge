@@ -37,6 +37,9 @@ const STR = {
   "nav.portfolio": ["Portfolio", "Portafolio"],
   "nav.saved": ["My strategies", "Mis estrategias"],
   "nav.offline": ["offline · local", "sin conexión · local"],
+  /* Corto a proposito: la barra lateral tiene 200px utiles y la frase larga
+     partia en dos renglones, que en una fila de menu se lee como un error. */
+  "nav.support": ["Report a problem", "Reportar un problema"],
   "nav.theme": ["Switch theme", "Cambiar tema"],
   "nav.theme_dark": ["Switch to dark theme", "Cambiar a tema oscuro"],
   "nav.theme_light": ["Switch to light theme", "Cambiar a tema claro"],

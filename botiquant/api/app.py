@@ -2110,6 +2110,22 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             return RedirectResponse("/", status_code=303)
         return HTMLResponse(pagina.read_text(encoding="utf-8"), headers=_NO_CACHE)
 
+    #: Los tres nombres llevan al mismo lugar. Alguien ya probó /contact y se
+    #: comió un 404: el que busca ayuda prueba la palabra que se le ocurre, y
+    #: hacerlo adivinar es exactamente lo contrario de lo que se necesita.
+    @app.api_route("/soporte", methods=["GET", "HEAD"], include_in_schema=False)
+    def pagina_soporte() -> Response:
+        pagina = LANDING_DIR / "soporte.html"
+        if not pagina.exists():
+            raise HTTPException(404, "No está.")
+        return HTMLResponse(pagina.read_text(encoding="utf-8"))
+
+    @app.api_route("/contacto", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/contact", methods=["GET", "HEAD"], include_in_schema=False)
+    @app.api_route("/ayuda", methods=["GET", "HEAD"], include_in_schema=False)
+    def soporte_alias() -> Response:
+        return RedirectResponse("/soporte", status_code=308)
+
     @app.api_route("/social.png", methods=["GET", "HEAD"], include_in_schema=False)
     def tarjeta_social() -> Response:
         """La imagen de la tarjeta al compartir el enlace.
