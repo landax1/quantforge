@@ -879,14 +879,55 @@ function cablearSesiones(root) {
 
    Se recalcula al cambiar el tamaño de la ventana, así que no puede volver a
    quedar viejo cuando cambie el encabezado. */
+/* Cuánto hay que descontarle a la ventana para que el panel entre entero.
+
+   Arriba del panel está el título de la pantalla, así que no arranca pegado
+   al borde. Sin descontar ese hueco el botón de arrancar quedaba fuera de la
+   ventana y no se alcanzaba ni scrolleando —medido a 1366x768, caía en
+   y=765— porque el panel es pegajoso y se detiene.
+
+   LA MEDICIÓN TIENE QUE SER INDEPENDIENTE DEL SCROLL, y la anterior no lo
+   era: sumaba `getBoundingClientRect().top` —que ya viene con el scroll
+   descontado— MÁS el `scrollTop` del contenedor, contándolo dos veces. Y como
+   el panel es pegajoso, al pegarse su borde superior se clava en cero, así
+   que la suma pasaba a ser el scroll entero y crecía cuanto más se bajaba.
+
+   Medido: con el contenedor bajado 700px el hueco daba 752px y el panel se
+   encogía de 578 a 148, con doce píxeles de caja usable adentro. Es el estado
+   en el que alguien mina veinticinco estrategias, baja a mirarlas, y se
+   encuentra con que la configuración es una ranura.
+
+   El arreglo no puede salir de medir el panel: `offsetTop` TAMPOCO sirve en un
+   elemento pegajoso —Chrome devuelve la posición desplazada, no la de
+   maquetado: 192 sin scroll y 730 con el contenedor bajado 698—. Ni el
+   rectángulo ni el offset son estables mientras el elemento esté pegado.
+
+   Lo estable es el ancestro que NO es pegajoso, que se queda donde lo puso el
+   maquetado. Se sube hasta el primero que cumpla eso y se mide ése, contra el
+   contenedor con scroll.
+
+   Y el tope es la red de seguridad, que es lo que faltaba. Da igual qué mida
+   mal mañana: al panel no se le puede dejar menos de la mitad de la ventana,
+   porque por debajo de eso deja de ser usable. Un error de medición tiene que
+   degradar el ajuste, no romper la pantalla — de hecho ya salvó al segundo
+   intento de este mismo arreglo. */
 function medirHuecoDelPanel() {
   const panel = document.querySelector(".setup");
   if (!panel) return;
-  // el margen de abajo que el panel deja respirar, igual que el de arriba
-  const AIRE = 24;
-  const arriba = panel.getBoundingClientRect().top + (document.querySelector("main")?.scrollTop || 0);
-  document.documentElement.style.setProperty(
-    "--setup-hueco", Math.max(60, Math.round(arriba + AIRE)) + "px");
+  const AIRE = 24;                 // el respiro de abajo, igual que el de arriba
+  const cont = panel.closest("main") || document.body;
+
+  let marco = panel;
+  while (marco.parentElement && marco !== cont
+         && getComputedStyle(marco).position === "sticky") {
+    marco = marco.parentElement;
+  }
+  const arriba = marco.getBoundingClientRect().top
+               - cont.getBoundingClientRect().top + cont.scrollTop;
+
+  const TOPE = Math.round(window.innerHeight * 0.5);
+  const hueco = Math.min(Math.max(60, Math.round(arriba + AIRE)), TOPE);
+  document.documentElement.style.setProperty("--setup-hueco", hueco + "px");
 }
 
 let _huecoPendiente = null;
