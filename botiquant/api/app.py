@@ -2000,7 +2000,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             """Sacarla de la maquina. Es de quien la usa."""
             return licencia_en_disco.borrar().to_dict()
 
-    @app.get("/descargar", include_in_schema=False)
+    @app.api_route("/descargar", methods=["GET", "HEAD"], include_in_schema=False)
     def descargar(request: Request) -> Response:
         """Baja el instalador. Pide cuenta: es el momento en que se entrega
         algo, y es donde el registro se justifica."""
@@ -2042,7 +2042,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                                     f"/static/{asset}?v={int(path.stat().st_mtime)}")
         return HTMLResponse(html, headers=_NO_CACHE)
 
-    @app.get("/", include_in_schema=False)
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
     def landing() -> HTMLResponse:
         """La portada explica el producto; la aplicación vive en /app.
 
@@ -2059,11 +2059,48 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     #: y no sólo a una lista de correos de prueba. Van servidas por el mismo
     #: proceso y no como archivos sueltos porque tienen que existir siempre: si
     #: la política de privacidad no carga, el revisor rechaza la aplicación.
-    @app.get("/privacidad", include_in_schema=False)
+    #: Lo que todo sitio sirve y este no servía. Trece pedidos a /robots.txt y
+    #: diez a /favicon.ico terminaron en 404: el icono existe pero viaja
+    #: embebido en el HTML, así que lo ve el navegador y no lo ve nada de lo
+    #: que lo pide por separado —marcadores, buscadores, la barra de tareas—.
+    _ROBOTS = (
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Disallow: /app\n"
+        "Disallow: /cuenta\n"
+        "Disallow: /api/\n"
+        "\n"
+        "Sitemap: https://botiquant.com/sitemap.xml\n"
+    )
+
+    @app.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
+    def robots() -> Response:
+        return Response(_ROBOTS, media_type="text/plain")
+
+    @app.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
+    def sitemap() -> Response:
+        paginas = ("", "descargar", "privacidad", "terminos")
+        cuerpo = "".join(
+            f"<url><loc>https://botiquant.com/{p}</loc></url>" for p in paginas)
+        return Response(
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            f"{cuerpo}</urlset>",
+            media_type="application/xml")
+
+    @app.api_route("/favicon.ico", methods=["GET", "HEAD"], include_in_schema=False)
+    def favicon() -> Response:
+        ico = ROOT / "botiquant.ico"
+        if not ico.exists():
+            raise HTTPException(404, "sin icono")
+        return FileResponse(ico, media_type="image/x-icon",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
+    @app.api_route("/privacidad", methods=["GET", "HEAD"], include_in_schema=False)
     def pagina_privacidad() -> Response:
         return _pagina_legal("privacidad.html")
 
-    @app.get("/terminos", include_in_schema=False)
+    @app.api_route("/terminos", methods=["GET", "HEAD"], include_in_schema=False)
     def pagina_terminos() -> Response:
         return _pagina_legal("terminos.html")
 
@@ -2073,6 +2110,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             return RedirectResponse("/", status_code=303)
         return HTMLResponse(pagina.read_text(encoding="utf-8"), headers=_NO_CACHE)
 
+    @app.api_route("/social.png", methods=["GET", "HEAD"], include_in_schema=False)
+    def tarjeta_social() -> Response:
+        """La imagen de la tarjeta al compartir el enlace.
+
+        Va en la raíz y no bajo /static-landing porque varios lectores de
+        enlaces sólo siguen rutas simples, y porque es una URL que después
+        queda escrita en mensajes que no se pueden editar."""
+        img = LANDING_DIR / "social.png"
+        if not img.exists():
+            raise HTTPException(404, "No está.")
+        return FileResponse(img, media_type="image/png",
+                            headers={"Cache-Control": "public, max-age=86400"})
+
     @app.get("/static-landing/legal.css", include_in_schema=False)
     def css_legal() -> Response:
         hoja = LANDING_DIR / "legal.css"
@@ -2080,7 +2130,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             raise HTTPException(404, "No está.")
         return Response(hoja.read_text(encoding="utf-8"), media_type="text/css")
 
-    @app.get("/cuenta", include_in_schema=False)
+    @app.api_route("/cuenta", methods=["GET", "HEAD"], include_in_schema=False)
     def pagina_cuenta() -> Response:
         """Quién sos, tu licencia y la descarga. Es lo único que el servidor
         hace por el usuario: el trabajo pesado corre después en su máquina."""
