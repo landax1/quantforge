@@ -714,3 +714,35 @@ def test_el_desglose_del_score_esta_traducido():
     assert not faltan, (
         "estas partes del score no tienen texto en el diccionario y se van a "
         f"dibujar en castellano con la app en inglés: {faltan}")
+
+
+def test_el_progreso_del_minado_no_se_congela():
+    """Los contadores se repintan en cada vuelta, no sólo al terminar.
+
+    MEDIDO antes del arreglo: a los 55 segundos de minar EURUSD la pantalla
+    decía "Tested 0 · Elapsed 0s · Hit rate 0.0%" mientras el dato real era 70
+    candidatas probadas y 54,4 segundos. Toda la grilla congelada durante la
+    búsqueda entera, y con ella un cartel rojo que decía que la búsqueda no
+    tenía filtros de calidad cuando sí los tenía.
+
+    La causa era una optimización: para que el anillo pudiera animarse se
+    evitaba rehacer la tarjeta cuando el anillo se había movido, y
+    ``ringUpdate`` devuelve ``true`` siempre que el anillo existe. Así que
+    después del primer dibujo la tarjeta no se repintaba nunca — y adentro
+    viven los contadores, el tiempo, la semilla y el aviso de la vara.
+
+    El arreglo separa las dos cosas: el anillo conserva su nodo (lo necesita
+    para animar) y todo lo demás se reescribe siempre.
+    """
+    assert 'id="m-goal-lado"' in APP, (
+        "desapareció el contenedor de lo que cambia dentro de la tarjeta de progreso")
+    assert 'pintar("#m-goal-lado", goalLado);' in APP, (
+        "el lado de la tarjeta dejó de repintarse en cada vuelta: los contadores "
+        "van a volver a quedarse clavados en el primer valor")
+
+    # y que el repintado NO esté condicionado a que el anillo se haya movido
+    i = APP.index('pintar("#m-goal-lado", goalLado);')
+    antes = APP[max(0, i - 400):i]
+    assert "if (!movido)" not in antes.split("const movido")[-1], (
+        "el repintado del lado volvió a quedar detrás de `if (!movido)`, que es "
+        "exactamente lo que lo congelaba")

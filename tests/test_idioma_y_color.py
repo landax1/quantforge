@@ -36,6 +36,75 @@ APP = (UI_DIR / "app.js").read_text(encoding="utf-8")
 DICC = (UI_DIR / "i18n.js").read_text(encoding="utf-8")
 
 
+def _sin_comentarios(src: str) -> str:
+    """Fuera los comentarios: ahí el castellano es correcto y no se dibuja.
+
+    Hace falta de verdad — varias de las frases de abajo están citadas en los
+    comentarios que explican por qué se arreglaron, y sin esto la prueba se
+    quejaría de su propia documentación.
+    """
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    return "\n".join(re.sub(r"(?<![:\w])//.*$", "", ln) for ln in src.splitlines())
+
+
+#: Frases en castellano que aparecieron dibujadas en la interfaz en inglés y
+#: que no pueden volver. Cada una estuvo de verdad en pantalla.
+#:
+#: Es una lista a mano y no un barrido general, y eso es deliberado: el barrido
+#: da falsos positivos —las comillas invertidas anidadas de una plantilla no se
+#: emparejan con una expresión regular— y un guardarraíl que se equivoca lo
+#: desactiva el primero que pase. Esta lista nunca se equivoca; a cambio, sólo
+#: sabe de lo que ya nos mordió. Cuando aparezca una nueva, se suma acá.
+FRASES_QUE_VOLVIERON = (
+    "cruza arriba de", "cruza abajo de",          # las reglas de la estrategia
+    "del banco ·", "fuera del banco",             # el banco
+    "guardada en Mis estrategias", "Minada el",   # guardar
+    "Costos y salidas ajustados", "Salidas ajustadas a la escala",
+    "Detenido —", "quedaron en el Databank",
+    "Descarga fallida", "Deteniendo…",
+    # el aviso de exportación: el momento en que la persona consigue el robot
+    "Robots de", "ya aparece en el Navegador",
+    "Ver la carpeta", ">Descargas<", ">cambiar<",
+    # el número interno del minero, que ocupaba el lugar de la identidad
+    "fitness ${",
+    ">Corrida activa<",                            # el rótulo de la barra lateral
+)
+
+
+def test_no_vuelven_las_frases_que_ya_estuvieron_en_pantalla():
+    """Cada una de éstas se dibujó en castellano con la aplicación en inglés.
+
+    La última tanda salió de recorrer el camino entero de un usuario nuevo
+    —instalación virgen, minar, abrir una estrategia, exportar el robot— y
+    aparecieron justo en el paso final: "Robots de X · ya aparece en el
+    Navegador" y "Ver la carpeta", al lado de "Open in MetaEditor", que sí
+    estaba traducido.
+
+    El guardarraíl anterior sólo miraba los ``toast(...)`` y por eso no las
+    vio: viven adentro de un ``innerHTML``.
+    """
+    src = _sin_comentarios(APP)
+    vivas = [f for f in FRASES_QUE_VOLVIERON if f in src]
+    assert not vivas, (
+        "estas frases volvieron a quedar escritas a mano y se dibujan igual con "
+        f"la aplicación en el otro idioma: {vivas}")
+
+
+def test_la_ficha_dice_de_donde_sale_la_estrategia():
+    """Y no el número con el que el minero la ordenó.
+
+    Al abrir una estrategia recién minada la pastilla decía "fitness 22.350":
+    un número interno, sin unidad ni explicación, en el lugar donde tiene que
+    decir sobre qué mercado y con qué riesgo se midió. Desde el Databank se
+    veía bien; desde una corrida fresca —por donde entra todo usuario nuevo—
+    se veía esto.
+    """
+    assert 't("bank.from_run"' in APP, (
+        "la corrida recién terminada dejó de decir de dónde sale")
+    for clave in ("bank.from_run", "bank.from_bank"):
+        assert f'"{clave}"' in DICC, f"falta {clave} en el diccionario"
+
+
 def test_los_avisos_pasan_por_el_diccionario():
     """Ningún ``toast`` puede llevar texto escrito a mano.
 
@@ -149,3 +218,24 @@ def test_los_tres_niveles_de_caida_tienen_color():
         "la caída en calma dejó de ser texto normal")
     assert re.search(r"\.dd-atencion\s*\{[^}]*var\(--warn\)", css)
     assert re.search(r"\.dd-grave\s*\{[^}]*var\(--neg\)", css)
+
+
+def test_el_nombre_corto_funciona_con_los_datos_que_trae_la_app():
+    """Y no sólo con los que descargamos nosotros.
+
+    ``nombreCorto`` recortaba únicamente " M1…", y los datos que VIENEN CON LA
+    aplicación se llaman "SP500 H1 (Dukascopy)". Funcionaba en la máquina de
+    desarrollo —que tiene los M1 bajados— y no funcionaba en ninguna
+    instalación nueva: ahí el nombre salía entero en las burbujas de corrida,
+    en la columna de origen del Databank y en la pastilla de cada estrategia.
+
+    Es el tipo de fallo que sólo aparece si se prueba sobre una instalación
+    virgen, que es exactamente lo que ve todo el que descarga por primera vez.
+    """
+    m = re.search(r"const nombreCorto = \(s\) =>\s*\n?\s*String\([^)]*\)\.replace\((/[^,]+/[a-z]*),",
+                  APP)
+    assert m, "cambió la forma de nombreCorto; revisar a mano"
+    patron = m.group(1)
+    assert "H" in patron and "M" in patron, (
+        f"nombreCorto sólo reconoce algunas temporalidades: {patron}. Los datos "
+        "que trae la aplicación son H1, así que tiene que reconocer al menos M y H.")

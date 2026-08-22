@@ -39,6 +39,7 @@ const STR = {
   "nav.offline": ["offline · local", "sin conexión · local"],
   /* Corto a proposito: la barra lateral tiene 200px utiles y la frase larga
      partia en dos renglones, que en una fila de menu se lee como un error. */
+  "nav.active_run": ["Active run", "Corrida activa"],
   "nav.support": ["Report a problem", "Reportar un problema"],
   "nav.theme": ["Switch theme", "Cambiar tema"],
   "nav.theme_dark": ["Switch to dark theme", "Cambiar a tema oscuro"],
@@ -1173,6 +1174,20 @@ const STR = {
   "exp.pine_copied": ["Pine copied — paste it into TradingView's Pine Editor",
                       "Pine copiado — pegalo en el Pine Editor de TradingView"],
   "saved.mined_on": ["Mined on {fecha}", "Minada el {fecha}"],
+  /* El aviso de que el robot ya está puesto. Es el momento más importante de
+     la aplicación —la persona acaba de conseguir lo que vino a buscar— y estas
+     cuatro frases estaban escritas a mano en castellano, al lado de
+     "Open in MetaEditor", que sí se traducía. */
+  "exp.in_terminal": ["{terminal} Experts folder · it already shows in the Navigator",
+                      "Robots de {terminal} · ya aparece en el Navegador"],
+  "exp.change": ["change", "cambiar"],
+  "exp.downloads": ["Downloads", "Descargas"],
+  "exp.open_folder": ["Open the folder", "Ver la carpeta"],
+  /* La misma frase que `bank.from_bank` pero para una corrida recién
+     terminada: no salió del banco todavía, así que decir "del banco" sería
+     falso. */
+  "bank.from_run": ["{corrida} · risk {riesgo}", "{corrida} · riesgo {riesgo}"],
+
   "exp.open_editor": ["Open in MetaEditor", "Abrir en MetaEditor"],
   "exp.open_file": ["Open file", "Abrir archivo"],
   "exp.saved_in": ["{archivo} saved in {carpeta}", "{archivo} guardado en {carpeta}"],

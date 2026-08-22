@@ -2158,7 +2158,19 @@ const BANCO_COLS = (hayOos = true) => [
   ...(hayOos ? [["oos", t("col.oos"), t("col.oos_help")]] : []),
 ];
 
-const nombreCorto = (s) => String(s || "—").replace(/ M1.*/, "");
+/* El instrumento sin la temporalidad ni la fuente: "SP500 M1 (Dukascopy)" es
+   el nombre del archivo, "SP500" es el mercado.
+
+   Recortaba solo " M1...", y los datos que VIENEN CON LA APLICACION se llaman
+   "SP500 H1 (Dukascopy)". O sea que funcionaba en nuestra maquina —que tiene
+   los M1 descargados— y no funcionaba en ninguna instalacion nueva: ahi el
+   nombre salia entero en las burbujas de corrida, en la columna de origen del
+   Databank y en la pastilla de cada estrategia.
+
+   Pide letra Y numero pegados al final para no comerse un CSV propio que se
+   llame "Mis datos 2020": ahi el ultimo trozo no lleva letra adelante. */
+const nombreCorto = (s) =>
+  String(s || "—").replace(/\s+(?:M|H|D|W|MN)\d+\s*(?:\(.*)?$/i, "");
 
 /* Cuándo corrió, dicho como se acuerda uno.
 
@@ -4233,7 +4245,7 @@ function pintarCorrida(snap, finished) {
   const frac = meta ? Math.min(hechas / meta, 1) : 0;
   caja.hidden = false;
   caja.innerHTML = `
-    <div class="corrida-rot">Corrida activa</div>
+    <div class="corrida-rot">${esc(t("nav.active_run"))}</div>
     <div class="corrida-cifra">${meta ? `${hechas}<u>/${meta}</u>` : fmtInt(snap.tested || 0)}</div>
     <div class="corrida-pie">${meta ? "en el databank" : "probadas"} ·
       ${fmtInt(snap.tested || 0)} probadas</div>
@@ -4286,15 +4298,16 @@ function renderMining(snap, finished) {
       ${t("run.reached", { goal, probadas: fmtInt(snap.tested), tiempo: fmtDur(snap.elapsed_s) })}</div></div>`;
   }
 
-  const goalCard = `
-  <div class="goalcard ${finished ? "" : "running"}">
-    <div class="ring">${Charts.ringSvg(frac)}
-      <div class="ring-label">
-        <b>${goal ? `${kept}/${goal}` : fmtInt(snap.tested)}</b>
-        <span>${goal ? esc(t("run.in_bank")) : esc(t("run.tested"))}</span>
-      </div>
-    </div>
-    <div class="goal-side">
+  /* Todo lo que cambia en cada vuelta va acá y se repinta siempre. El anillo
+     queda fuera a propósito: rehacer su SVG lo dejaría sin punto de partida
+     para animar y se vería saltar de un valor al siguiente en vez de avanzar.
+
+     Estuvieron juntos, y como `ringUpdate` devuelve `true` siempre que el
+     anillo existe, la tarjeta no se repintaba nunca: a los 55 segundos de
+     minar decía "Tested 0 · Elapsed 0s" con 70 candidatas probadas de verdad,
+     y arrastraba un cartel rojo diciendo que la búsqueda no tenía filtros
+     cuando sí los tenía. */
+  const goalLado = `
       <div class="goal-title">
         <h2>${esc(finished ? t("run.done") : t("run.searching"))}</h2>
         ${finished ? "" : `<span class="mining-live">
@@ -4317,8 +4330,17 @@ function renderMining(snap, finished) {
           snap.eta_s != null ? fmtDur(snap.eta_s) : "—"}</b></div>` : ""}
         <div class="stat"><span>${esc(t("run.rate"))}</span><b>${rate ? rate.toFixed(2) : "—"}<u>${esc(t("run.per_sec"))}</u></b></div>
       </div>
-      ${banner}
+      ${banner}`;
+
+  const goalCard = `
+  <div class="goalcard ${finished ? "" : "running"}">
+    <div class="ring">${Charts.ringSvg(frac)}
+      <div class="ring-label">
+        <b>${goal ? `${kept}/${goal}` : fmtInt(snap.tested)}</b>
+        <span>${goal ? esc(t("run.in_bank")) : esc(t("run.tested"))}</span>
+      </div>
     </div>
+    <div class="goal-side" id="m-goal-lado">${goalLado}</div>
   </div>`;
 
   const champCardHtml = champ ? `<div class="champ" id="champ-card">
@@ -4380,6 +4402,10 @@ function renderMining(snap, finished) {
      avanza. */
   const anillo = $("#m-goal .ring", live);
   const movido = anillo && !finished && Charts.ringUpdate(anillo, frac);
+  /* El lado se repinta SIEMPRE. Esto se saltaba cuando el anillo se había
+     movido —y se mueve en todas las vueltas—, así que después del primer
+     dibujo los contadores no volvían a cambiar. */
+  pintar("#m-goal-lado", goalLado);
   if (!movido) pintar("#m-goal", goalCard);
   else {
     // el numero de al lado sigue al anillo, sin rehacer la tarjeta
@@ -4578,6 +4604,13 @@ function ctxDeLaCorrida(snap) {
     date_from: r ? r.from : undefined,
     date_to: r ? r.to : undefined,
     split: (snap && snap.split) || null,
+    /* De dónde sale, con las mismas palabras que usa el Databank. Sin esto la
+       ficha de una estrategia recién minada no decía sobre qué mercado ni con
+       qué riesgo se midió — justo la que ve todo usuario nuevo. */
+    etiqueta: t("bank.from_run", {
+      corrida: `${nombreCorto((S.datasets.find(d => d.id === S.sel.dataset_id) || {}).name)} · ${S.sel.timeframe || "1h"}`,
+      riesgo: cfg.sizing === "lots" ? `${cfg.lots} ${t("mine.lots")}` : `${cfg.riskPct}%`,
+    }),
     settings: { spread: cfg.spread, slippage: cfg.slippage,
                 commission_pct: cfg.commission, initial_capital: cfg.capital },
     // con que datos guardarla si el usuario aprieta Guardar desde la ficha
@@ -4917,11 +4950,15 @@ async function openInspector(row, ctx) {
   host.className = "overlay";
   host.innerHTML = `<div class="sheet">
     <div class="sheet-head">
+      <!-- La pastilla dice DE DÓNDE sale la estrategia. Decía "fitness
+           22.350" cuando se abría una recién minada: el número con el que el
+           minero la ordenó internamente, que no significa nada para quien lo
+           lee y encima ocupaba el lugar del dato que sí sirve. -->
       <div><h2>${esc(row.name)} ${ctx && ctx.etiqueta
         ? `<span class="badge">${esc(ctx.etiqueta)}</span>`
         : ctx && ctx.strategy_id
           ? `<span class="badge">${esc(t("nav.saved"))}</span>`
-          : `<span class="badge">fitness ${fmtNum(row.fitness, 3)}</span>`}</h2>
+          : ""}</h2>
         <p>${esc(row.blocks || "")}</p>
         <p class="sh-salidas">${salidasEnCastellano(row)}</p></div>
       <button class="sheet-close" aria-label="${esc(t("ui.close"))}">${icono("cerrar")}</button>
@@ -5309,21 +5346,21 @@ function renderInspector(box, row, res, ctx) {
       <div class="g-txt">
         <b>${esc(r.archivo)}</b>
         <span class="g-ruta">${r.terminal
-          ? `Robots de <b>${esc(r.terminal)}</b> · ya aparece en el Navegador${
-              opciones ? ` · <a href="#" id="insp-cambiar">cambiar</a>` : ""}`
+          ? t("exp.in_terminal", { terminal: `<b>${esc(r.terminal)}</b>` })
+            + (opciones ? ` · <a href="#" id="insp-cambiar">${esc(t("exp.change"))}</a>` : "")
           : esc(r.carpeta)}</span>
         ${opciones ? `<div class="g-destino" hidden>
           <span>${esc(t("export.pick_terminal", { n: S.mt5.terminales.length }))}</span>
           <select id="insp-destino">
             ${S.mt5.terminales.map(t => `<option value="${esc(t.id)}"
               ${t.id === S.mt5.elegido ? "selected" : ""}>${esc(t.nombre)}</option>`).join("")}
-            <option value="" ${S.mt5.elegido ? "" : "selected"}>Descargas</option>
+            <option value="" ${S.mt5.elegido ? "" : "selected"}>${esc(t("exp.downloads"))}</option>
           </select></div>` : ""}
       </div>
       <div class="g-acciones">
         <button class="btn small" id="insp-abrir-archivo">${
           esc(t(esRobot ? "exp.open_editor" : "exp.open_file"))}</button>
-        <button class="linkbtn" id="insp-abrir">Ver la carpeta</button>
+        <button class="linkbtn" id="insp-abrir">${esc(t("exp.open_folder"))}</button>
       </div>`;
 
     $("#insp-abrir-archivo", caja).onclick = async () => {
