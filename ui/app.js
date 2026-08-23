@@ -314,7 +314,7 @@ const RECETAS = () => [
       rrBuscado: [1.5, 2.0, 2.5, 3.0],
       minTrades: 40,
       critOn: { minPf: true, minRetDd: true, minCagr: true },
-      minPf: 1.25, minRetDd: 2.5, minCagr: 5,
+      minPf: 1.25, minRetDd: 2.5, minCagrFactor: 1.6,
     },
   },
   {
@@ -385,6 +385,24 @@ function aplicarReceta(r) {
     if (k === "timeframe") { S.sel.timeframe = v; continue; }
     if (k === "critOn") { c.critOn = { ...v }; continue; }
     if (k === "anios") { acortarVentana(v); continue; }
+    /* El rendimiento anual pedido, como MÚLTIPLO del piso del instrumento y no
+       como número fijo.
+
+       Encontrado verificando las categorías en los cuatro mercados: "Aguantarla
+       años" pedía 5% anual y en EURUSD devolvía cero de cinco mil candidatas.
+       No es que buscara mal — el techo medido de EURUSD es 4,05% anual, así que
+       le estaba pidiendo por encima de lo que ese mercado da. En oro y Bitcoin,
+       donde el techo pasa el 20%, las mismas cinco unidades son un pedido
+       cómodo y salieron diez de diez.
+
+       Un número fijo no puede significar lo mismo en mercados cuyos techos van
+       de 4% a 22%. El piso por instrumento ya vive en el catálogo por esta
+       misma razón, así que la receta se apoya en él. */
+    if (k === "minCagrFactor") {
+      const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
+      c.minCagr = Math.round((ds?.min_cagr ?? 3) * v * 10) / 10;
+      continue;
+    }
     c[k] = v;
   }
   S.recetaPuesta = r.id;

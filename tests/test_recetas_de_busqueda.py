@@ -190,9 +190,11 @@ def test_las_recetas_no_pueden_nombrar_perillas_que_no_existen():
     conocidas = set(re.findall(r"(\w+):",
                                re.search(r"const DEFAULT_CFG = \{(.*?)\n\};",
                                          APP, re.S).group(1)))
-    # Las tres que `aplicarReceta` trata aparte y no copia a S.cfg: la
-    # temporalidad y la ventana van a S.sel, y critOn se reemplaza entero.
-    conocidas |= {"timeframe", "critOn", "anios"}
+    # Las que `aplicarReceta` trata aparte y no copia tal cual a S.cfg: la
+    # temporalidad y la ventana van a S.sel, critOn se reemplaza entero, y
+    # minCagrFactor se convierte en minCagr multiplicando por el piso del
+    # instrumento.
+    conocidas |= {"timeframe", "critOn", "anios", "minCagrFactor"}
     criterios = {a or b for a, b in
                  re.findall(r'(\w+):\s*"min_\w+|(\w+):\s*"max_\w+', APP)}
 
@@ -286,3 +288,25 @@ def test_la_pantalla_no_ofrece_relaciones_que_el_minero_no_conoce():
         f"la pantalla ofrece {pantalla} y el minero conoce {motor}. Lo que "
         "sobra de un lado se pide y no se prueba; lo que falta del otro no se "
         "puede pedir")
+
+
+def test_el_rendimiento_pedido_no_puede_ser_un_numero_fijo():
+    """Cinco por ciento significa cosas distintas según el mercado.
+
+    Encontrado verificando las cuatro categorías en los cuatro mercados:
+    «Aguantarla años» pedía 5% anual y en EURUSD devolvía CERO de cinco mil
+    candidatas. No buscaba mal — el techo medido de EURUSD es 4,05% anual, así
+    que se le pedía por encima de lo que ese mercado da. En oro y Bitcoin, con
+    techos por encima del 20%, las mismas cinco unidades son cómodas: diez de
+    diez.
+
+    Los techos medidos: EURUSD 4,05%, SP500 14,95%, oro 20,20%, Bitcoin 21,84%.
+    Un número fijo no puede significar lo mismo en ese rango. El piso por
+    instrumento ya vive en el catálogo por esta misma razón.
+    """
+    cfg = _recetas()["largo"]
+    assert "minCagrFactor" in cfg, (
+        "la categoría de largo plazo volvió a pedir un rendimiento fijo; en "
+        "EURUSD eso pide por encima de su techo y devuelve cero")
+    assert not re.search(r"minCagr: [\d.]+", cfg), (
+        "quedó también un minCagr fijo, que pisaría al múltiplo")
