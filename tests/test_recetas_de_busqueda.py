@@ -171,9 +171,15 @@ def test_la_pantalla_no_puede_decir_una_relacion_que_no_va_a_usar():
     cuerpo = cuerpo[:cuerpo.index("\n}")]
     assert "rrBuscado" in cuerpo, (
         "la función dejó de mirar si la búsqueda tiene varias relaciones")
-    # y nadie más arma el texto por su cuenta
-    sueltos = re.findall(r"`1:\$\{S\.cfg\.rr\}", APP)
+    # Y nadie MÁS la arma por su cuenta. Se saca del texto el cuerpo de la
+    # propia función, que es el único lugar que sí tiene que escribirla: sin
+    # esa exclusión la prueba se prohibía a sí misma el arreglo que exige.
+    resto = APP.replace(cuerpo, "")
+    # Sin anclar a la comilla invertida. El primer intento pedía "`1:${S.cfg.rr}"
+    # y el lugar que había que atrapar dice "` · 1:${S.cfg.rr}", así que la
+    # comprobación no podía fallar nunca: pasaba con la regresión puesta.
+    sueltos = re.findall(r"1:\$\{S\.cfg\.rr\}", resto)
     assert not sueltos, (
-        "volvió a haber un lugar que escribe la relación a mano; con una receta "
-        "que busca varias, ese lugar va a mostrar una que no se va a usar")
+        "volvió a haber otro lugar que escribe la relación a mano; con una "
+        "receta que busca varias, ese lugar va a mostrar una que no se va a usar")
     assert '"rr.varias"' in DICC, "falta el texto para el rango de relaciones"
