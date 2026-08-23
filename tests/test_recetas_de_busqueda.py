@@ -262,3 +262,27 @@ def test_dos_categorias_no_pueden_prometer_lo_mismo():
                 continue
             assert en_a != en_b and es_a != es_b, (
                 f"«{a}» y «{b}» prometen lo mismo: {es_a!r}")
+
+
+def test_la_pantalla_no_ofrece_relaciones_que_el_minero_no_conoce():
+    """Dos listas de lo mismo en dos archivos se separan solas.
+
+    La pantalla ofrece un juego de relaciones cuando se elige «buscarla», y el
+    minero tiene el suyo en `generator.py`. Si alguien agrega una allá y no
+    acá, la aplicación ofrece algo que el servidor no va a probar; al revés,
+    hay relaciones útiles que nadie puede pedir.
+
+    No se unifican en un solo archivo porque son dos procesos distintos —una
+    corre en el navegador y la otra en Python— así que lo que queda es esta
+    prueba.
+    """
+    from botiquant.generator.generator import RR_CHOICES
+
+    crudo = re.search(r"const RR_BUSCABLES = \[([^\]]+)\]", APP)
+    assert crudo, "desapareció la lista de relaciones de la pantalla"
+    pantalla = sorted(float(x) for x in crudo.group(1).split(","))
+    motor = sorted(float(x) for x in RR_CHOICES)
+    assert pantalla == motor, (
+        f"la pantalla ofrece {pantalla} y el minero conoce {motor}. Lo que "
+        "sobra de un lado se pide y no se prueba; lo que falta del otro no se "
+        "puede pedir")

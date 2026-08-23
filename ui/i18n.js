@@ -934,6 +934,23 @@ const STR = {
     "Vas a buscar <b>{goal} estrategias</b> sobre <b>{mercado}</b> en velas de <b>{tf}</b>, {tamano} y relación <b>{rr}</b>. Entran al databank las que hagan <b>{trades}+ operaciones</b>"],
   /* Cuando una receta busca varias relaciones riesgo:beneficio, decir "1:2"
      sería mentir: esa corrida no va a usar ninguna relación fija. */
+  /* ─────────────────────── buscar la relación en vez de fijarla ───────────
+     Es la perilla que más cambia lo que la búsqueda puede encontrar, y hasta
+     ahora sólo se podía tocar eligiendo una categoría. */
+  "rr.fija": ["Fixed", "Fija"],
+  "rr.buscar": ["Search it", "Buscarla"],
+  "rr.fija_ayuda": [
+    "Every candidate uses the ratio above. It caps the win rate: risking 1 to "
+    + "make 2 needs about a third of trades to win, and that is what you get.",
+    "Todas las candidatas usan la relación de arriba. Es lo que le pone techo al "
+    + "win rate: arriesgar 1 para ganar 2 necesita acertar un tercio, y eso es lo "
+    + "que se acierta."],
+  "rr.buscar_ayuda": [
+    "Each candidate gets its own ratio, from 1:{desde} to 1:{hasta} ({n} values). "
+    + "Widens what the search can find: measured, the win rate range nearly doubles.",
+    "Cada candidata lleva la suya, de 1:{desde} a 1:{hasta} ({n} valores). Ensancha "
+    + "lo que la búsqueda puede encontrar: medido, el abanico de win rate casi se "
+    + "duplica."],
   "rr.varias": ["1:{desde} to 1:{hasta} (searched)",
                 "de 1:{desde} a 1:{hasta} (se busca)"],
   "idle.and_meet": ["and also meets: {lista}.", "y cumplan: {lista}."],

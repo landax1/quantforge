@@ -46,6 +46,11 @@ const S = {
    no significa lo mismo en el S&P (7700) que en EURUSD (1.15).
 
    Esta es la perilla de rentabilidad, y su precio es el drawdown. */
+/* Las relaciones entre las que puede elegir la búsqueda cuando se la deja.
+   Son las mismas que conoce el minero (RR_CHOICES en generator.py); si las dos
+   listas se separan, la pantalla ofrece algo que el servidor no va a probar. */
+const RR_BUSCABLES = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
+
 const RR_PRESETS = [1, 1.5, 2, 3];
 const RISK_PRESETS = [0.5, 1, 2, 3];
 const LOT_PRESETS = [0.01, 0.1, 0.5, 1];
@@ -3407,6 +3412,25 @@ const vistaBuscar = async (main) => {
                 ${RR_PRESETS.map(p => `<button data-v="${p}" class="${+c.rr === p ? "on" : ""}">1:${p}</button>`).join("")}
               </div>
               <p class="help-note" id="m-rrhelp"></p>
+
+              <!-- BUSCAR LA RELACIÓN, en vez de fijarla.
+
+                   Hasta ahora esto sólo se podía pedir eligiendo una categoría,
+                   y es la perilla que más cambia lo que la búsqueda puede
+                   encontrar: con 1:2 fija, ninguna de treinta estrategias llega
+                   a 60% de aciertos; dejándola buscar, el abanico de win rate
+                   casi se duplica. Esconder eso adentro de una receta es
+                   esconder la mitad de la aplicación. -->
+              <div class="seg full mt" id="rk-rr-modo">
+                <button data-rrmodo="fija" class="${c.rrBuscado?.length ? "" : "on"}"
+                  >${esc(t("rr.fija"))}</button>
+                <button data-rrmodo="buscar" class="${c.rrBuscado?.length ? "on" : ""}"
+                  >${esc(t("rr.buscar"))}</button>
+              </div>
+              <p class="help-note mt">${c.rrBuscado?.length
+                ? t("rr.buscar_ayuda", { n: c.rrBuscado.length,
+                    desde: Math.min(...c.rrBuscado), hasta: Math.max(...c.rrBuscado) })
+                : t("rr.fija_ayuda")}</p>
             </div>
 
             <label class="fld mt"><span>${esc(t("mine.capital"))}</span>
@@ -3610,6 +3634,16 @@ const vistaBuscar = async (main) => {
     updateNotes();
   });
   bindKnob("rk-rr", "rk-rr-presets", "rr", 0.25, 10);
+
+  /* Prender "buscar" carga la lista entera de relaciones; apagarlo la borra y
+     vuelve a mandar la del control de arriba. Se guarda la lista y no un
+     booleano porque las recetas ya fijan sus propias listas acotadas —la de
+     aciertos busca sólo entre 0,5 y 0,75— y un booleano no podría expresarlas. */
+  $$("[data-rrmodo]").forEach(b => b.onclick = () => {
+    S.cfg.rrBuscado = b.dataset.rrmodo === "buscar" ? [...RR_BUSCABLES] : null;
+    saveCfg();
+    navigate("mining", "buscar");
+  });
 
   const dsSel = $("#sel-dataset"), tfSel = $("#sel-timeframe");
   dsSel.onchange = () => {
