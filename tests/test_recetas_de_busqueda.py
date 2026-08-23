@@ -239,3 +239,26 @@ def test_la_pantalla_no_puede_decir_una_relacion_que_no_va_a_usar():
         "volvió a haber otro lugar que escribe la relación a mano; con una "
         "receta que busca varias, ese lugar va a mostrar una que no se va a usar")
     assert '"rr.varias"' in DICC, "falta el texto para el rango de relaciones"
+
+
+def test_dos_categorias_no_pueden_prometer_lo_mismo():
+    """Si dos tarjetas dicen lo mismo, una está de más.
+
+    Pasó y se corrigió: al reescribir la de fondeo quedó prometiendo «cuida la
+    caída», que es exactamente lo que ya promete «Dormir tranquilo». Quien las
+    lee no tiene forma de elegir, y la que toque va a sentir que la otra
+    sobraba.
+    """
+    frases = {}
+    for nombre in _recetas():
+        m = re.search(rf'"rec\.{nombre}_que": \[\s*"([^"]+)",\s*\n?\s*"([^"]+)"',
+                      DICC)
+        assert m, f"no se pudo leer la promesa de «{nombre}»"
+        frases[nombre] = (m.group(1).lower(), m.group(2).lower())
+
+    for a, (en_a, es_a) in frases.items():
+        for b, (en_b, es_b) in frases.items():
+            if a >= b:
+                continue
+            assert en_a != en_b and es_a != es_b, (
+                f"«{a}» y «{b}» prometen lo mismo: {es_a!r}")

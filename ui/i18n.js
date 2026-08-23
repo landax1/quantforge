@@ -69,10 +69,19 @@ const STR = {
                  "Configurado para: {nombre}. Podés cambiar lo que quieras abajo."],
 
   "rec.fondeo": ["Pass a funded-account challenge", "Pasar un desafío de fondeo"],
-  "rec.fondeo_que": ["Trades every couple of days and guards the drawdown",
-                     "Opera cada dos o tres días y cuida la caída"],
-  "rec.fondeo_cuesta": ["Costs: the scarcest of the four — trading often and making money barely coexist",
-                        "Cuesta: son las más escasas — operar seguido y ganar casi no conviven"],
+  /* Comparativa y no absoluta, a propósito por dos razones.
+
+     Una: medido, la primera que trae opera una vez cada 4,8 días en el S&P y
+     una cada 21 en Bitcoin. Prometer un número sería inventarlo.
+
+     Dos: la primera versión decía «cuida la caída», y eso ya lo dice «Dormir
+     tranquilo». Dos categorías con la misma promesa es una de sobra. Lo que
+     distingue a ésta es el ORDEN: entran las que aguantan y arriba quedan las
+     que más operan, que es lo que sirve con fecha de vencimiento. */
+  "rec.fondeo_que": ["The most active of the ones that hold up",
+                     "La más activa de las que no se hunden"],
+  "rec.fondeo_cuesta": ["Costs: it trades rarely — making money and trading often barely coexist",
+                        "Cuesta: opera poco — ganar y operar seguido casi no conviven"],
 
   "rec.largo": ["Hold it for years", "Aguantarla años"],
   "rec.largo_que": ["Few trades, edge that keeps working",

@@ -274,7 +274,19 @@ const RECETAS = () => [
        seguido y se come la ventaja.
 
        Ser rentable es ser selectivo, y ser selectivo es operar poco. Por eso
-       pide 1,5 por semana y no 5: es lo que existe. La tarjeta lo dice. */
+       la frecuencia no filtra: ORDENA. Entran las que pasaron la vara y arriba
+       quedan las que más operan, así que siempre hay tabla.
+
+       Lo que trae, medido con esta misma configuración:
+
+           SP500    la primera opera 1,46 por semana — una cada 4,8 días
+                    con 8,89% anual y 6,3% de caída
+           BTCUSD   la primera opera 0,33 por semana — una cada 21 días
+
+       Por eso la tarjeta NO promete una frecuencia: varía demasiado entre
+       mercados y poner un número sería inventarlo. Promete lo que sí cumple en
+       los dos, que es la caída chica — y que además es la regla que de verdad
+       elimina gente en un desafío. */
     cfg: {
       timeframe: "30m", direction: "both", maxFilters: 1,
       anios: 4, maxCandidates: 1400,
