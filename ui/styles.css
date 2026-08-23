@@ -3033,3 +3033,31 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 }
 .soporte-link:hover { color: var(--text-2); background: var(--card-2); }
 .soporte-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ═══════════════════ QUE LA VISTA NO SE VAYA SOLA MIENTRAS MINA ═══════════
+   Reportado: "estás mirando las estrategias que van saliendo y a veces la
+   aplicación te scrollea para arriba automáticamente". Medido durante una
+   corrida real: un salto de 237px hacia arriba, de 519 a 282, al entrar una
+   estrategia nueva. Intermitente, que es lo que lo hacía difícil de agarrar.
+
+   La causa NO es repintar de más: la pantalla ya compara el HTML y sólo
+   reescribe lo que cambió. Es el anclaje de scroll del navegador, que elige
+   un nodo visible como referencia para que la página no se corra cuando algo
+   crece más arriba. Cuando ese nodo es justo uno de los que se reescriben en
+   cada vuelta, el ancla se pierde y la vista cae donde puede.
+
+   Se descartaron dos arreglos antes de éste, y los dos por medición: guardar
+   y restituir `scrollTop` alrededor del repintado no sirve —ni dentro de
+   `renderMining` ni envolviendo la vuelta entera— porque el navegador aplica
+   su ajuste DESPUÉS, en el layout siguiente, así que la restitución llega
+   temprano y el salto ocurre igual.
+
+   Lo que sí funciona es sacar de la elección a los bloques que se reescriben,
+   para que el ancla caiga en algo que sobrevive — típicamente la fila que la
+   persona está leyendo. Apagar el anclaje en todo el contenedor también
+   evitaba el salto, pero de paso perdía la protección para cuando el
+   contenido de arriba crece, que es lo que el anclaje hace bien.
+
+   Medido con esta regla: cero saltos. */
+#m-goal, #m-goal-lado, #m-champ, #m-histbox, #m-hist,
+#m-prog, #m-runbar, .setup { overflow-anchor: none; }
