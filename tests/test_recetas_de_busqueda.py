@@ -83,3 +83,25 @@ def test_cada_receta_dice_que_cuesta():
         for clave in (f'"rec.{nombre}"', f'"rec.{nombre}_que"', f'"rec.{nombre}_cuesta"'):
             assert clave in DICC, (
                 f"falta {clave}: la tarjeta se dibujaría con la clave en crudo")
+
+
+def test_cada_receta_pone_su_propio_tope():
+    """Sin tope propio, una receta puede correr horas antes de rendirse.
+
+    Medido: una candidata cuesta 8,3 microsegundos por vela, así que a 30
+    minutos son 1,04 segundos y a 15 son 2,08. El tope de fábrica son veinte
+    mil candidatas — a 30 minutos, casi seis horas; a 15, once. Nadie espera
+    eso, y el peor caso es justo cuando la búsqueda NO encuentra lo que busca,
+    que es cuando el usuario ya está desconfiando.
+    """
+    #: Segundos por candidata, de la medición de velas por temporalidad.
+    COSTO = {"15m": 2.08, "30m": 1.04, "1h": 0.51, "4h": 0.13}
+    TECHO_MIN = 12
+    for nombre, cfg in _recetas().items():
+        tope = re.search(r"maxCandidates: (\d+)", cfg)
+        assert tope, f"la receta «{nombre}» no fija su tope de candidatas"
+        tf = re.search(r'timeframe: "(\w+)"', cfg).group(1)
+        minutos = int(tope.group(1)) * COSTO[tf] / 60
+        assert minutos <= TECHO_MIN, (
+            f"«{nombre}» puede correr {minutos:.0f} minutos en el peor caso "
+            f"({tope.group(1)} candidatas a {tf}); el techo son {TECHO_MIN}")

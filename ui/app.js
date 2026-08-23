@@ -240,6 +240,13 @@ const INST_FAMILIA = {
    existe es peor que no tener recetas, porque manda a esperar veinte minutos
    para que no salga nada.
 
+   Y cada una fija su TOPE DE CANDIDATAS, que no es un detalle. Medido: una
+   candidata cuesta 8,3 microsegundos por vela, así que a 30 minutos son 1,04
+   segundos y a 15 son 2,08. Con el tope de fábrica —veinte mil— una receta a
+   30 minutos correría casi SEIS HORAS antes de rendirse, y a 15 minutos once.
+   Los topes de acá abajo están puestos para que ninguna pase de unos diez
+   minutos en el peor caso, que es cuando no encuentra lo que busca.
+
    Cada tarjeta dice qué busca Y QUÉ CUESTA. Todas cuestan algo: acertar más
    seguido significa ganar menos por acierto, y caer poco significa rendir
    menos. Callar la contrapartida sería vender lo que la portada dice no
@@ -252,6 +259,7 @@ const RECETAS = () => [
        manda la frecuencia y la caída, y el rendimiento anual queda de lado. */
     cfg: {
       timeframe: "30m", direction: "both", maxFilters: 1,
+      maxCandidates: 600,
       rrBuscado: [0.75, 1.0, 1.25, 1.5],
       minTrades: 60,
       critOn: { minPf: true, minTradesWeek: true, maxDd: true },
@@ -265,6 +273,7 @@ const RECETAS = () => [
        retorno sobre caída, que es lo que dice si valió la pena aguantarla. */
     cfg: {
       timeframe: "4h", direction: "both", maxFilters: 2,
+      maxCandidates: 5000,
       rrBuscado: [1.5, 2.0, 2.5, 3.0],
       minTrades: 40,
       critOn: { minPf: true, minRetDd: true, minCagr: true },
@@ -279,6 +288,7 @@ const RECETAS = () => [
        nada por más candidatas que se prueben. */
     cfg: {
       timeframe: "1h", direction: "both", maxFilters: 1,
+      maxCandidates: 1200,
       rrBuscado: [0.5, 0.6, 0.75],
       minTrades: 40,
       critOn: { minPf: true, minWinRate: true },
@@ -293,6 +303,7 @@ const RECETAS = () => [
        caída para que no entren estrategias que caen poco porque no hacen nada. */
     cfg: {
       timeframe: "1h", direction: "both", maxFilters: 2,
+      maxCandidates: 1200,
       rrBuscado: [0.75, 1.0, 1.5, 2.0],
       minTrades: 40,
       critOn: { minPf: true, maxDd: true, minRetDd: true },
