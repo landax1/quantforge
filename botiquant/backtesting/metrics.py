@@ -122,10 +122,23 @@ def compute_metrics(eq: pd.Series, trades: list[Trade], initial: float) -> dict[
         # y sobre el total no se puede pedir un mínimo que signifique lo mismo
         # en dos históricos de distinto largo.
         "trades_per_month": round(len(trades) / months_total, 2) if months_total else 0.0,
+        # El mismo dato en la unidad en la que se piensa una cuenta de fondeo.
+        # "Necesito operar casi todos los días" se verifica contra operaciones
+        # por SEMANA: por mes, un 20 puede ser cuatro días seguidos y después
+        # nada, y para un desafío con fecha de vencimiento eso no sirve.
+        #
+        # Se deriva de los mismos meses que la línea de arriba, y no del span
+        # en segundos, para que los dos números no puedan contradecirse.
+        "trades_per_week": (round(len(trades) / (months_total * _SEMANAS_POR_MES), 2)
+                            if months_total else 0.0),
         "worst_month_pct": round(worst_month, 2),
         "top_trade_share_pct": round(min(top_trade_share, 100.0), 2),
     }
 
+
+#: Semanas que tiene un mes en promedio (52,1775 / 12). Sale del año medio y
+#: no de 4, que acumularía casi un mes de error al año.
+_SEMANAS_POR_MES = 52.1775 / 12
 
 def _month_stats(eq: pd.Series, initial: float) -> tuple[float, int, float]:
     """(% de meses positivos, meses totales, peor mes en %)."""

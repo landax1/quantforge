@@ -85,7 +85,7 @@ const DEFAULT_CFG = {
 
      Con 5 en vez de 3 la búsqueda se va a 518 segundos, que ya es demasiado
      para lo primero que alguien prueba. */
-  minCagr: 3, minExposure: 5, minRetDd: 1.5, minTradesMonth: 4,
+  minCagr: 3, minExposure: 5, minRetDd: 1.5, minTradesMonth: 4, minTradesWeek: 2,
   /* Dos varas prendidas de fábrica: que la estrategia haya ganado plata, y
      que haya ganado algo que valga la pena mirar.
 
@@ -224,6 +224,11 @@ const CRIT_DEF = [
   { key: "maxDd",          metrica: "m.dd",           cmp: "≤", step: 1,    min: 4, def: 25,   unit: "%" },
   { key: "minWinRate",     metrica: "m.winrate",      cmp: "≥", step: 1,    min: 0, def: 50,   unit: "%" },
   { key: "minTradesMonth", metrica: "m.trades_month", cmp: "≥", step: 1,    min: 0, def: 4,    unit: "" },
+  /* Por semana además de por mes. Quien está pasando un desafío de fondeo
+     tiene fecha de vencimiento: "cuatro por mes" puede ser cuatro días
+     seguidos y después nada, y eso no le sirve. Por semana es la unidad en
+     la que esa persona piensa el problema. */
+  { key: "minTradesWeek",  metrica: "m.trades_week",  cmp: "≥", step: 0.5,  min: 0, def: 2,    unit: "" },
   { key: "minCagr",        metrica: "m.cagr",         cmp: "≥", step: 1,    min: 0, def: 5,    unit: "%" },
   { key: "minSharpe",      metrica: "m.sharpe",       cmp: "≥", step: 0.1,  min: 0, def: 0.30, unit: "" },
   { key: "minExposure",    metrica: "m.exposure",     cmp: "≥", step: 1,    min: 0, def: 5,    unit: "%" },
@@ -466,7 +471,7 @@ const CRIT_FIELD = {
   minPf: "min_pf", minSharpe: "min_sharpe", maxDd: "max_dd_pct",
   minCagr: "min_cagr_pct", minExposure: "min_exposure_pct",
   minWinRate: "min_win_rate_pct", minRetDd: "min_ret_dd",
-  minTradesMonth: "min_trades_month",
+  minTradesMonth: "min_trades_month", minTradesWeek: "min_trades_week",
   //: "Ganancia total" ya no se ofrece —el total depende de cuántos años tenga
   //: el histórico, así que el mismo número exige cosas distintas según el
   //: instrumento— pero la clave queda para leer las corridas ya archivadas.

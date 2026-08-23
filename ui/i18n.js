@@ -59,6 +59,7 @@ const STR = {
   "m.sharpe": ["Sharpe", "Sharpe"],
   "m.trades": ["Trades", "Operaciones"],
   "m.trades_month": ["Trades per month", "Operaciones por mes"],
+  "m.trades_week": ["Trades per week", "Operaciones por semana"],
   "m.retdd": ["Return / drawdown", "Retorno / drawdown"],
   "m.exposure": ["Time in market", "Tiempo en mercado"],
   "m.expectancy": ["Expectancy (R)", "Expectancy (R)"],
@@ -956,6 +957,13 @@ const STR = {
   "crit.minTradesMonth": [
     "How often it trades per month. It is the trade count made comparable: 200 is a lot over two years and very few over twenty.",
     "Cuántas veces opera al mes. Es el total de operaciones pero comparable: 200 son muchas en dos años y pocas en veinte."],
+  /* La ayuda dice la equivalencia porque es la pregunta que sigue: alguien
+     que quiere operar todos los días necesita saber que eso son cinco. */
+  "crit.minTradesWeek": [
+    "How often it trades per week. Five is roughly one per trading day — the usual "
+    + "requirement for a funded-account challenge, which has a deadline.",
+    "Cuántas veces opera por semana. Cinco es aproximadamente una por día hábil — "
+    + "lo que suele pedir un desafío de cuenta fondeada, que tiene fecha de vencimiento."],
   "crit.minCagr": [
     "What it returned per year, compounded. It scales with the risk per trade.",
     "Cuánto rindió por año, en promedio compuesto. Escala con el riesgo por operación."],

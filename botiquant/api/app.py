@@ -820,6 +820,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                   "min_cagr_pct": _crit("min_cagr_pct"),
                   "min_ret_dd": _crit("min_ret_dd"),
                   "min_trades_month": _crit("min_trades_month"),
+                  "min_trades_week": _crit("min_trades_week"),
                   "min_exposure_pct": _crit("min_exposure_pct")}
 
         # the goal is a number of ACCEPTED strategies; max_candidates only caps

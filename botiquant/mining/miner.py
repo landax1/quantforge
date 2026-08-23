@@ -35,7 +35,7 @@ _ROW_METRICS = ("net_profit_pct", "cagr_pct", "profit_factor", "max_drawdown_pct
                 # los dos que se pueden exigir como filtro tienen que viajar en
                 # la fila: si no, el databank no puede mostrar ni ordenar por
                 # aquello mismo que se le pidió a la búsqueda
-                "recovery_factor", "trades_per_month")
+                "recovery_factor", "trades_per_month", "trades_per_week")
 
 # after this many consecutive duplicate genomes the space is considered mined out
 _EXHAUSTED_AFTER = 300
@@ -115,6 +115,10 @@ _CRITERIA: tuple[tuple[str, str, str, str], ...] = (
     # operación: subir el riesgo agranda las dos partes por igual.
     ("min_ret_dd", "recovery_factor", "min", "retorno / drawdown"),
     ("min_trades_month", "trades_per_month", "min", "operaciones por mes"),
+    # Por semana además de por mes: quien está pasando un desafío de fondeo
+    # tiene fecha de vencimiento y necesita saber que va a operar seguido, no
+    # que el promedio mensual cierre.
+    ("min_trades_week", "trades_per_week", "min", "operaciones por semana"),
     ("min_cagr_pct", "cagr_pct", "min", "retorno anual"),
     ("min_exposure_pct", "exposure_pct", "min", "tiempo en mercado"),
     # Sigue aceptándose para no romper las corridas ya archivadas, pero la
