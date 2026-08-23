@@ -58,6 +58,40 @@ const STR = {
   "m.winrate": ["Win rate", "Win rate"],
   "m.sharpe": ["Sharpe", "Sharpe"],
   "m.trades": ["Trades", "Operaciones"],
+  /* ───────────────────────────── las categorías de búsqueda ───────────────
+     Cada tarjeta dice qué busca Y QUÉ CUESTA. Todas cuestan algo: acertar más
+     seguido significa ganar menos por acierto, caer poco significa rendir
+     menos. Callarlo sería vender lo que la portada dice no vender. */
+  "rec.titulo": ["What are you looking for?", "¿Qué estás buscando?"],
+  "rec.sub": ["each one sets the whole search, not just the filters",
+              "cada una configura la búsqueda entera, no sólo los filtros"],
+  "rec.puesta": ["Set up for: {nombre}. You can still change anything below.",
+                 "Configurado para: {nombre}. Podés cambiar lo que quieras abajo."],
+
+  "rec.fondeo": ["Pass a funded-account challenge", "Pasar un desafío de fondeo"],
+  "rec.fondeo_que": ["Trades most days and does not sink",
+                     "Opera casi todos los días y no se hunde"],
+  "rec.fondeo_cuesta": ["Costs: more trades, more spread paid",
+                        "Cuesta: más operaciones, más spread pagado"],
+
+  "rec.largo": ["Hold it for years", "Aguantarla años"],
+  "rec.largo_que": ["Few trades, edge that keeps working",
+                    "Pocas operaciones, ventaja que se sostiene"],
+  "rec.largo_cuesta": ["Costs: weeks can go by without a single trade",
+                       "Cuesta: pueden pasar semanas sin operar"],
+
+  "rec.aciertos": ["Win more often than you lose", "Acertar más veces de las que fallás"],
+  "rec.aciertos_que": ["Most trades close in the green",
+                       "La mayoría de las operaciones cierran en verde"],
+  "rec.aciertos_cuesta": ["Costs: each loss is bigger than each win",
+                          "Cuesta: cada pérdida es más grande que cada ganancia"],
+
+  "rec.tranquilo": ["Sleep at night", "Dormir tranquilo"],
+  "rec.tranquilo_que": ["The worst fall stays small",
+                        "La peor caída se mantiene chica"],
+  "rec.tranquilo_cuesta": ["Costs: it returns less per year",
+                           "Cuesta: rinde menos por año"],
+
   "m.trades_month": ["Trades per month", "Operaciones por mes"],
   "m.trades_week": ["Trades per week", "Operaciones por semana"],
   "m.retdd": ["Return / drawdown", "Retorno / drawdown"],

@@ -228,6 +228,99 @@ const INST_FAMILIA = {
 /* Los NOMBRES de las métricas viven en i18n.js y son los mismos en los dos
    idiomas: profit factor, drawdown, win rate, Sharpe se dicen así en la mesa,
    en MetaTrader y en TradingView. Lo que se traduce es la explicación. */
+/* ═══════════════════════ QUÉ ESTÁS BUSCANDO ═══════════════════════════════
+   Cada receta fija TEMPORALIDAD, R:B, COMPLEJIDAD y FILTROS. No sólo los
+   filtros, y ésa es toda la diferencia entre una categoría que funciona y una
+   que decora: pedir win rate ≥ 60% con el R:B 1:2 de fábrica no devuelve nada
+   nunca —medido, cero de treinta— por más que el filtro esté bien puesto.
+
+   Los números no son de gusto. Salen de barrer el espacio y mirar qué hay:
+   qué win rate aparece con cada relación, cuánta caída es alcanzable, con qué
+   frecuencia se opera en cada temporalidad. Una receta que pide algo que no
+   existe es peor que no tener recetas, porque manda a esperar veinte minutos
+   para que no salga nada.
+
+   Cada tarjeta dice qué busca Y QUÉ CUESTA. Todas cuestan algo: acertar más
+   seguido significa ganar menos por acierto, y caer poco significa rendir
+   menos. Callar la contrapartida sería vender lo que la portada dice no
+   vender. */
+const RECETAS = () => [
+  {
+    id: "fondeo", ico: "diana",
+    /* Un desafío de cuenta fondeada tiene fecha de vencimiento: no alcanza con
+       que la estrategia sea buena, tiene que OPERAR dentro del plazo. Por eso
+       manda la frecuencia y la caída, y el rendimiento anual queda de lado. */
+    cfg: {
+      timeframe: "30m", direction: "both", maxFilters: 1,
+      rrBuscado: [0.75, 1.0, 1.25, 1.5],
+      minTrades: 60,
+      critOn: { minPf: true, minTradesWeek: true, maxDd: true },
+      minPf: 1.15, minTradesWeek: 3, maxDd: 8,
+    },
+  },
+  {
+    id: "largo", ico: "pico",
+    /* Lo contrario: acá no importa operar seguido sino que la ventaja se
+       sostenga. Temporalidad alta, pocas operaciones grandes, y se le exige
+       retorno sobre caída, que es lo que dice si valió la pena aguantarla. */
+    cfg: {
+      timeframe: "4h", direction: "both", maxFilters: 2,
+      rrBuscado: [1.5, 2.0, 2.5, 3.0],
+      minTrades: 40,
+      critOn: { minPf: true, minRetDd: true, minCagr: true },
+      minPf: 1.25, minRetDd: 2.5, minCagr: 5,
+    },
+  },
+  {
+    id: "aciertos", ico: "estrella",
+    /* La que era imposible hasta ahora. El R:B bajo es TODO el truco: con 0,5
+       la mediana de aciertos es 59,5% y quince de treinta pasan el 60%; con
+       1:2 no lo pasa ninguna. Sin tocar la relación, este filtro no devuelve
+       nada por más candidatas que se prueben. */
+    cfg: {
+      timeframe: "1h", direction: "both", maxFilters: 1,
+      rrBuscado: [0.5, 0.6, 0.75],
+      minTrades: 40,
+      critOn: { minPf: true, minWinRate: true },
+      minPf: 1.1, minWinRate: 58,
+    },
+  },
+  {
+    id: "tranquilo", ico: "baja",
+    /* Caída baja. Medido: el mínimo alcanzable ronda 2,5% en cualquier
+       relación, y entre siete y diez de cada treinta quedan por debajo de 10%,
+       así que pedir 10 es exigente pero no imposible. Se le suma retorno sobre
+       caída para que no entren estrategias que caen poco porque no hacen nada. */
+    cfg: {
+      timeframe: "1h", direction: "both", maxFilters: 2,
+      rrBuscado: [0.75, 1.0, 1.5, 2.0],
+      minTrades: 40,
+      critOn: { minPf: true, maxDd: true, minRetDd: true },
+      minPf: 1.15, maxDd: 10, minRetDd: 2,
+    },
+  },
+];
+
+/* Aplica una receta y deja al usuario en la pantalla de búsqueda.
+
+   Apaga TODOS los criterios antes de prender los suyos. Si no, los que había
+   tildados de antes se suman a los de la receta y la búsqueda termina pidiendo
+   una mezcla que nadie eligió — que es la forma más rápida de que una
+   categoría no devuelva nada y parezca rota. */
+function aplicarReceta(r) {
+  const c = S.cfg;
+  c.critOn = {};
+  for (const [k, v] of Object.entries(r.cfg)) {
+    if (k === "timeframe") { S.sel.timeframe = v; continue; }
+    if (k === "critOn") { c.critOn = { ...v }; continue; }
+    c[k] = v;
+  }
+  S.recetaPuesta = r.id;
+  saveCfg();
+  navigate("mining", "buscar").then(() =>
+    toast(t("rec.puesta", { nombre: t(`rec.${r.id}`) }), "ok"));
+}
+
 const CRIT_DEF = [
   { key: "minPf",          metrica: "m.pf",           cmp: "≥", step: 0.05, min: 0, def: 1.0,  unit: "" },
   { key: "minRetDd",       metrica: "m.retdd",        cmp: "≥", step: 0.5,  min: 0, def: 1.5,  unit: "" },
@@ -3050,6 +3143,20 @@ const vistaBuscar = async (main) => {
   main.innerHTML = `
   ${pageHead(t("nav.mining"), esc(t("mine.sub")), ctxPill())}
 
+  <section class="recetas">
+    <h2>${esc(t("rec.titulo"))}
+      <span class="hint">${esc(t("rec.sub"))}</span></h2>
+    <div class="recetas-lista">
+      ${RECETAS().map(r => `
+        <button class="receta ${S.recetaPuesta === r.id ? "on" : ""}" data-receta="${r.id}">
+          <span class="r-ico">${icono(r.ico)}</span>
+          <b>${esc(t(`rec.${r.id}`))}</b>
+          <span class="r-que">${esc(t(`rec.${r.id}_que`))}</span>
+          <em class="r-cuesta">${esc(t(`rec.${r.id}_cuesta`))}</em>
+        </button>`).join("")}
+    </div>
+  </section>
+
   <div class="workbench">
     <aside class="setup">
       <div class="setup-scroll">
@@ -3739,6 +3846,11 @@ const vistaBuscar = async (main) => {
       o.classList.toggle("on", +o.dataset.filtros === S.cfg.maxFilters));
     saveCfg();
     updateNotes();
+  });
+
+  $$("[data-receta]", main).forEach(b => b.onclick = () => {
+    const r = RECETAS().find(x => x.id === b.dataset.receta);
+    if (r) aplicarReceta(r);
   });
 
   cablearSesiones(main);
