@@ -4142,6 +4142,11 @@ function etiquetaGenes(r) {
   if (r.stop_mult != null) partes.push(`SL=${r.stop_mult}×ATR`);
   if (r.trail_mult) partes.push(`${t("gene.trail")}=${r.trail_mult}×ATR`);
   if (r.max_bars) partes.push(t("gene.max_bars", { n: r.max_bars }));
+  /* La relación, sólo cuando la búsqueda la eligió. Con el R:B fijo por
+     configuración es el mismo para todas y repetirlo en cada fila es ruido;
+     cuando se busca, es lo que distingue una fila de otra — y la que más les
+     cambia el carácter, porque gobierna el win rate. */
+  if (r.rr_mult != null) partes.push(`R:B 1:${r.rr_mult}`);
   // la franja NO va acá: ya tiene su propia etiqueta al lado del nombre, y
   // repetirla hace la línea más larga sin decir nada nuevo
   return partes.join(" · ");

@@ -86,6 +86,11 @@ def _row(genome: Genome, spec, m: dict[str, float], score: float,
         "stop_mult": genome.stop_mult,
         "trail_mult": genome.trail_mult,
         "max_bars": genome.max_bars,
+        # El R:B viaja en la fila desde que dejo de ser configuracion fija. Sin
+        # esto, dos estrategias que solo se diferencian en la relacion se ven
+        # IDENTICAS en el databank — y es el gen que mas les cambia el caracter:
+        # a 0,5 el win rate mediano es 59,5% y a 2,0 es 39,8%.
+        "rr_mult": genome.rr_mult,
         # la franja viaja como id y como etiquetas: el banco tiene que poder
         # mostrar y ordenar por horario sin volver a consultar el catálogo
         "session": genome.session,
