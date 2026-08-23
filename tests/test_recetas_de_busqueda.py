@@ -101,30 +101,42 @@ def test_la_de_fondeo_mina_donde_algo_existe():
         "pidiendo sólo rentabilidad")
 
 
-def test_la_de_fondeo_no_pide_una_frecuencia_que_no_existe():
-    """Pedir cinco por semana devolvía cero, y eso es peor que no tener la categoría.
+def test_en_fondeo_la_frecuencia_ordena_y_no_filtra():
+    """Como filtro no devolvia nada; como orden siempre devuelve algo.
 
-    Medido sobre SP500 a 30 minutos, cuatro años, 1400 candidatas, aflojando de
-    a una exigencia:
+    Medido sobre SP500 a 30 minutos, cuatro anios, 1400 candidatas, aflojando
+    de a una exigencia:
 
-        rentable + caída ≤8% + 3 por semana ....... nada
-        rentable + 3 por semana (sin caída) ....... nada
-        rentable + caída ≤8% (sin frecuencia) .... 5, con 0,62 por semana
+        rentable + caida <=8% + 3 por semana ....... nada
+        rentable + 3 por semana (sin caida) ....... nada
+        rentable + caida <=8% (sin frecuencia) .... 5, con 0,62 por semana
         lo mismo pidiendo 2 por semana ........... 1
-        lo mismo pidiendo 1 por semana ........... 2, con 2,03 de mediana
-        rentable + 3 por semana + caída ≤15% ..... nada
+        lo mismo pidiendo 1 por semana ........... 2
 
-    La que ahoga es la frecuencia y no la caída: aflojar el drawdown al 15%
+    La que ahoga es la frecuencia y no la caida: aflojar el drawdown al 15%
     sigue sin dar nada. Ser rentable es ser selectivo, y ser selectivo es
-    operar poco. Si alguien sube este número, la categoría vuelve a devolver
-    cero y la tarjeta vuelve a prometer algo que no existe.
+    operar poco.
+
+    Y con uno o dos aciertos en mil cuatrocientas, encontrar algo pasa a
+    depender de la semilla: bajando la exigencia a 1,5 por semana, una semilla
+    encontraba dos y otra ninguna. Una categoria que funciona por suerte no
+    funciona.
+
+    Por eso la frecuencia dejo de ser criterio de entrada y paso a ser el
+    orden. Entran las que pasaron la vara de calidad, y arriba quedan las que
+    mas operan. Siempre hay tabla, y la de arriba es la que mas sirve para un
+    desafio con fecha.
     """
     cfg = _recetas()["fondeo"]
-    pedido = float(re.search(r"minTradesWeek: ([\d.]+)", cfg).group(1))
-    assert pedido <= 2.0, (
-        f"la categoría de fondeo pide {pedido} operaciones por semana. Medido, "
-        "por encima de 2 no aparece ninguna que además sea rentable y no se "
-        "hunda — la búsqueda corre diez minutos y devuelve una tabla vacía")
+    assert 'fitness: "activity"' in cfg, (
+        "la categoria de fondeo dejo de ordenar por actividad; sin eso vuelve a "
+        "traer las mas selectivas primero, que son las que menos le sirven a "
+        "alguien con fecha de vencimiento")
+    prendidos = re.search(r"critOn: \{([^}]*)\}", cfg).group(1)
+    assert "minTradesWeek" not in prendidos, (
+        "volvio a filtrar por frecuencia. Medido: exigiendo tres por semana "
+        "devuelve cero, y exigiendo una o dos devuelve tan poco que depende de "
+        "la semilla")
 
 
 def test_cada_receta_dice_que_cuesta():

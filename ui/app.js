@@ -280,8 +280,10 @@ const RECETAS = () => [
       anios: 4, maxCandidates: 1400,
       rrBuscado: [0.75, 1.0, 1.25, 1.5],
       minTrades: 60,
-      critOn: { minPf: true, minTradesWeek: true, maxDd: true },
-      minPf: 1.15, minTradesWeek: 1.5, maxDd: 8,
+      // La frecuencia ORDENA, no filtra. Como filtro devolvía cero.
+      fitness: "activity",
+      critOn: { minPf: true, maxDd: true },
+      minPf: 1.15, maxDd: 8,
     },
   },
   {
@@ -3457,7 +3459,8 @@ const vistaBuscar = async (main) => {
                 ${opt("composite", c.fitness, `${esc(t("mine.sort_score"))} — ${esc(t("ui.recommended"))}`)}
                 ${opt("net_profit", c.fitness, esc(t("m.net")))}
                 ${opt("profit_factor", c.fitness, esc(t("m.pf")))}
-                ${opt("sharpe", c.fitness, esc(t("m.sharpe")))}</select></label>
+                ${opt("sharpe", c.fitness, esc(t("m.sharpe")))}
+                ${opt("activity", c.fitness, esc(t("mine.sort_activity")))}</select></label>
               <label class="fld"><span>${esc(t("mine.cap"))}
                   <span class="hint">${esc(t("mine.cap_hint"))}</span></span>
                 <input type="number" data-cfg="maxCandidates" value="${c.maxCandidates}" min="100" step="1000"></label>

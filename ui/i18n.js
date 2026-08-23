@@ -94,6 +94,10 @@ const STR = {
 
   "m.trades_month": ["Trades per month", "Operaciones por mes"],
   "m.trades_week": ["Trades per week", "Operaciones por semana"],
+  /* Desempata por frecuencia entre las que ya pasaron la vara. No es un
+     filtro: como filtro la frecuencia no devuelve casi nada. */
+  "mine.sort_activity": ["Score, favouring the most active",
+                         "Score, favoreciendo a las que más operan"],
   "m.retdd": ["Return / drawdown", "Retorno / drawdown"],
   "m.exposure": ["Time in market", "Tiempo en mercado"],
   "m.expectancy": ["Expectancy (R)", "Expectancy (R)"],

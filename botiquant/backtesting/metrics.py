@@ -231,4 +231,23 @@ def fitness(metrics: dict[str, float], mode: str = "composite") -> float:
         return metrics["profit_factor"] * min(np.sqrt(trades), 10.0)
     if mode == "sharpe":
         return metrics["sharpe"]
+    if mode == "activity":
+        # Para quien tiene FECHA DE VENCIMIENTO: un desafio de cuenta fondeada
+        # no premia a la mejor estrategia sino a la mejor que ademas alcance a
+        # operar dentro del plazo.
+        #
+        # Es un desempate y no un criterio nuevo, y eso importa. Pedir la
+        # frecuencia como FILTRO no funciona: medido sobre SP500 a 30 minutos,
+        # cuatro anios, 1400 candidatas, exigir tres operaciones por semana
+        # ademas de rentabilidad y caida chica devuelve cero, y exigir dos
+        # devuelve una — tan pocas que encontrar algo depende de la semilla.
+        # Ser rentable es ser selectivo, y ser selectivo es operar poco.
+        #
+        # Como orden en cambio siempre devuelve algo: entran las que pasaron la
+        # vara de calidad y arriba quedan las que mas operan. El premio se topa
+        # en cinco por semana —una por dia habil, que es lo que se pide— para
+        # que no gane la que opera trescientas veces por ruido.
+        base = bq_score(metrics)
+        por_semana = min(metrics.get("trades_per_week", 0.0), 5.0)
+        return base + 12.0 * (por_semana / 5.0)
     return bq_score(metrics)
