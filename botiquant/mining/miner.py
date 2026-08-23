@@ -170,6 +170,11 @@ def mine(
     population: int = 40,
     oos_pct: float = 0.0,
     sessions: list[str] | None = None,
+    #: Los R:B entre los que puede elegir cada candidata. Vacío o None deja el
+    #: comportamiento de siempre: todas usan el configurado. Con una lista, la
+    #: relación pasa a ser un gen más — que es lo único que permite encontrar
+    #: familias de win rate alto, imposibles con un 1:2 fijo.
+    rr_choices: list[float] | None = None,
     handle: JobHandle | None = None,
 ) -> dict[str, Any]:
     """Mining loop over the strategy space.
@@ -584,7 +589,8 @@ def mine(
         """A genome not tried yet, or None once the space looks exhausted."""
         nonlocal dupes
         for _ in range(_EXHAUSTED_AFTER):
-            g = random_genome(drivers, filters, max_filters, rng, sessions=sessions)
+            g = random_genome(drivers, filters, max_filters, rng,
+                              sessions=sessions, rr_choices=rr_choices)
             if g.key() not in seen:
                 seen.add(g.key())
                 dupes = 0

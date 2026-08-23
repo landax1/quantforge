@@ -117,6 +117,16 @@ const DEFAULT_CFG = {
   // cuánto había elegido la última vez que estuvo prendida, para que apagarla
   // y volver a prenderla no lo mande siempre al 30
   oosUltimo: 30,
+  /* Los R:B entre los que puede elegir cada candidata. `null` deja el
+     comportamiento de siempre: todas usan el configurado en el paso de riesgo.
+
+     Existe porque el R:B resultó ser lo que gobierna el win rate, y estaba
+     fijo. Medido sobre SP500 a una hora, treinta estrategias por corrida: con
+     1:2 la mediana de aciertos es 39,8% y NINGUNA llega a 60%; con 0,5 la
+     mediana es 59,5% y quince de treinta lo pasan. Buscar aciertos altos con
+     el 1:2 de fábrica no devuelve nada nunca, por más candidatas que se
+     prueben — el techo no lo pone la búsqueda, lo pone la aritmética. */
+  rrBuscado: null,
   fitness: "composite",
   // Cómo se dimensiona la posición. "risk" ajusta el tamaño para que tocar el
   // stop cueste un % fijo; "lots" manda siempre el mismo volumen — hay brokers
@@ -3800,6 +3810,9 @@ const vistaBuscar = async (main) => {
         // el objetivo manda; max_candidates es solo el tope de seguridad
         target_keep: cfg.goal, keep_top: Math.max(cfg.goal, 100),
         oos_pct: +cfg.oosPct || 0,
+        // sólo viaja si alguien lo pidió: sin la lista el servidor deja que
+        // cada candidata use el R:B configurado, como siempre
+        ...(cfg.rrBuscado?.length ? { rr_choices: cfg.rrBuscado } : {}),
         // sólo cuando se viene del botón de arreglo: repetir las mismas
         // candidatas es justo lo que hace que el arreglo funcione
         ...(SEMILLA_REINTENTO ? { seed: +SEMILLA_REINTENTO } : {}),

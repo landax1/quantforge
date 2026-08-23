@@ -814,6 +814,32 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         def _crit(key):
             v = payload.get(key)
             return float(v) if v not in (None, "") else None
+        def _rr_choices(p: dict[str, Any]) -> list[float] | None:
+            """Los R:B entre los que puede elegir cada candidata.
+
+            Sin lista, cada una usa el configurado y todo funciona como antes.
+            Con lista, la relación pasa a ser un gen — que es lo único que
+            permite encontrar familias de win rate alto: medido sobre SP500 a
+            una hora, con 1:2 fijo ninguna de treinta llega a 60% de aciertos,
+            y con 0,5 lo pasan quince.
+
+            Se acota a un rango con sentido: por debajo de 0,2 el objetivo cae
+            adentro del spread en casi cualquier instrumento, y por encima de
+            10 casi ninguna operación llega a tocarlo.
+            """
+            crudo = p.get("rr_choices")
+            if not isinstance(crudo, (list, tuple)) or not crudo:
+                return None
+            vistos: list[float] = []
+            for x in crudo[:24]:
+                try:
+                    v = round(float(x), 4)
+                except (TypeError, ValueError):
+                    continue
+                if 0.2 <= v <= 10.0 and v not in vistos:
+                    vistos.append(v)
+            return vistos or None
+
         accept = {"min_pf": _crit("min_pf"), "min_sharpe": _crit("min_sharpe"),
                   "min_win_rate_pct": _crit("min_win_rate_pct"),
                   "max_dd_pct": _crit("max_dd_pct"), "min_net_pct": _crit("min_net_pct"),
@@ -905,6 +931,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 keep_top=int(min(max(int(payload.get("keep_top", 100)), 10), 1000)),
                 oos_pct=float(min(max(float(payload.get("oos_pct") or 0.0), 0.0), 80.0)),
                 sessions=ses,
+                rr_choices=_rr_choices(payload),
                 method="evolution" if payload.get("method") == "evolution" else "random",
                 population=int(min(max(int(payload.get("population", 40)), 8), 200)),
                 seed=seed,
