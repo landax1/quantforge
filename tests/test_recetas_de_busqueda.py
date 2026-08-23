@@ -150,3 +150,30 @@ def test_las_recetas_no_pueden_nombrar_perillas_que_no_existen():
             assert c in criterios, (
                 f"la receta «{nombre}» prende el criterio «{c}», que el minero "
                 "no conoce: el filtro no se aplicaría y saldría cualquier cosa")
+
+
+def test_la_pantalla_no_puede_decir_una_relacion_que_no_va_a_usar():
+    """Con una receta que busca varias, decir «1:2» es mentir.
+
+    Encontrado probando: después de aplicar la categoría de aciertos —que busca
+    entre 0,5 y 0,75— el resumen del paso de riesgo seguía diciendo «1:2» y el
+    panel de arranque prometía «1% per trade at a 1:2 risk/reward». Ninguna
+    candidata de esa corrida iba a usar 1:2.
+
+    El panel de arranque es la promesa de lo que la aplicación está por hacer,
+    en una aplicación cuyo argumento entero es que los números no mienten. Los
+    dos textos pasan por la misma función justamente porque decían lo mismo por
+    caminos distintos, que es como terminan diciendo cosas distintas.
+    """
+    assert "function comoSeDiceElRR()" in APP, (
+        "desapareció la función que traduce la relación a texto")
+    cuerpo = APP[APP.index("function comoSeDiceElRR()"):]
+    cuerpo = cuerpo[:cuerpo.index("\n}")]
+    assert "rrBuscado" in cuerpo, (
+        "la función dejó de mirar si la búsqueda tiene varias relaciones")
+    # y nadie más arma el texto por su cuenta
+    sueltos = re.findall(r"`1:\$\{S\.cfg\.rr\}", APP)
+    assert not sueltos, (
+        "volvió a haber un lugar que escribe la relación a mano; con una receta "
+        "que busca varias, ese lugar va a mostrar una que no se va a usar")
+    assert '"rr.varias"' in DICC, "falta el texto para el rango de relaciones"

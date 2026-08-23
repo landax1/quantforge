@@ -1030,6 +1030,23 @@ function cablearSesiones(root) {
    porque por debajo de eso deja de ser usable. Un error de medición tiene que
    degradar el ajuste, no romper la pantalla — de hecho ya salvó al segundo
    intento de este mismo arreglo. */
+/* Cómo se dice la relación riesgo:beneficio de una búsqueda.
+
+   Con una receta que la busca, decir "1:2" es mentir: esa corrida va a probar
+   candidatas con varias relaciones y ninguna va a ser la configurada. El
+   panel de "listo para buscar" es la promesa de lo que la aplicación está por
+   hacer, así que tiene que describir lo que va a hacer de verdad.
+
+   Se resuelve en una sola función porque lo decían dos lugares —el resumen
+   del paso de riesgo y el panel de arranque— y dos textos que dicen lo mismo
+   por caminos distintos terminan diciendo cosas distintas. */
+function comoSeDiceElRR() {
+  const lista = S.cfg.rrBuscado;
+  if (!lista || !lista.length) return `1:${S.cfg.rr}`;
+  if (lista.length === 1) return `1:${lista[0]}`;
+  return t("rr.varias", { desde: Math.min(...lista), hasta: Math.max(...lista) });
+}
+
 function medirHuecoDelPanel() {
   const panel = document.querySelector(".setup");
   if (!panel) return;
@@ -3820,7 +3837,7 @@ const vistaBuscar = async (main) => {
 
     set("sum-risk", (S.cfg.sizing === "lots"
       ? t("sum.lots", { lots: S.cfg.lots }) : t("sum.risk", { pct: S.cfg.riskPct }))
-      + ` · 1:${S.cfg.rr} · ${t("sum.vol_stop_short")}`);
+      + ` · ${comoSeDiceElRR()} · ${t("sum.vol_stop_short")}`);
 
     set("sum-cost", t("sum.costs", {
       spread: S.cfg.spread, slip: S.cfg.slippage, cap: fmtInt(S.cfg.capital) }));
@@ -4020,7 +4037,7 @@ function renderIdle() {
           tf: esc(S.sel.timeframe || "1h"),
           tamano: S.cfg.sizing === "lots"
             ? t("sum.lots", { lots: S.cfg.lots }) : t("sum.risk", { pct: S.cfg.riskPct }),
-          rr: S.cfg.rr,
+          rr: comoSeDiceElRR(),
           trades: S.cfg.minTrades,
         })}${on.length
           ? " " + t("idle.and_meet", {

@@ -917,8 +917,12 @@ const STR = {
   /* ------------------------------------- antes de la primera búsqueda */
   "idle.title": ["Ready to search", "Listo para minar"],
   "idle.plan": [
-    "You are going to look for <b>{goal} strategies</b> on <b>{mercado}</b> in <b>{tf}</b> bars, {tamano} at a <b>1:{rr}</b> risk/reward. Anything with <b>{trades}+ trades</b> enters the databank",
-    "Vas a buscar <b>{goal} estrategias</b> sobre <b>{mercado}</b> en velas de <b>{tf}</b>, {tamano} y relación <b>1:{rr}</b>. Entran al databank las que hagan <b>{trades}+ operaciones</b>"],
+    "You are going to look for <b>{goal} strategies</b> on <b>{mercado}</b> in <b>{tf}</b> bars, {tamano} at <b>{rr}</b> risk/reward. Anything with <b>{trades}+ trades</b> enters the databank",
+    "Vas a buscar <b>{goal} estrategias</b> sobre <b>{mercado}</b> en velas de <b>{tf}</b>, {tamano} y relación <b>{rr}</b>. Entran al databank las que hagan <b>{trades}+ operaciones</b>"],
+  /* Cuando una receta busca varias relaciones riesgo:beneficio, decir "1:2"
+     sería mentir: esa corrida no va a usar ninguna relación fija. */
+  "rr.varias": ["1:{desde} to 1:{hasta} (searched)",
+                "de 1:{desde} a 1:{hasta} (se busca)"],
   "idle.and_meet": ["and also meets: {lista}.", "y cumplan: {lista}."],
   "idle.session_one": ["Only during {nombre} ({horas}).", "Sólo durante {nombre} ({horas})."],
   "idle.session_many": [
