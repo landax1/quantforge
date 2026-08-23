@@ -69,10 +69,10 @@ const STR = {
                  "Configurado para: {nombre}. Podés cambiar lo que quieras abajo."],
 
   "rec.fondeo": ["Pass a funded-account challenge", "Pasar un desafío de fondeo"],
-  "rec.fondeo_que": ["Trades most days and does not sink",
-                     "Opera casi todos los días y no se hunde"],
-  "rec.fondeo_cuesta": ["Costs: more trades, more spread paid",
-                        "Cuesta: más operaciones, más spread pagado"],
+  "rec.fondeo_que": ["Trades every couple of days and guards the drawdown",
+                     "Opera cada dos o tres días y cuida la caída"],
+  "rec.fondeo_cuesta": ["Costs: the scarcest of the four — trading often and making money barely coexist",
+                        "Cuesta: son las más escasas — operar seguido y ganar casi no conviven"],
 
   "rec.largo": ["Hold it for years", "Aguantarla años"],
   "rec.largo_que": ["Few trades, edge that keeps working",

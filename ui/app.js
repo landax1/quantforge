@@ -254,16 +254,34 @@ const INST_FAMILIA = {
 const RECETAS = () => [
   {
     id: "fondeo", ico: "diana",
-    /* Un desafío de cuenta fondeada tiene fecha de vencimiento: no alcanza con
-       que la estrategia sea buena, tiene que OPERAR dentro del plazo. Por eso
-       manda la frecuencia y la caída, y el rendimiento anual queda de lado. */
+    /* La más difícil de las cuatro, y los números explican por qué.
+
+       Un desafío tiene fecha de vencimiento, así que no alcanza con que la
+       estrategia sea buena: tiene que OPERAR dentro del plazo. El problema es
+       que las dos cosas se pelean. Medido sobre SP500 a 30 minutos, cuatro
+       años, 1400 candidatas, aflojando de a una exigencia:
+
+           rentable + caída ≤8% + 3 por semana ....... nada
+           rentable + 3 por semana (sin caída) ....... nada
+           rentable + caída ≤8% (sin frecuencia) .... 5, con 0,62 por semana
+           lo mismo pidiendo 2 por semana ........... 1
+           lo mismo pidiendo 1 por semana ........... 2, con 2,03 de mediana
+           rentable + 3 por semana + caída ≤15% ..... nada
+
+       La que ahoga es la frecuencia, no la caída: aflojar el drawdown al 15%
+       sigue sin dar nada. Y bajar a 15 minutos EMPEORA —ahí no sale nada ni
+       siquiera sin pedir frecuencia— porque se paga el spread tres veces más
+       seguido y se come la ventaja.
+
+       Ser rentable es ser selectivo, y ser selectivo es operar poco. Por eso
+       pide 1,5 por semana y no 5: es lo que existe. La tarjeta lo dice. */
     cfg: {
       timeframe: "30m", direction: "both", maxFilters: 1,
-      maxCandidates: 600,
+      anios: 4, maxCandidates: 1400,
       rrBuscado: [0.75, 1.0, 1.25, 1.5],
       minTrades: 60,
       critOn: { minPf: true, minTradesWeek: true, maxDd: true },
-      minPf: 1.15, minTradesWeek: 3, maxDd: 8,
+      minPf: 1.15, minTradesWeek: 1.5, maxDd: 8,
     },
   },
   {
@@ -312,6 +330,29 @@ const RECETAS = () => [
   },
 ];
 
+/* Acorta el período a los últimos N años.
+
+   Es la quinta cosa que una receta configura, y hace falta por dos motivos que
+   apuntan al mismo lado. Uno es de sentido: un desafío de cuenta fondeada se
+   juega con el comportamiento reciente, no con lo que el mercado hacía hace
+   diez años. El otro es aritmético: la mitad de velas es la mitad de costo por
+   candidata, así que en el mismo tiempo de espera entran el doble de
+   candidatas — y en una búsqueda que encuentra poco, eso es la diferencia
+   entre traer algo y no traer nada. */
+function acortarVentana(anios) {
+  const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
+  const b = datasetBounds(ds);
+  if (!b.hi) return;
+  const fin = new Date(b.hi + "T00:00:00Z");
+  const desde = new Date(Date.UTC(fin.getUTCFullYear() - anios,
+                                  fin.getUTCMonth(), fin.getUTCDate()))
+    .toISOString().slice(0, 10);
+  S.sel.dateFrom = desde > b.lo ? desde : b.lo;
+  S.sel.dateTo = b.hi;
+  // elegido por la receta: que la ventana automática no lo pise después
+  S.sel.rangoPropio = true;
+}
+
 /* Aplica una receta y deja al usuario en la pantalla de búsqueda.
 
    Apaga TODOS los criterios antes de prender los suyos. Si no, los que había
@@ -324,6 +365,7 @@ function aplicarReceta(r) {
   for (const [k, v] of Object.entries(r.cfg)) {
     if (k === "timeframe") { S.sel.timeframe = v; continue; }
     if (k === "critOn") { c.critOn = { ...v }; continue; }
+    if (k === "anios") { acortarVentana(v); continue; }
     c[k] = v;
   }
   S.recetaPuesta = r.id;

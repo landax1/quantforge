@@ -80,14 +80,51 @@ def test_la_de_aciertos_baja_el_riesgo_beneficio():
         "rate alto no existe, y la tarjeta estaría prometiendo algo imposible")
 
 
-def test_la_de_fondeo_no_puede_quedarse_en_temporalidad_alta():
-    """A 4 horas, una operación por día no existe en ningún mercado medido."""
+def test_la_de_fondeo_mina_donde_algo_existe():
+    """Ni muy arriba ni muy abajo, y las dos cotas salen de medir.
+
+    Arriba: a 4 horas la frecuencia no existe — mediana de 0,9 operaciones por
+    semana y ninguno de cuarenta genomas llega a cinco, en los cuatro mercados.
+
+    Abajo, y es lo que no esperaba: a 15 MINUTOS es peor todavía. Sobre SP500,
+    cuatro años, 900 candidatas, no sale NADA — ni siquiera pidiendo sólo
+    rentabilidad y caída, sin frecuencia. Hay tres veces más operaciones y por
+    eso se paga el spread tres veces más seguido, que se lleva la ventaja.
+
+    Queda 30 minutos, que es donde algo aparece.
+    """
     cfg = _recetas()["fondeo"]
     tf = re.search(r'timeframe: "(\w+)"', cfg).group(1)
-    assert tf in ("15m", "30m"), (
-        f"la categoría de fondeo mina en {tf}. Medido en los cuatro mercados: a "
-        "1h la mediana es 3 operaciones por semana y a 4h es 0,9 — hace falta "
-        "una por día hábil, que son cinco")
+    assert tf == "30m", (
+        f"la categoría de fondeo mina en {tf}. Medido: a 4h y a 1h no hay "
+        "frecuencia, y a 15m los costos se comen todo — no sale nada ni "
+        "pidiendo sólo rentabilidad")
+
+
+def test_la_de_fondeo_no_pide_una_frecuencia_que_no_existe():
+    """Pedir cinco por semana devolvía cero, y eso es peor que no tener la categoría.
+
+    Medido sobre SP500 a 30 minutos, cuatro años, 1400 candidatas, aflojando de
+    a una exigencia:
+
+        rentable + caída ≤8% + 3 por semana ....... nada
+        rentable + 3 por semana (sin caída) ....... nada
+        rentable + caída ≤8% (sin frecuencia) .... 5, con 0,62 por semana
+        lo mismo pidiendo 2 por semana ........... 1
+        lo mismo pidiendo 1 por semana ........... 2, con 2,03 de mediana
+        rentable + 3 por semana + caída ≤15% ..... nada
+
+    La que ahoga es la frecuencia y no la caída: aflojar el drawdown al 15%
+    sigue sin dar nada. Ser rentable es ser selectivo, y ser selectivo es
+    operar poco. Si alguien sube este número, la categoría vuelve a devolver
+    cero y la tarjeta vuelve a prometer algo que no existe.
+    """
+    cfg = _recetas()["fondeo"]
+    pedido = float(re.search(r"minTradesWeek: ([\d.]+)", cfg).group(1))
+    assert pedido <= 2.0, (
+        f"la categoría de fondeo pide {pedido} operaciones por semana. Medido, "
+        "por encima de 2 no aparece ninguna que además sea rentable y no se "
+        "hunda — la búsqueda corre diez minutos y devuelve una tabla vacía")
 
 
 def test_cada_receta_dice_que_cuesta():
@@ -107,14 +144,19 @@ def test_cada_receta_pone_su_propio_tope():
     eso, y el peor caso es justo cuando la búsqueda NO encuentra lo que busca,
     que es cuando el usuario ya está desconfiando.
     """
-    #: Segundos por candidata, de la medición de velas por temporalidad.
-    COSTO = {"15m": 2.08, "30m": 1.04, "1h": 0.51, "4h": 0.13}
+    #: Segundos por candidata sobre DIEZ años, de la medición de velas por
+    #: temporalidad. Una receta que acorta la ventana paga en proporción: la
+    #: mitad de velas es la mitad de costo, y por eso acortar es lo que le
+    #: permite a la de fondeo probar más candidatas en el mismo rato.
+    COSTO_10A = {"15m": 2.08, "30m": 1.04, "1h": 0.51, "4h": 0.13}
     TECHO_MIN = 12
     for nombre, cfg in _recetas().items():
         tope = re.search(r"maxCandidates: (\d+)", cfg)
         assert tope, f"la receta «{nombre}» no fija su tope de candidatas"
         tf = re.search(r'timeframe: "(\w+)"', cfg).group(1)
-        minutos = int(tope.group(1)) * COSTO[tf] / 60
+        anios = re.search(r"anios: (\d+)", cfg)
+        escala = (int(anios.group(1)) / 10) if anios else 1.0
+        minutos = int(tope.group(1)) * COSTO_10A[tf] * escala / 60
         assert minutos <= TECHO_MIN, (
             f"«{nombre}» puede correr {minutos:.0f} minutos en el peor caso "
             f"({tope.group(1)} candidatas a {tf}); el techo son {TECHO_MIN}")
@@ -136,7 +178,9 @@ def test_las_recetas_no_pueden_nombrar_perillas_que_no_existen():
     conocidas = set(re.findall(r"(\w+):",
                                re.search(r"const DEFAULT_CFG = \{(.*?)\n\};",
                                          APP, re.S).group(1)))
-    conocidas |= {"timeframe", "critOn"}      # timeframe va a S.sel
+    # Las tres que `aplicarReceta` trata aparte y no copia a S.cfg: la
+    # temporalidad y la ventana van a S.sel, y critOn se reemplaza entero.
+    conocidas |= {"timeframe", "critOn", "anios"}
     criterios = {a or b for a, b in
                  re.findall(r'(\w+):\s*"min_\w+|(\w+):\s*"max_\w+', APP)}
 
