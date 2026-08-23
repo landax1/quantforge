@@ -105,3 +105,35 @@ def test_cada_receta_pone_su_propio_tope():
         assert minutos <= TECHO_MIN, (
             f"«{nombre}» puede correr {minutos:.0f} minutos en el peor caso "
             f"({tope.group(1)} candidatas a {tf}); el techo son {TECHO_MIN}")
+
+
+def test_las_recetas_no_pueden_nombrar_perillas_que_no_existen():
+    """Un nombre mal escrito en una receta no rompe nada: no hace nada.
+
+    Es el peor tipo de error para esto. `aplicarReceta` copia lo que encuentre
+    dentro de `cfg`, así que `minTradeWeek` en vez de `minTradesWeek` deja la
+    categoría prendiendo un criterio inexistente y buscando con la
+    configuración de antes — devuelve cualquier cosa y no hay señal de que algo
+    ande mal.
+    """
+    # Todas las claves, no sólo las que arrancan renglón: en DEFAULT_CFG varias
+    # comparten línea —`minCagr: 3, minExposure: 5, minRetDd: 1.5, ...`— y con
+    # el patrón anclado al margen esta prueba daba por inexistentes perillas que
+    # sí están, que es la clase de falso positivo que hace desconfiar del test.
+    conocidas = set(re.findall(r"(\w+):",
+                               re.search(r"const DEFAULT_CFG = \{(.*?)\n\};",
+                                         APP, re.S).group(1)))
+    conocidas |= {"timeframe", "critOn"}      # timeframe va a S.sel
+    criterios = {a or b for a, b in
+                 re.findall(r'(\w+):\s*"min_\w+|(\w+):\s*"max_\w+', APP)}
+
+    for nombre, cfg in _recetas().items():
+        for clave in re.findall(r"^\s+(\w+):", cfg, re.M):
+            assert clave in conocidas or clave in criterios, (
+                f"la receta «{nombre}» toca «{clave}», que no existe ni en la "
+                "configuración ni entre los criterios: se aplicaría sin efecto")
+        prendidos = re.search(r"critOn: \{([^}]*)\}", cfg)
+        for c in re.findall(r"(\w+):", prendidos.group(1) if prendidos else ""):
+            assert c in criterios, (
+                f"la receta «{nombre}» prende el criterio «{c}», que el minero "
+                "no conoce: el filtro no se aplicaría y saldría cualquier cosa")
