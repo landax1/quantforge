@@ -58,6 +58,19 @@ def test_la_de_aciertos_baja_el_riesgo_beneficio():
 
     Con relaciones de 1 o más, el win rate alto no aparece. Si alguien sube
     estos números, la categoría deja de devolver lo que promete su tarjeta.
+
+    Medido corriendo el minero entero dos veces con la misma semilla, mismo
+    filtro de calidad —profit factor ≥ 1,15— sobre SP500 a una hora, diez años,
+    tope de 1500 candidatas:
+
+        R:B fijo en 1:2   win rate 32,9 .. 52,1   rango 19,2   con ≥55%: 0 de 30
+        R:B como gen      win rate 32,5 .. 69,0   rango 36,5   con ≥55%: 2 de 28
+
+    El abanico casi se duplica y el máximo salta de 52% a 69%. Pero fijarse en
+    el 2 de 28: dejar que la búsqueda elija entre las ocho relaciones da
+    VARIEDAD, no PUNTERÍA. Para que una categoría de aciertos altos devuelva
+    algo en un tiempo razonable hay que además sesgar las relaciones hacia
+    abajo, que es lo que hace esta receta. Las dos cosas hacen falta.
     """
     cfg = _recetas()["aciertos"]
     valores = [float(x) for x in
