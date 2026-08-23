@@ -53,6 +53,29 @@ MAX_BARS_CHOICES: tuple[int, ...] = (0, 0, 0, 0, 12, 24, 48, 96, 192)
 # configurado, que es exactamente lo que hacía antes.
 RR_CHOICES: tuple[float, ...] = (0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0)
 
+# EL TIPO DE STOP SE EVALUO COMO GEN Y SE DESCARTO. Queda anotado para que no se
+# vuelva a derivar.
+#
+# La sospecha era razonable y paralela a la del R:B: `stop_type` esta fijo en
+# "atr" y la busqueda no lo toca, mientras el motor tambien soporta "percent",
+# "points" y "money". Un stop ATR se ensancha cuando sube la volatilidad y uno
+# porcentual no, asi que en principio son familias distintas.
+#
+# Medido dos veces. Sobre genomas crudos el win rate apenas se movia —34,6% a
+# 37,6%— aunque la caida iba de 23% a 75%, lo bastante sugestivo como para
+# mirarlo en serio. La prueba que decide corrio el minero entero con el mismo
+# filtro y la misma semilla, SP500 a una hora, diez anios, tope de 1500:
+#
+#     stop            caida (rango)     win rate (rango)   anual   caida <=10%
+#     ATR (hoy)       3,3-30,9  27,6    37,0-52,7  15,7    2,80%    10 de 28
+#     porcentual 1%   3,7-21,7  18,0    26,7-55,8  29,1    2,98%     9 de 30
+#     porcentual 0,5% 5,5-30,9  25,5    37,3-52,1  14,8    2,67%     8 de 30
+#
+# Las medianas son casi identicas y los rangos se solapan. NO abre perfiles que
+# la busqueda no alcance ya con el stop ATR, que es lo contrario de lo que paso
+# con el R:B —ahi eran cero de treinta contra quince de treinta por encima de
+# 60% de aciertos—. Volverlo gen seria complejidad sin variedad.
+
 
 def random_stop_mult(rng) -> float:
     steps = int(round((STOP_ATR_MAX - STOP_ATR_MIN) / STOP_ATR_STEP))
