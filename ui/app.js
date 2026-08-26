@@ -65,7 +65,7 @@ function lossStreakCost(pct, n = 10) {
 }
 
 const DEFAULT_CFG = {
-  spread: 0.36, slippage: 0.1, commission: 0, capital: 10000,
+  spread: 0.36, slippage: 0.1, commission: 0, swap: 0, capital: 10000,
   /* El volumen minimo que acepta tu broker para el instrumento. Es una
      referencia como el spread: se sugiere el del catalogo y se comprueba
      contra el broker propio. */
@@ -912,6 +912,10 @@ function adoptInstrumentDefaults() {
      la cobra. Heredar un costo entre instrumentos es el mismo error que
      heredar el spread, y ese ya nos costó una corrida entera de -100%. */
   S.cfg.commission = ds?.suggested_commission ?? 0;
+  // Un perpetuo no paga swap: paga funding, y ese sale de la serie real.
+  // Arrastrar el swap del S&P a Bitcoin cobraria el costo de mantener dos
+  // veces, asi que cambiar de instrumento lo apaga.
+  S.cfg.swap = 0;
   /* La dirección también es propia del instrumento. Medido en EURUSD: buscando
      sólo largos el techo es 1.76% anual; permitiendo cortos, 4.52% — y con MÁS
      estrategias rentables, sin aflojar ninguna vara. Un par de divisas no sube:
@@ -2315,7 +2319,7 @@ async function openSaved(s) {
        simplemente no aparecen, como antes: no hay forma de reconstruirlo. */
     split: meta.split || null,
     settings: { spread: meta.spread, slippage: meta.slippage,
-                commission_pct: meta.commission, initial_capital: meta.capital },
+                commission_pct: meta.commission, swap_anual: meta.swap, initial_capital: meta.capital },
   });
 }
 
@@ -3078,6 +3082,7 @@ function repetirCorrida(c) {
   if (ajustes.spread != null) S.cfg.spread = ajustes.spread;
   if (ajustes.slippage != null) S.cfg.slippage = ajustes.slippage;
   if (ajustes.commission_pct != null) S.cfg.commission = ajustes.commission_pct;
+  if (ajustes.swap_anual != null) S.cfg.swap = ajustes.swap_anual;
   if (ajustes.initial_capital != null) S.cfg.capital = ajustes.initial_capital;
 
   S.sel.timeframe = c.timeframe || "1h";
@@ -3120,6 +3125,7 @@ function abrirDelBanco(f) {
       spread: (ctx.settings || {}).spread,
       slippage: (ctx.settings || {}).slippage,
       commission: (ctx.settings || {}).commission_pct,
+      swap: (ctx.settings || {}).swap_anual,
       capital: (ctx.settings || {}).initial_capital,
       sizing: (ctx.risk || {}).size_mode === "fixed_units" ? "lots" : "risk",
       riskPct: (ctx.risk || {}).size_value,
@@ -3481,6 +3487,10 @@ const vistaBuscar = async (main) => {
               <label class="fld"><span>${esc(t("mine.commission"))}</span><input type="number" step="0.001" data-cfg="commission" value="${c.commission}"></label>
               <label class="fld"><span>${esc(t("mine.min_lot"))}</span><input type="number" step="0.01" min="0.001" data-cfg="minLot" value="${c.minLot}"></label>
             </div>
+            <div class="fld-pair mt">
+              <label class="fld"><span>${esc(t("mine.swap"))}</span><input type="number" step="0.1" min="0" data-cfg="swap" value="${c.swap}"></label>
+            </div>
+            <p class="help-note">${esc(t("mine.swap_help"))}</p>
             <div class="sugerido" id="m-sugerido" hidden></div>
             <p class="stage-note" id="m-costnote"></p>
           </div>
@@ -3954,8 +3964,13 @@ const vistaBuscar = async (main) => {
       ? t("sum.lots", { lots: S.cfg.lots }) : t("sum.risk", { pct: S.cfg.riskPct }))
       + ` · ${comoSeDiceElRR()} · ${t("sum.vol_stop_short")}`);
 
+    /* El costo de mantener se muestra sólo cuando está puesto. Es el único
+       costo que puede quedar activo sin que se vea —la sección va plegada— y
+       un 5% anual encendido de más explicaría resultados malos sin motivo
+       aparente. Los otros dos van siempre porque siempre valen algo. */
     set("sum-cost", t("sum.costs", {
-      spread: S.cfg.spread, slip: S.cfg.slippage, cap: fmtInt(S.cfg.capital) }));
+      spread: S.cfg.spread, slip: S.cfg.slippage, cap: fmtInt(S.cfg.capital) })
+      + (+S.cfg.swap > 0 ? ` · ${t("sum.swap", { pct: S.cfg.swap })}` : ""));
 
     /* Con el valor y no sólo el nombre del filtro. Decía "Profit factor" a
        secas, que al lado de "30+ operaciones" se lee como una frase cortada —
@@ -4080,7 +4095,7 @@ const vistaBuscar = async (main) => {
         risk: riskPayload(),
         settings: {
           spread: cfg.spread, slippage: cfg.slippage,
-          commission_pct: cfg.commission, initial_capital: cfg.capital,
+          commission_pct: cfg.commission, swap_anual: cfg.swap, initial_capital: cfg.capital,
         },
       }, j => {
         /* La semilla se consume acá, en la primera vuelta del sondeo: ya viajó
@@ -4931,14 +4946,14 @@ function ctxDeLaCorrida(snap) {
       riesgo: cfg.sizing === "lots" ? `${cfg.lots} ${t("mine.lots")}` : `${cfg.riskPct}%`,
     }),
     settings: { spread: cfg.spread, slippage: cfg.slippage,
-                commission_pct: cfg.commission, initial_capital: cfg.capital },
+                commission_pct: cfg.commission, swap_anual: cfg.swap, initial_capital: cfg.capital },
     // con que datos guardarla si el usuario aprieta Guardar desde la ficha
     guardar: {
       dataset_id: S.sel.dataset_id,
       dataset_name: (S.datasets.find(d => d.id === S.sel.dataset_id) || {}).name || "",
       timeframe: S.sel.timeframe || "1h", direction: cfg.direction,
       spread: cfg.spread, slippage: cfg.slippage,
-      commission: cfg.commission, capital: cfg.capital,
+      commission: cfg.commission, swap: cfg.swap, capital: cfg.capital,
       sizing: cfg.sizing, riskPct: cfg.riskPct, lots: cfg.lots, rr: cfg.rr,
       measured_range: r, split: (snap && snap.split) || null,
     },
@@ -5312,7 +5327,7 @@ async function openInspector(row, ctx) {
       spec: row.spec,
       settings: {
         spread: cfg.spread, slippage: cfg.slippage,
-        commission_pct: cfg.commission, initial_capital: cfg.capital,
+        commission_pct: cfg.commission, swap_anual: cfg.swap, initial_capital: cfg.capital,
       },
     });
     renderInspector($("#insp-body", host), row, result, ctx);
@@ -5584,6 +5599,7 @@ function renderInspector(box, row, res, ctx) {
           spread: g ? g.spread : S.cfg.spread,
           slippage: g ? g.slippage : S.cfg.slippage,
           commission: g ? g.commission : S.cfg.commission,
+          swap: g ? g.swap : S.cfg.swap,
           capital: g ? g.capital : S.cfg.capital,
           sizing: g ? g.sizing : S.cfg.sizing,
           riskPct: g ? g.riskPct : S.cfg.riskPct,

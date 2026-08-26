@@ -373,6 +373,8 @@ const STR = {
   "mine.spread": ["Spread", "Spread"],
   "mine.slippage": ["Slippage", "Slippage"],
   "mine.commission": ["Commission % per side", "Comisión % lado"],
+  "mine.swap": ["Overnight cost % per year", "Costo de mantener % anual"],
+  "mine.swap_help": ["What your broker charges per year for holding a position open (swap or overnight financing). It is on the symbol spec sheet. Leave it at 0 if you do not know it — your results will be slightly optimistic. Perpetual futures ignore it: they use their own funding series.", "Lo que te cobra tu bróker por año por dejar una posición abierta (swap o financiación). Está en la ficha del símbolo. Dejálo en 0 si no lo sabés — los resultados van a quedar un poco optimistas. Los perpetuos lo ignoran: usan su propia serie de funding."],
   /* ---------------------------------------- el chequeo del capital inicial
      Cambiar el capital no mueve ninguna metrica: el riesgo porcentual escala
      todo por igual. Lo que si cambia es el TAMANO de la posicion, y ahi esta
@@ -983,6 +985,7 @@ const STR = {
   /* Resumenes de fila plegada: valores, no frases. La version larga de
      cada uno vive dentro de la seccion, que es donde hace falta explicar. */
   "sum.vol_stop_short": ["ATR stop", "stop ATR"],
+  "sum.swap": ["holding {pct}%/yr", "mantener {pct}%/año"],
   "sum.costs": ["spread {spread} · slip {slip} · ${cap}",
                 "spread {spread} · slip {slip} · ${cap}"],
   "sum.method_rnd_short": ["Random", "Aleatorio"],

@@ -296,6 +296,37 @@ class BacktestSettings:
     # antes. Un CFD no tiene funding y no debe pagar nada.
     funding: Any = None              # pd.Series de tasas, indexada por momento de cobro
 
+    # EL SWAP DE UN CFD. Es el mismo concepto que el funding —un costo por
+    # TENER la posición— pero de la otra mitad del catálogo, y hasta hoy no lo
+    # cobrábamos: los backtests de S&P, oro y EURUSD ignoraban por completo el
+    # costo de mantener. No era un hueco de cripto, era un hueco nuestro.
+    #
+    # POR QUÉ ES UN NÚMERO Y EL FUNDING UNA SERIE. La tasa de un perpetuo es
+    # pública, histórica y exacta: se baja en cuatro segundos. El swap lo fija
+    # cada bróker, cambia sin aviso y NADIE publica la serie histórica. Pedir
+    # el promedio anual —el número que está en la ficha del símbolo— es lo
+    # máximo que se puede sostener con honestidad.
+    #
+    # POR QUÉ NO ES LO MISMO QUE SUBIR LA COMISIÓN. La comisión escala con
+    # CUÁNTAS operaciones hacés; esto escala con CUÁNTO TIEMPO estás adentro.
+    # Una estrategia de 200 entradas al año que aguanta dos horas paga mucha
+    # comisión y casi nada de swap; una de 6 entradas que aguanta dos meses
+    # paga lo contrario. Un solo número no puede representar a las dos.
+    #
+    # Y EL SIGNO ES DISTINTO AL DEL FUNDING. El funding lo paga un lado y lo
+    # cobra el otro. El swap se lo cobra el bróker a los dos. Por eso no se
+    # pueden meter en el mismo campo aunque midan lo mismo.
+    #
+    # Se prorratea por barra en vez de cobrarse sólo de un día para el otro.
+    # Es una simplificación deliberada: el cobro real depende de la hora de
+    # rollover del bróker y del triple del miércoles, que no sabemos. Prorratear
+    # cobra de más a una estrategia intradía —del orden de 0,002% por operación
+    # con 5% anual— y da exacto donde el costo importa, que es aguantando días.
+    # Se equivoca hacia el lado pesimista, que es el lado correcto.
+    #
+    # 0 por defecto: quien no lo configure queda exactamente como estaba.
+    swap_anual: float = 0.0          # % anual sobre el nocional, cobrado a los dos lados
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -312,6 +343,7 @@ class BacktestSettings:
             # lado del servidor. Si viniera del cliente habría que validarla
             # entera, y no hay motivo para que el navegador la mande.
             funding=d.get("funding", base.funding),
+            swap_anual=max(float(d.get("swap_anual", base.swap_anual)), 0.0),
         )
 
 
