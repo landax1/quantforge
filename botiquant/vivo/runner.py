@@ -33,6 +33,7 @@ import pandas as pd
 from botiquant.core.models import StrategySpec
 from botiquant.reports.bingx import leer_bingx
 from botiquant.vivo.adaptador import Posicion
+from botiquant.vivo.guardas import Estado, anotar_resultado, revisar
 from botiquant.vivo.nucleo import (ABRIR_CORTO, ABRIR_LARGO, CERRAR, DURACION,
                                    Decision, decidir, solo_cerradas)
 
@@ -55,6 +56,15 @@ class Bot:
     modo: str = SIMULACRO
     capital: float = 1000.0
     registro: list[dict[str, Any]] = field(default_factory=list)
+    estado: Estado = field(default_factory=Estado)
+    perdida_maxima_diaria: float = 0.0
+
+    #: Cuando una guarda dice `detener`, el bot se apaga y no vuelve solo. Es
+    #: para las situaciones donde esperar la vela que viene no arregla nada:
+    #: una posición que no abrió él, el tope de pérdida del día. Reanudarlo es
+    #: una decisión de una persona.
+    detenido: bool = False
+    motivo_detencion: str = ""
 
     @classmethod
     def desde_archivo(cls, ruta: str | Path, adaptador: Any,
@@ -98,6 +108,8 @@ class Bot:
     # --------------------------------------------------------------- en vivo
     def paso(self, ahora: pd.Timestamp | None = None) -> dict[str, Any]:
         """Una vuelta del bucle. Devuelve lo que hizo, o por qué no hizo nada."""
+        if self.detenido:
+            return self._anotar(Decision(motivo=f"detenido: {self.motivo_detencion}"))
         df = self.adaptador.velas(self.simbolo, self.timeframe, VELAS_MINIMAS)
         df = solo_cerradas(df, self.timeframe, ahora)
         if len(df) < 2:
@@ -116,23 +128,41 @@ class Bot:
         d = decidir(df, self.spec, posicion=pos.lado, capital=capital,
                     precio=float(df["close"].iloc[-1]))
 
-        if not d.opera:
-            return self._anotar(d)
         if not self.manda_ordenes:
+            # En simulacro no hay cuenta ni contrato que consultar: se anota lo
+            # que el nucleo decidio y listo. Meter las guardas aca haria que el
+            # simulacro dependa de una clave, que es justo lo que no queremos.
             return self._anotar(d, {"simulado": True})
+
+        # LAS GUARDAS, entre la decision y la orden.
+        vela = df.index[-1]
+        v = revisar(d, estado=self.estado, posicion_lado=pos.lado, vela=vela,
+                    contrato=self.adaptador.contrato(self.simbolo),
+                    disponible=capital, precio=float(df["close"].iloc[-1]),
+                    perdida_maxima_diaria=self.perdida_maxima_diaria)
+        if v.detener:
+            self.detenido = True
+            self.motivo_detencion = v.motivo
+        if not v.permitido:
+            return self._anotar(d, {"bloqueado": v.motivo, "detenido": v.detener})
 
         try:
             if d.accion == CERRAR:
                 r = self.adaptador.cerrar(self.simbolo, pos)
+                anotar_resultado(self.estado, abrio=False, cerro=True,
+                                 ganancia=float(pos.no_realizado or 0.0),
+                                 vela=vela)
             else:
                 lado = 1 if d.accion == ABRIR_LARGO else -1
-                r = self.adaptador.abrir(self.simbolo, lado, d.cantidad,
+                r = self.adaptador.abrir(self.simbolo, lado, v.cantidad,
                                          d.stop, d.objetivo)
-            return self._anotar(d, {"respuesta": r})
+                anotar_resultado(self.estado, abrio=True, cerro=False, vela=vela)
+            return self._anotar(d, {"respuesta": r, "cantidad_final": v.cantidad})
         except Exception as exc:                          # noqa: BLE001
-            # Una orden que falla NO puede tumbar el bucle: la vuelta que viene
-            # se vuelve a preguntar la posición y se decide de nuevo sobre lo
-            # que el exchange diga que hay.
+            # Una orden que falla NO puede tumbar el bucle, pero TAMPOCO se
+            # marca la vela como actuada: si el error fue de red y la orden
+            # llego igual, marcarla ocultaria una posicion que si existe. La
+            # vuelta siguiente pregunta la posicion y decide sobre eso.
             return self._anotar(d, {"error": str(exc)})
 
 
