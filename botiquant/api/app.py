@@ -347,7 +347,25 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         return StrategySpec.from_dict(raw)
 
     def _settings(payload: dict[str, Any]) -> BacktestSettings:
-        return BacktestSettings.from_dict(payload.get("settings") or {})
+        """Los costos del pedido, más el funding si el instrumento lo tiene.
+
+        La serie NO viaja desde el navegador: la pone el servidor a partir del
+        dataset. Son miles de valores que el cliente no tiene motivo de conocer
+        —ni de poder falsear— y mandarlos en cada pedido sería absurdo.
+
+        Un CFD no tiene archivo de funding, así que `funding()` devuelve None y
+        el motor se comporta exactamente como antes.
+        """
+        ajustes = BacktestSettings.from_dict(payload.get("settings") or {})
+        ds_id = payload.get("dataset_id")
+        if ds_id:
+            try:
+                ajustes.funding = store.funding(ds_id)
+            except (OSError, ValueError, KeyError):
+                # una serie ilegible no puede tumbar una búsqueda: se mina sin
+                # ella, que es exactamente como se minaba antes de que existiera
+                ajustes.funding = None
+        return ajustes
 
     def _risk(payload: dict[str, Any]) -> RiskConfig:
         risk = RiskConfig.from_dict(payload.get("risk") or {})
