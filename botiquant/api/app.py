@@ -422,6 +422,16 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             out.append({**d, "suggested_stop": stop, "suggested_target": target,
                         "suggested_spread": entry["spread"] if entry else None,
                         "suggested_slippage": entry["slippage"] if entry else None,
+                        # LA COMISIÓN, para los instrumentos que cobran así.
+                        #
+                        # Un CFD cobra en el spread y no manda nada acá; un
+                        # perpetuo de exchange cobra en % del nocional y ES todo
+                        # su costo de transacción. Sin esto la pantalla heredaba
+                        # la comisión en cero del instrumento anterior y se
+                        # minaba SIN costo de operar, que es la forma más fácil
+                        # de encontrar estrategias que no existen.
+                        "suggested_commission": (entry.get("commission_pct")
+                                                 if entry else None),
                         # Con qué unidad opera el bróker este instrumento. Sin
                         # esto la pantalla no puede contestar si la posición que
                         # sale del capital y el riesgo es siquiera operable: en
@@ -506,8 +516,30 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
         def work(progress):
             df = catalog_download(key, workdir, progress=progress)
-            progress(0.98, "Guardando…")
-            return store.add(f"{entry['label']} M1", df, source="dukascopy")
+            progress(0.96, "Guardando…")
+            fuente = entry.get("fuente", "dukascopy")
+            ds = store.add(f"{entry['label']} M1", df, source=fuente)
+
+            # EL FUNDING SE BAJA CON LAS VELAS, no después ni aparte.
+            #
+            # Si no se guardara acá, el instrumento quedaría minable pero sin
+            # su costo de mantener la posición, y el motor —que no tiene forma
+            # de saber que falta— minaría en silencio con números que no son.
+            # Es la peor manera de fallar: resultados que parecen correctos.
+            #
+            # Un fallo bajando las tasas NO tira abajo la descarga: las velas
+            # ya están guardadas y son lo caro. Se avisa y el instrumento queda
+            # utilizable, aunque sin funding.
+            if fuente == "binance":
+                progress(0.97, "Bajando el funding…")
+                try:
+                    from botiquant.data.binance import funding as bajar_funding
+                    tasas = bajar_funding(entry["binance"], entry["from"])
+                    store.guardar_funding(ds["id"], tasas)
+                    progress(0.99, f"{len(tasas):,} tasas de funding")
+                except Exception as exc:                    # noqa: BLE001
+                    progress(0.99, f"Sin funding ({exc}); las velas están bien")
+            return ds
         return {"job_id": jobs.submit("download", work)}
 
     @app.post("/api/datasets/import-path")

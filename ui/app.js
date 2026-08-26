@@ -906,6 +906,12 @@ function adoptInstrumentDefaults() {
   if (!costos) return;
   S.cfg.spread = costos.spread;
   S.cfg.slippage = costos.slippage;
+  /* Y la comisión, que es donde cobra un exchange.
+     Va con `?? 0` a propósito: al pasar de un perpetuo a un CFD hay que
+     APAGARLA, y dejar la anterior puesta cobraría 0,04% sobre un índice que no
+     la cobra. Heredar un costo entre instrumentos es el mismo error que
+     heredar el spread, y ese ya nos costó una corrida entera de -100%. */
+  S.cfg.commission = ds?.suggested_commission ?? 0;
   /* La dirección también es propia del instrumento. Medido en EURUSD: buscando
      sólo largos el techo es 1.76% anual; permitiendo cortos, 4.52% — y con MÁS
      estrategias rentables, sin aflojar ninguna vara. Un par de divisas no sube:
