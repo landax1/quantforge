@@ -59,6 +59,7 @@ from botiquant.indicators import indicator_catalog
 from botiquant.optimizer.optimizer import discover_dimensions, optimize
 from botiquant.portfolio.portfolio import build_portfolio
 from botiquant.reports.mql5 import export_mql5
+from botiquant.reports.bingx import export_bingx
 from botiquant.reports.pine import export_pine
 from botiquant.reports.report import excel_report, html_report, metrics_csv, trades_csv
 from botiquant.metatrader import experts_de, terminales
@@ -1801,6 +1802,44 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 ds_name = ""
         tf = str(payload.get("timeframe") or "")
         metricas = payload.get("metrics") or None
+        if formato == "bingx":
+            # El unico export que no es codigo sino una descripcion, porque del
+            # otro lado no hay una plataforma que lea estrategias sino una API
+            # que recibe ordenes. Quien ejecuta es un programa nuestro.
+            name = _nombre_de_archivo(payload.get("name"), "BQ_Bot")
+            ds = None
+            if payload.get("dataset_id"):
+                try:
+                    ds = db.get_dataset(payload["dataset_id"], duenio(request))
+                except KeyError:
+                    ds = None
+            # El dataset se llama "BTCUSDT M1"; el simbolo es el primer
+            # tramo. Se saca de ahi y no del catalogo porque un dataset
+            # importado a mano no esta en el catalogo y tiene que exportar
+            # igual — que despues el exchange diga que no conoce el simbolo.
+            simbolo = (ds_name or "").split()[0] if ds_name else ""
+            if not simbolo:
+                # Un archivo sin simbolo es un archivo que el runner va a
+                # rechazar. Mejor negarse aca, donde el usuario esta mirando,
+                # que entregarle algo que falla recien al querer operarlo.
+                raise HTTPException(
+                    400, "Elegí el instrumento antes de exportar el bot: el "
+                         "archivo tiene que decir en qué símbolo operar.")
+            # Los costos se COPIAN CAMPO POR CAMPO y no en bloque. `settings`
+            # llega del cliente, y volcarlo entero mete en el archivo cualquier
+            # cosa que venga adentro. El archivo de enlace se manda por mail y
+            # se pega en foros: lo que entra aca se hace publico.
+            _COSTOS = ("spread", "slippage", "commission_pct", "slippage_pct",
+                       "swap_anual", "initial_capital")
+            crudo = payload.get("settings") or {}
+            costos = {k: crudo[k] for k in _COSTOS if k in crudo}
+            code = export_bingx(
+                spec, name=str(payload.get("name") or "BQ Bot"),
+                symbol_source=simbolo, timeframe=tf,
+                metrics=metricas, costs=costos,
+                measured_from=str((ds or {}).get("start") or ""),
+                measured_to=str((ds or {}).get("end") or ""))
+            return code, f"{name}.bqbot"
         if formato == "pine":
             # el nombre VISIBLE dentro del script puede llevar espacios; el del
             # archivo no puede llevar nada que forme una ruta
@@ -1823,6 +1862,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         friccion del registro se justifica."""
         code, archivo = _codigo_exportado("mql5", payload, request)
         return PlainTextResponse(code, media_type="text/plain",
+                                 headers={"Content-Disposition":
+                                          f'attachment; filename="{archivo}"'})
+
+    @app.post("/api/export/bingx")
+    def export_bingx_endpoint(payload: dict[str, Any],
+                              request: Request) -> PlainTextResponse:
+        """El archivo que enlaza una estrategia con BingX.
+
+        No lleva la clave de API del usuario ni puede llevarla: describe QUÉ
+        operar, no con qué cuenta. Hay una prueba que se pone roja si alguna
+        vez aparece una credencial acá adentro."""
+        code, archivo = _codigo_exportado("bingx", payload, request)
+        return PlainTextResponse(code, media_type="application/json",
                                  headers={"Content-Disposition":
                                           f'attachment; filename="{archivo}"'})
 
@@ -1849,7 +1901,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         Un .mq5 hay que ir a buscarlo con MetaEditor, así que saber dónde está
         es la mitad del trabajo.
         """
-        if formato not in ("mql5", "pine"):
+        if formato not in ("mql5", "pine", "bingx"):
             raise HTTPException(404, "Formato desconocido.")
         code, archivo = _codigo_exportado(formato, payload, request)
 
@@ -1916,7 +1968,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             ruta = Path(str(payload.get("ruta") or "")).resolve()
         except (OSError, ValueError) as exc:
             raise HTTPException(400, "Ruta inválida.") from exc
-        if ruta.suffix.lower() not in (".mq5", ".pine"):
+        if ruta.suffix.lower() not in (".mq5", ".pine", ".bqbot"):
             raise HTTPException(400, "Sólo se abren estrategias exportadas.")
         if not any(ruta.is_relative_to(c.resolve()) for c in _carpetas_permitidas()
                    if c.exists()):

@@ -5461,6 +5461,14 @@ function renderInspector(box, row, res, ctx) {
       <p class="help-note">${scoreVerdict(r)}</p>
     </div>`;
 
+  /* El boton de BingX solo tiene sentido en un perpetuo: un exchange de
+     cripto no opera el S&P ni el oro. Se deja VISIBLE pero apagado en los
+     demas instrumentos en vez de esconderlo, porque esconderlo hace que nadie
+     se entere de que existe — y enterarse es medio producto. */
+  const dsBot = S.datasets.find(
+    d => d.id === (ctx ? ctx.dataset_id : S.sel.dataset_id));
+  const esCripto = (dsBot || {}).source === "binance";
+
   box.innerHTML = avisoRango + panelPrueba(ctx) + `
   <!-- Las tres vistas, sólo si la corrida reservó un tramo. Van ACÁ arriba de
        todo porque mandan sobre todo lo que sigue: el score, las cifras, la
@@ -5520,6 +5528,9 @@ function renderInspector(box, row, res, ctx) {
   <div class="insp-pie">
     <div class="controls">
       <button class="btn" id="insp-mql5">${icono("bajar")} MetaTrader 5 (.mq5)</button>
+      <button class="btn ghost" id="insp-bingx" ${esCripto ? "" : "disabled"}
+        title="${esc(esCripto ? t("insp.bingx_hint") : t("insp.bingx_solo_cripto"))}"
+        >${icono("bajar")} BingX (.bqbot)</button>
       <button class="btn ghost" id="insp-pine">${icono("bajar")} TradingView (.pine)</button>
       <button class="btn ghost" id="insp-copiar">${icono("copiar")} ${esc(t("insp.copy_pine"))}</button>
       <button class="btn ghost" id="insp-save">${icono("marcador")} ${esc(t("insp.save"))}</button>
@@ -5730,6 +5741,10 @@ function renderInspector(box, row, res, ctx) {
 
   $("#insp-mql5", box).onclick = () => exportAs(
     "insp-mql5", "mql5", t("export.mq5_saved"));
+
+  const btnBingx = $("#insp-bingx", box);
+  if (btnBingx && esCripto) btnBingx.onclick = () => exportAs(
+    "insp-bingx", "bingx", t("export.bot_saved"));
   $("#insp-pine", box).onclick = () => exportAs(
     "insp-pine", "pine", t("export.pine_saved"));
 
