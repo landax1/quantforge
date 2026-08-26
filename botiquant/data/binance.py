@@ -12,11 +12,21 @@ Y Binance da siete años de historia contra los nueve meses de BingX. Se mina
 con los datos buenos y se ejecuta donde la persona tenga cuenta.
 
 EL FUNDING VIAJA APARTE Y NO ES OPCIONAL. Un perpetuo cobra o paga cada ocho
-horas por tener la posición abierta. En Bitcoin eso es 0,2% anual y da igual;
-en los índices sintéticos llega al 11%, que es más que el rendimiento entero de
-las estrategias que encontramos. Sin esta serie, el backtest de un perpetuo
-miente — y puede mentir en las dos direcciones, porque la tasa negativa le PAGA
-al que está comprado.
+horas por tener la posición abierta. Medido sobre los 7.626 cobros de BTCUSDT
+desde septiembre de 2019: media de +0,01061% por cobro, que anualizada da
++11,61%, y negativa sólo el 14,3% del tiempo.
+
+(Acá decía "0,2% anual en Bitcoin". Era falso y lo escribí yo. Queda anotado
+porque el número equivocado hacía parecer que la serie no valía la pena.)
+
+Ese 11,61% es lo que costaría estar comprado TODO el año; como sólo se cobra
+con la posición abierta, el costo real es la tasa por la exposición y ronda el
+1,3% anual en nuestras estrategias.
+
+Pero el signo importa más que el tamaño. Positiva significa que los largos le
+pagan a los cortos, y lo fue el 85,7% del tiempo: durante siete años el lado
+vendido de Bitcoin COBRÓ 11,61% anual sólo por estar puesto. Sin esta serie el
+backtest no sólo subestima un costo — no puede ver esa familia entera.
 """
 
 from __future__ import annotations
