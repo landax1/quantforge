@@ -306,20 +306,36 @@ goShort = InpAllowShort and enSesion and ({join(short_conds) if want_short else 
 {qty_block}
 
 // ------------------------------------------------------------------ órdenes
-// La distancia del trailing se fija con el ATR de la vela de entrada y no se
-// recalcula: es lo que hace el backtest de Botiquant.
-var float trailDist = na
-var float bestPx    = na
+// El ATR de la vela de ENTRADA, congelado mientras dure la operación.
+//
+// Antes el stop y el objetivo se recalculaban con el ATR de cada vela, así que
+// se movían solos: con la volatilidad subiendo el stop se alejaba, con la
+// volatilidad bajando se acercaba. El backtest de Botiquant los fija al entrar
+// y no los toca, o sea que el script salía en velas distintas y el Strategy
+// Tester no podía coincidir. El trailing ya estaba congelado; esto le faltaba.
+var float atrEntrada = na
+var float trailDist  = na
+var float bestPx     = na
 
-if goLong and strategy.position_size == 0 and not na(atrRisk)
+// LA REVERSION. El guardia era `position_size == 0`, o sea que estando
+// comprado una senal de venta NO hacia nada: la posicion se quedaba abierta
+// hasta el stop o el objetivo. El backtest de Botiquant cierra en esa misma
+// vela y abre del otro lado. Medido sobre 1.000 velas reales de BTC-USDT, esa
+// sola diferencia daba 15 operaciones contra 13 y +174 contra +398 de neto.
+//
+// Con `<= 0` alcanza: strategy.entry da vuelta la posicion por si solo, y el
+// guardia sigue impidiendo piramidar cuando ya se esta del lado correcto.
+if goLong and strategy.position_size <= 0 and not na(atrRisk)
     strategy.entry("L", strategy.long, qty=qty{msg_l})
-    trailDist := InpTrailATR > 0 ? InpTrailATR * atrRisk : na
-    bestPx    := close
+    atrEntrada := atrRisk
+    trailDist  := InpTrailATR > 0 ? InpTrailATR * atrRisk : na
+    bestPx     := close
 
-if goShort and strategy.position_size == 0 and not na(atrRisk)
+if goShort and strategy.position_size >= 0 and not na(atrRisk)
     strategy.entry("S", strategy.short, qty=qty{msg_s})
-    trailDist := InpTrailATR > 0 ? InpTrailATR * atrRisk : na
-    bestPx    := close
+    atrEntrada := atrRisk
+    trailDist  := InpTrailATR > 0 ? InpTrailATR * atrRisk : na
+    bestPx     := close
 
 // el extremo a favor se actualiza con la vela ya cerrada
 if strategy.position_size > 0 and not na(trailDist)
@@ -327,17 +343,17 @@ if strategy.position_size > 0 and not na(trailDist)
 if strategy.position_size < 0 and not na(trailDist)
     bestPx := na(bestPx) ? low : math.min(bestPx, low)
 
-longStop  = na(trailDist) ? strategy.position_avg_price - InpStopMult * atrRisk
-     : math.max(strategy.position_avg_price - InpStopMult * atrRisk, bestPx - trailDist)
-shortStop = na(trailDist) ? strategy.position_avg_price + InpStopMult * atrRisk
-     : math.min(strategy.position_avg_price + InpStopMult * atrRisk, bestPx + trailDist)
+longStop  = na(trailDist) ? strategy.position_avg_price - InpStopMult * atrEntrada
+     : math.max(strategy.position_avg_price - InpStopMult * atrEntrada, bestPx - trailDist)
+shortStop = na(trailDist) ? strategy.position_avg_price + InpStopMult * atrEntrada
+     : math.min(strategy.position_avg_price + InpStopMult * atrEntrada, bestPx + trailDist)
 
 if strategy.position_size > 0
     strategy.exit("L exit", "L", stop=longStop,
-         limit=strategy.position_avg_price + InpTargetMult * atrRisk{msg_c})
+         limit=strategy.position_avg_price + InpTargetMult * atrEntrada{msg_c})
 if strategy.position_size < 0
     strategy.exit("S exit", "S", stop=shortStop,
-         limit=strategy.position_avg_price - InpTargetMult * atrRisk{msg_c})
+         limit=strategy.position_avg_price - InpTargetMult * atrEntrada{msg_c})
 
 // salida por tiempo: se cuenta desde la vela en que se abrió la posición
 if InpMaxBars > 0 and strategy.position_size != 0

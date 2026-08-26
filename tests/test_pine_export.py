@@ -44,8 +44,16 @@ def test_pine_exit_uses_the_evolved_atr_multiples():
     assert 'InpTargetMult = input.float(5' in code
     # los niveles cuelgan del precio real de entrada, no del cierre de la vela
     # de señal: es lo que hace el motor y lo que ve el usuario en el inspector
-    assert "strategy.position_avg_price - InpStopMult * atrRisk" in code
-    assert "strategy.position_avg_price + InpTargetMult * atrRisk" in code
+    #
+    # Y del ATR DE LA ENTRADA, no del de cada vela. Antes decía `atrRisk`, que
+    # se recalcula barra a barra: el stop y el objetivo se movían solos con la
+    # volatilidad mientras la operación estaba abierta, y el backtest los fija
+    # al entrar. Medido, esa diferencia sola separaba los dos resultados.
+    assert "strategy.position_avg_price - InpStopMult * atrEntrada" in code
+    assert "strategy.position_avg_price + InpTargetMult * atrEntrada" in code
+    assert "var float atrEntrada = na" in code, (
+        "el ATR de entrada tiene que estar declarado como `var` para que "
+        "sobreviva de una vela a la otra")
 
 
 def test_pine_fixed_lots_and_risk_pct_size_differently():

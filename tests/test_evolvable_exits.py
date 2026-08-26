@@ -115,7 +115,7 @@ def test_both_exporters_carry_the_evolved_exits():
     pine = export_pine(spec)
     assert 'InpTrailATR   = input.float(1.5' in pine
     assert 'InpMaxBars    = input.int(48' in pine
-    assert "trailDist := InpTrailATR > 0 ? InpTrailATR * atrRisk : na" in pine
+    assert "trailDist  := InpTrailATR > 0 ? InpTrailATR * atrRisk : na" in pine
     assert "strategy.close_all" in pine
 
 
