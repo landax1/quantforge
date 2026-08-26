@@ -227,6 +227,20 @@ def to_server_time(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+#: El tamano minimo de orden de cada perpetuo, leido de la ficha de contrato de
+#: BingX el 26 de agosto de 2026. Lo usa el exportador de Pine como piso del
+#: tamano: sin esto el script hereda el piso de UN contrato, que en Bitcoin son
+#: ochenta mil dolares y hace que una cuenta chica no pueda abrir nada.
+#:
+#: Va aca y no se consulta a la API en cada exportacion porque exportar tiene
+#: que funcionar sin internet; y va con el minimo real y no con un valor
+#: prudente inventado, porque un piso de mas obliga a arriesgar de mas.
+MINIMOS_PERPETUO = {
+    "BTCUSDT": 0.0001,
+    "ETHUSDT": 0.01,
+}
+
+
 def simbolo_fuente(entry: dict) -> str:
     """El nombre del instrumento en SU fuente.
 

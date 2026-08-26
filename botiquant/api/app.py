@@ -41,7 +41,8 @@ from botiquant.core.jobs import DemasiadoTrabajo, JobManager
 from botiquant.core.models import (
     OPERATORS, PRICE_FIELDS, BacktestSettings, RiskConfig, StrategySpec, TimeFilter,
 )
-from botiquant.data.catalog import (BY_KEY, CATALOG, default_stop_points,
+from botiquant.data.catalog import (BY_KEY, CATALOG, MINIMOS_PERPETUO,
+                                    default_stop_points,
                                     simbolo_fuente)
 from botiquant.data.catalog import download as catalog_download
 from botiquant.data.loader import parse_ohlcv_csv
@@ -1844,8 +1845,36 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             # el nombre VISIBLE dentro del script puede llevar espacios; el del
             # archivo no puede llevar nada que forme una ruta
             name = str(payload.get("name") or "QF Strategy")
+            # UN PERPETUO NECESITA OTRO DIMENSIONAMIENTO. El piso de un
+            # contrato que protege a los indices es catastrofico en cripto: un
+            # contrato de BTC son ochenta mil dolares, y una cuenta de mil
+            # pesos no puede abrirlo. Ademas, en cripto este Pine no es un
+            # borrador para mirar sino lo que va a operar por webhook, asi que
+            # el tamano minado se usa siempre y no detras de un interruptor.
+            ds_pine = None
+            if payload.get("dataset_id"):
+                try:
+                    ds_pine = db.get_dataset(payload["dataset_id"], duenio(request))
+                except KeyError:
+                    ds_pine = None
+            fraccionable = (ds_pine or {}).get("source") == "binance"
+            minimo = 0.0
+            if fraccionable:
+                # El minimo real del contrato, cuando el catalogo lo sabe. Si
+                # no, cero: mejor sin piso que con un piso inventado.
+                simbolo = (ds_name or "").split()[0] if ds_name else ""
+                minimo = float(MINIMOS_PERPETUO.get(simbolo.upper(), 0.0))
+            # La comision con la que se MIDIO viaja al script. Sin esto el
+            # Strategy Tester de TradingView mostraba la estrategia mas
+            # rentable que el backtest, y una divergencia que favorece no la
+            # investiga nadie: se descubre operando.
+            comision = float((payload.get("settings") or {}).get("commission_pct") or 0.0)
             code = export_pine(spec, name=name, symbol_hint=ds_name,
-                               timeframe_hint=tf, metrics=metricas)
+                               timeframe_hint=tf, metrics=metricas,
+                               fraccionable=fraccionable, minimo=minimo,
+                               comision_pct=comision,
+                               desde=str((ds_pine or {}).get("start") or ""),
+                               hasta=str((ds_pine or {}).get("end") or ""))
             return code, _nombre_de_archivo(name, "QF_Strategy") + ".pine"
         name = _nombre_de_archivo(payload.get("name"), "BQ_Strategy")
         code = export_mql5(spec, ea_name=name, symbol_hint=ds_name,

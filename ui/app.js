@@ -1297,6 +1297,62 @@ function pintarIdiomas() {
   }
 }
 
+/* ================================== CONECTAR LA ESTRATEGIA A BINGX ===
+   El camino de producción para cripto, y la razón de que no haya un programa
+   nuestro corriendo en la máquina de nadie.
+
+   TradingView evalúa las reglas en SUS servidores y, cuando se cumplen, le
+   manda un aviso HTTP directo a BingX, que ejecuta. Eso resuelve de una vez
+   las tres cosas que un bot propio no podía resolver bien: la computadora no
+   tiene que quedar prendida, nosotros no tocamos nunca la clave de API, y no
+   hay que instalar ni firmar ningún ejecutable aparte.
+
+   El costo es que TradingView cobra por los webhooks. Se dice en el paso 1 y
+   no al final: enterarse después de hacer cinco pasos es peor.
+
+   Lo que NO hacemos acá es inventar el mensaje que espera BingX. La
+   plataforma le genera a cada usuario el suyo, con su identificador de bot
+   adentro; adivinar el formato produciría órdenes que el exchange descarta en
+   silencio, que es el peor resultado posible porque parece que está
+   operando. */
+function abrirGuiaBingx(nombreEstrategia, simbolo) {
+  const host = document.createElement("div");
+  host.className = "overlay";
+  const pasos = [
+    [t("bx.p1_t"), t("bx.p1_d")],
+    [t("bx.p2_t"), t("bx.p2_d")],
+    [t("bx.p3_t"), t("bx.p3_d")],
+    [t("bx.p4_t"), t("bx.p4_d")],
+    [t("bx.p5_t"), t("bx.p5_d")],
+  ];
+  host.innerHTML = `<div class="sheet">
+    <div class="sheet-head">
+      <div><h2>${esc(t("bx.title"))}</h2>
+        <p>${esc(nombreEstrategia)}${simbolo ? " · " + esc(simbolo) : ""}</p></div>
+      <button class="sheet-close">${icono("cerrar")}</button>
+    </div>
+    <div class="guia-bx">
+      <p class="help-note">${esc(t("bx.intro"))}</p>
+      <ol class="guia-pasos">
+        ${pasos.map(([tt, dd]) => `<li><b>${esc(tt)}</b><span>${esc(dd)}</span></li>`).join("")}
+      </ol>
+      <div class="guia-aviso">
+        <b>${esc(t("bx.demo_t"))}</b>
+        <span>${esc(t("bx.demo_d"))}</span>
+      </div>
+      <p class="help-note">${esc(t("bx.compara"))}</p>
+    </div>
+  </div>`;
+  document.body.appendChild(host);
+  const close = () => host.remove();
+  $(".sheet-close", host).onclick = close;
+  host.onclick = (e) => { if (e.target === host) close(); };
+  document.addEventListener("keydown", function esckey(e) {
+    if (e.key === "Escape") { close(); document.removeEventListener("keydown", esckey); }
+  });
+}
+
+
 /* ============================================== PORTAFOLIO COMO UNA HOJA ===
    Era una de las siete secciones del menú, con su propio selector de
    estrategias — el tercero idéntico. Pero "¿funcionan juntas?" no es un lugar
@@ -5530,7 +5586,7 @@ function renderInspector(box, row, res, ctx) {
       <button class="btn" id="insp-mql5">${icono("bajar")} MetaTrader 5 (.mq5)</button>
       <button class="btn ghost" id="insp-bingx" ${esCripto ? "" : "disabled"}
         title="${esc(esCripto ? t("insp.bingx_hint") : t("insp.bingx_solo_cripto"))}"
-        >${icono("bajar")} BingX (.bqbot)</button>
+        >${icono("seguir")} ${esc(t("insp.bingx_btn"))}</button>
       <button class="btn ghost" id="insp-pine">${icono("bajar")} TradingView (.pine)</button>
       <button class="btn ghost" id="insp-copiar">${icono("copiar")} ${esc(t("insp.copy_pine"))}</button>
       <button class="btn ghost" id="insp-save">${icono("marcador")} ${esc(t("insp.save"))}</button>
@@ -5742,11 +5798,26 @@ function renderInspector(box, row, res, ctx) {
   $("#insp-mql5", box).onclick = () => exportAs(
     "insp-mql5", "mql5", t("export.mq5_saved"));
 
+  /* El boton de BingX abre la GUIA y no exporta un archivo.
+     Exportaba un .bqbot que describe la estrategia para un programa que
+     ejecute — y ese programa dejo de ser el camino: TradingView evalua en la
+     nube y le avisa a BingX directo. Un boton que entrega un archivo que nada
+     puede ejecutar es peor que no tener boton. El exportador sigue en el
+     codigo y con sus pruebas, por si algun dia se quiere la opcion sin
+     suscripcion a TradingView. */
   const btnBingx = $("#insp-bingx", box);
-  if (btnBingx && esCripto) btnBingx.onclick = () => exportAs(
-    "insp-bingx", "bingx", t("export.bot_saved"));
-  $("#insp-pine", box).onclick = () => exportAs(
-    "insp-pine", "pine", t("export.pine_saved"));
+  if (btnBingx && esCripto) btnBingx.onclick = () => abrirGuiaBingx(
+    row.name, dsBot ? dsBot.name.replace(/ M1.*/, "") : "");
+  /* En cripto, exportar a TradingView ABRE LA GUIA ademas de guardar.
+     El .pine no es el final del camino sino el principio: pegarlo en
+     TradingView y no enterarse de que hace falta una alerta con webhook deja
+     a la persona con un grafico lindo que no opera nada. El panel aparece
+     justo cuando acaba de conseguir el archivo, que es el momento en que la
+     pregunta "y ahora que hago con esto" existe de verdad. */
+  $("#insp-pine", box).onclick = async () => {
+    await exportAs("insp-pine", "pine", t("export.pine_saved"));
+    if (esCripto) abrirGuiaBingx(row.name, dsBot ? dsBot.name.replace(/ M1.*/, "") : "");
+  };
 
   /* TradingView no se carga de un archivo: se pega en el Pine Editor. Bajar un
      .pine para después abrirlo y copiarlo a mano es dar una vuelta de más.

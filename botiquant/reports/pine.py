@@ -133,8 +133,34 @@ _HELPER_SRC = {
 
 def export_pine(spec: StrategySpec, *, name: str = "QF Strategy",
                 symbol_hint: str = "", timeframe_hint: str = "",
-                metrics: dict[str, float] | None = None) -> str:
-    """Render a complete Pine Script v5 strategy for ``spec``."""
+                metrics: dict[str, float] | None = None,
+                fraccionable: bool = False,
+                minimo: float = 0.0,
+                comision_pct: float = 0.0,
+                desde: str = "", hasta: str = "") -> str:
+    """Render a complete Pine Script v5 strategy for ``spec``.
+
+    ``fraccionable`` cambia el dimensionamiento y no es un detalle: en un
+    exchange de cripto se puede comprar 0,0001 BTC, y el piso de un contrato
+    que protege a los índices se vuelve catastrófico —un contrato de BTC son
+    ochenta mil dólares. Además, con instrumentos fraccionables el tamaño por
+    defecto pasa a ser EL QUE SE MINÓ, porque acá el Pine no es un borrador
+    para mirar sino lo que va a operar de verdad vía webhook.
+
+    ``minimo`` es el mínimo que acepta el exchange (0,0001 para BTC-USDT); se
+    usa como piso en vez del contrato entero.
+
+    ``comision_pct`` es la que se usó en el backtest, POR LADO. Estaba clavada
+    en cero, y con eso el Strategy Tester de TradingView mostraba una
+    estrategia más rentable que la que midió Botiquant. Una divergencia que
+    FAVORECE es peor que una que perjudica: nadie investiga un número que le
+    gusta, así que se descubriría operando.
+
+    ``desde``/``hasta`` son el tramo sobre el que se midió, y van al encabezado
+    para que se pueda comparar. Sin las fechas, comparar el Strategy Tester
+    contra el número de Botiquant es comparar dos períodos distintos: la
+    diferencia que aparece no dice nada, y la que no aparece tampoco.
+    """
     b = _Builder()
     long_conds = [b.condition(c) for c in (spec.entry_long or [])]
     short_conds = [b.condition(c) for c in (spec.entry_short or [])]
@@ -151,6 +177,9 @@ def export_pine(spec: StrategySpec, *, name: str = "QF Strategy",
             f"CAGR {metrics.get('cagr_pct', 0):.2f}% · PF {metrics.get('profit_factor', 0):.2f} · "
             f"MaxDD {metrics.get('max_drawdown_pct', 0):.1f}% · "
             f"{int(metrics.get('trades', 0))} trades")
+    if desde and hasta:
+        header.append(f"// Medida entre {desde} y {hasta}. Poné ESE mismo rango "
+                      f"en el Strategy Tester antes de comparar.")
     if b.unsupported:
         header.append("// ¡ATENCIÓN! Sin equivalente directo en Pine: "
                       + ", ".join(sorted(b.unsupported))
@@ -166,15 +195,63 @@ def export_pine(spec: StrategySpec, *, name: str = "QF Strategy",
     # porcentaje de capital — que TradingView siempre resuelve a una posición
     # válida — y el volumen fijo queda como opción explícita, nunca por debajo
     # de 1 contrato.
-    qty_block = (
-        """qtyFixed = math.max(InpContracts, 1)
-qty      = InpUseFixedQty ? qtyFixed : na"""
-        if fixed_lots else
-        """riskMoney = strategy.equity * InpRiskPct / 100.0
+    piso = _fmt_num(minimo) if minimo > 0 else "0"
+    # EL DEFAULT TAMBIEN TIENE QUE SER SEGURO. `qty` se pasa siempre en cripto,
+    # asi que este valor no se usa nunca — pero si alguna vez se quita el
+    # argumento, TradingView cae aca en silencio. Con el default original
+    # (10% del capital) esa caida reproduce exactamente el error que este
+    # cambio vino a arreglar; con el minimo del exchange, lo peor que pasa es
+    # que abra la posicion mas chica posible.
+    default_qty = (
+        f"default_qty_type=strategy.fixed, default_qty_value={piso}"
+        if fraccionable and minimo > 0 else
+        "default_qty_type=strategy.percent_of_equity, default_qty_value=10")
+    if fraccionable:
+        # Sin piso de un contrato: acá 0,0001 es una posición válida. Y el
+        # tamaño minado NO es opcional, porque este script va a operar.
+        qty_block = (
+            f"""qtyFixed = InpContracts
+qty      = math.max(qtyFixed, {piso})"""
+            if fixed_lots else
+            f"""riskMoney = strategy.equity * InpRiskPct / 100.0
 stopDist  = InpStopMult * atrRisk
 qtyRisk   = stopDist > 0 ? riskMoney / stopDist : 0
-qty       = InpUseFixedQty ? math.max(qtyRisk, 1) : na"""
-    )
+qty       = math.max(qtyRisk, {piso})""")
+    else:
+        qty_block = (
+            """qtyFixed = math.max(InpContracts, 1)
+qty      = InpUseFixedQty ? qtyFixed : na"""
+            if fixed_lots else
+            """riskMoney = strategy.equity * InpRiskPct / 100.0
+stopDist  = InpStopMult * atrRisk
+qtyRisk   = stopDist > 0 ? riskMoney / stopDist : 0
+qty       = InpUseFixedQty ? math.max(qtyRisk, 1) : na""")
+
+    # El input de "tamaño exacto" sólo existe donde el tamaño puede quedar en
+    # manos de TradingView. Con instrumentos fraccionables el tamaño minado se
+    # usa siempre, así que el interruptor sobraría y confundiría.
+    bloque_usefixed = "" if fraccionable else (
+        'InpUseFixedQty = input.bool(false, '
+        '"Usar ese tamaño exacto (si no, % del capital)")\n')
+
+    # LOS MENSAJES DEL WEBHOOK. No inventamos el formato de BingX: la
+    # plataforma le genera al usuario SU mensaje, con su identificador de bot
+    # adentro, y acá hay tres casillas donde pegarlo. Adivinar el formato
+    # sería mandar órdenes que el exchange descarta en silencio.
+    #
+    # Van como `alert_message` de cada orden para que la alerta de TradingView
+    # se cree una sola vez, con {{strategy.order.alert_message}}, y mande el
+    # texto correcto según lo que haya pasado.
+    bloque_webhook = "" if not fraccionable else (
+        'InpMsgLong    = input.string("", "Webhook: mensaje para ABRIR LARGO")\n'
+        'InpMsgShort   = input.string("", "Webhook: mensaje para ABRIR CORTO")\n'
+        'InpMsgCerrar  = input.string("", "Webhook: mensaje para CERRAR")\n')
+
+    # `alert_message` sólo se agrega donde hay webhook: en el resto ensucia el
+    # script con un parámetro que nadie va a usar.
+    msg_l = ', alert_message=InpMsgLong' if fraccionable else ''
+    msg_s = ', alert_message=InpMsgShort' if fraccionable else ''
+    msg_c = ', alert_message=InpMsgCerrar' if fraccionable else ''
 
     def join(conds: list[str]) -> str:
         return "\n     and ".join(conds) if conds else "false"
@@ -196,19 +273,18 @@ qty       = InpUseFixedQty ? math.max(qtyRisk, 1) : na"""
     return f"""{chr(10).join(header)}
 //@version=5
 strategy("{name}", overlay=true, initial_capital=10000,
-     default_qty_type=strategy.percent_of_equity, default_qty_value=10,
-     commission_type=strategy.commission.percent, commission_value=0,
+     {default_qty},
+     commission_type=strategy.commission.percent, commission_value={_fmt_num(comision_pct)},
      calc_on_every_tick=false, process_orders_on_close=true)
 
 // ---------------------------------------------------------------- entradas
 {'InpContracts = input.float(' + _fmt_num(risk.size_value) + ', "Contratos por operación", minval=0.01)' if fixed_lots else 'InpRiskPct   = input.float(' + _fmt_num(risk.size_value) + ', "% del capital por operación", minval=0.01, maxval=100)'}
-InpUseFixedQty = input.bool(false, "Usar ese tamaño exacto (si no, % del capital)")
-InpStopMult   = input.float({_fmt_num(risk.stop_value)}, "Stop: múltiplo de ATR", minval=0.1)
+{bloque_usefixed}InpStopMult   = input.float({_fmt_num(risk.stop_value)}, "Stop: múltiplo de ATR", minval=0.1)
 InpTargetMult = input.float({_fmt_num(risk.target_value)}, "Target: múltiplo de ATR", minval=0.1)
 InpTrailATR   = input.float({_fmt_num(risk.trail_atr)}, "Trailing: múltiplo de ATR (0 = sin trailing)", minval=0)
 InpMaxBars    = input.int({int(risk.max_bars_in_trade)}, "Cerrar tras N velas (0 = sin límite)", minval=0)
 InpATRPeriod  = input.int({int(risk.atr_period)}, "Período del ATR de riesgo", minval=1)
-InpAllowLong  = input.bool({str(bool(want_long)).lower()}, "Permitir largos")
+{bloque_webhook}InpAllowLong  = input.bool({str(bool(want_long)).lower()}, "Permitir largos")
 InpAllowShort = input.bool({str(bool(want_short)).lower()}, "Permitir cortos")
 InpUseSession = input.bool({str(usa_horario).lower()}, "Operar solo en la franja horaria minada")
 InpSession    = input.session("{sesion_str}", "Franja horaria (hora UTC)")
@@ -236,12 +312,12 @@ var float trailDist = na
 var float bestPx    = na
 
 if goLong and strategy.position_size == 0 and not na(atrRisk)
-    strategy.entry("L", strategy.long, qty=qty)
+    strategy.entry("L", strategy.long, qty=qty{msg_l})
     trailDist := InpTrailATR > 0 ? InpTrailATR * atrRisk : na
     bestPx    := close
 
 if goShort and strategy.position_size == 0 and not na(atrRisk)
-    strategy.entry("S", strategy.short, qty=qty)
+    strategy.entry("S", strategy.short, qty=qty{msg_s})
     trailDist := InpTrailATR > 0 ? InpTrailATR * atrRisk : na
     bestPx    := close
 
@@ -258,15 +334,15 @@ shortStop = na(trailDist) ? strategy.position_avg_price + InpStopMult * atrRisk
 
 if strategy.position_size > 0
     strategy.exit("L exit", "L", stop=longStop,
-         limit=strategy.position_avg_price + InpTargetMult * atrRisk)
+         limit=strategy.position_avg_price + InpTargetMult * atrRisk{msg_c})
 if strategy.position_size < 0
     strategy.exit("S exit", "S", stop=shortStop,
-         limit=strategy.position_avg_price - InpTargetMult * atrRisk)
+         limit=strategy.position_avg_price - InpTargetMult * atrRisk{msg_c})
 
 // salida por tiempo: se cuenta desde la vela en que se abrió la posición
 if InpMaxBars > 0 and strategy.position_size != 0
      and (bar_index - strategy.opentrades.entry_bar_index(strategy.opentrades - 1)) >= InpMaxBars
-    strategy.close_all("tiempo")
+    strategy.close_all("tiempo"{msg_c})
 
 // ------------------------------------------------------- diagnóstico visual
 // Si no ves operaciones, esto muestra en qué velas hubo señal: si no aparece
