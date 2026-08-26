@@ -272,12 +272,25 @@ class BacktestSettings:
     # +11,61% anual— con extremos de ±0,30% y signo negativo el 14,3% del
     # tiempo.
     #
-    # Y el signo es lo que más importa. Tasa positiva: los largos le pagan a
-    # los cortos. Negativa: al revés. Como en cripto casi todo el mundo va
+    # CUIDADO CON ESE 11,61%: es lo que costaría estar comprado TODO el año.
+    # Como sólo se cobra con la posición abierta, el costo real es esa tasa por
+    # la exposición, y nuestras estrategias rondan el 11% de tiempo en mercado:
+    #
+    #     exposición   costo anual real
+    #          5%           0,54%
+    #         11%           1,19%      <- la típica de una estrategia nuestra
+    #         35%           3,80%
+    #        100%          10,85%
+    #
+    # O sea que se lleva alrededor del 15% de una estrategia de 8% anual, no
+    # toda. Y penaliza selectivamente a las que más tiempo pasan adentro, que
+    # es exactamente el comportamiento correcto.
+    #
+    # El signo es lo otro que importa. Tasa positiva: los largos le pagan a los
+    # cortos. Negativa: al revés. Como en cripto casi todo el mundo va
     # comprado, la tasa es positiva la mayor parte del tiempo y el lado corto
-    # COBRA — 11,6% anual de media, que es más de lo que rinden casi todas las
-    # estrategias que encontramos. No modelarlo no es sólo subestimar un
-    # costo: es no poder ver una familia entera de estrategias.
+    # COBRA. No modelarlo no era sólo subestimar un costo: era no poder ver esa
+    # familia de estrategias.
     #
     # `None` por defecto, y con eso el motor se comporta exactamente como
     # antes. Un CFD no tiene funding y no debe pagar nada.
