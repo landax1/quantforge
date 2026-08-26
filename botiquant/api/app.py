@@ -41,7 +41,8 @@ from botiquant.core.jobs import DemasiadoTrabajo, JobManager
 from botiquant.core.models import (
     OPERATORS, PRICE_FIELDS, BacktestSettings, RiskConfig, StrategySpec, TimeFilter,
 )
-from botiquant.data.catalog import BY_KEY, CATALOG, default_stop_points
+from botiquant.data.catalog import (BY_KEY, CATALOG, default_stop_points,
+                                    simbolo_fuente)
 from botiquant.data.catalog import download as catalog_download
 from botiquant.data.loader import parse_ohlcv_csv
 from botiquant.data.sample import generate_sample
@@ -379,7 +380,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     def _catalog_entry_for(name: str) -> dict[str, Any] | None:
         low = name.lower()
         for entry in CATALOG:
-            if entry["label"].lower() in low or entry["dukascopy"].lower() in low:
+            if (entry["label"].lower() in low
+                    or simbolo_fuente(entry).lower() in low):
                 return entry
         return None
 
@@ -450,7 +452,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         owned = [d for d in store.list(duenio(request)) if d["source"] != "sample"]
         out = []
         for entry in CATALOG:
-            names = (entry["label"].lower(), entry["dukascopy"].lower())
+            names = (entry["label"].lower(), simbolo_fuente(entry).lower())
             have = next((d for d in owned
                          if any(n in d["name"].lower() for n in names)), None)
             out.append({**entry,

@@ -1220,6 +1220,18 @@ const STR = {
     "Bitcoin / US Dollar — wide spread, careful with scalping",
     "Bitcoin / dólar — spread ancho, cuidado con el scalping"],
 
+  /* Los perpetuos de exchange. La descripción dice lo que los distingue de un
+     CFD y no una obviedad: que cobran o pagan por MANTENER la posición, y que
+     esa tasa históricamente le paga al lado corto. Medido sobre siete años de
+     BTCUSDT: media +11,61% anual cobrada por los vendedores. */
+  "inst.btcusdt": [
+    "Bitcoin perpetual — 24/7, and funding pays the short side (+11.6% a year on average)",
+    "Bitcoin perpetuo — 24/7, y el funding le paga al lado corto (+11,6% anual de media)"],
+  "inst.ethusdt": [
+    "Ethereum perpetual — same funding mechanics as Bitcoin, more movement",
+    "Ethereum perpetuo — mismo funding que Bitcoin, más movimiento"],
+  "cat.cripto": ["Crypto perpetuals", "Perpetuos de cripto"],
+
   "data.ready": ["{nombre}: {n} bars ready", "{nombre}: {n} velas listas"],
   "ui.n_bars": ["{n} bars", "{n} velas"],
   "data.bars_of": ["{n} {tf} bars", "{n} velas de {tf}"],

@@ -263,6 +263,26 @@ class BacktestSettings:
     commission_pct: float = 0.0      # per side, % of notional
     slippage_pct: float = 0.0        # adverse fill, % of price
 
+    # EL FUNDING DE UN PERPETUO. Es la tercera clase de costo y funciona
+    # distinto a las otras dos: no se paga al abrir ni al cerrar, sino cada
+    # ocho horas por TENER la posición abierta.
+    #
+    # Va como serie y no como número porque la tasa cambia todo el tiempo.
+    # Medido sobre siete años de BTCUSDT: media +0,01061% por cobro —que son
+    # +11,61% anual— con extremos de ±0,30% y signo negativo el 14,3% del
+    # tiempo.
+    #
+    # Y el signo es lo que más importa. Tasa positiva: los largos le pagan a
+    # los cortos. Negativa: al revés. Como en cripto casi todo el mundo va
+    # comprado, la tasa es positiva la mayor parte del tiempo y el lado corto
+    # COBRA — 11,6% anual de media, que es más de lo que rinden casi todas las
+    # estrategias que encontramos. No modelarlo no es sólo subestimar un
+    # costo: es no poder ver una familia entera de estrategias.
+    #
+    # `None` por defecto, y con eso el motor se comporta exactamente como
+    # antes. Un CFD no tiene funding y no debe pagar nada.
+    funding: Any = None              # pd.Series de tasas, indexada por momento de cobro
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -275,6 +295,10 @@ class BacktestSettings:
             slippage=max(float(d.get("slippage", base.slippage)), 0.0),
             commission_pct=float(d.get("commission_pct", base.commission_pct)),
             slippage_pct=float(d.get("slippage_pct", base.slippage_pct)),
+            # La serie no viaja por JSON: la pone quien carga el dataset, del
+            # lado del servidor. Si viniera del cliente habría que validarla
+            # entera, y no hay motivo para que el navegador la mande.
+            funding=d.get("funding", base.funding),
         )
 
 

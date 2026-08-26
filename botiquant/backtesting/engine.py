@@ -88,6 +88,24 @@ def run_backtest(
     abs_slip = settings.spread / 2.0 + settings.slippage
 
     equity = np.empty(n, dtype=np.float64)
+    # EL FUNDING DE UN PERPETUO, precalculado por barra.
+    #
+    # Se resuelve acá y no adentro del bucle porque el bucle corre una vez por
+    # vela y esto es una búsqueda por fecha: hacerlo adentro multiplicaría por
+    # cien mil el trabajo. Acá se suma cuánto se cobra en CADA barra, mirando
+    # qué liquidaciones caen en su intervalo.
+    #
+    # Queda en ceros cuando no hay serie, y con eso un CFD se comporta igual
+    # que antes de que esto existiera.
+    fund_bar = np.zeros(n, dtype=float)
+    if getattr(settings, "funding", None) is not None and len(settings.funding):
+        tasas = settings.funding
+        # a qué barra pertenece cada liquidación; searchsorted da el índice de
+        # la primera vela cuyo tiempo es >= el del cobro
+        idx = np.searchsorted(df.index.values, tasas.index.values, side="left")
+        dentro = idx < n
+        np.add.at(fund_bar, idx[dentro], tasas.values[dentro])
+
     cash = settings.initial_capital
     pos = 0            # +1 long, -1 short, 0 flat
     units = 0.0
@@ -217,6 +235,12 @@ def run_backtest(
                 best_px = min(best_px, l[i])
                 nuevo = best_px + trail_dist
                 stop_px = nuevo if np.isnan(stop_px) else min(stop_px, nuevo)
+
+        # 5) el funding se cobra —o se cobra a favor— sobre la posición ABIERTA.
+        #    Tasa positiva: el largo paga y el corto cobra. `pos` vale +1 o -1,
+        #    así que el signo sale solo.
+        if pos != 0 and fund_bar[i]:
+            cash -= pos * units * c[i] * fund_bar[i]
 
         equity[i] = cash + (pos * units * (c[i] - entry_px) if pos != 0 else 0.0)
 
