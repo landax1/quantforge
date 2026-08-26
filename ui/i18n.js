@@ -58,7 +58,55 @@ const STR = {
   "m.winrate": ["Win rate", "Win rate"],
   "m.sharpe": ["Sharpe", "Sharpe"],
   "m.trades": ["Trades", "Operaciones"],
+  /* ───────────────────────────── las categorías de búsqueda ───────────────
+     Cada tarjeta dice qué busca Y QUÉ CUESTA. Todas cuestan algo: acertar más
+     seguido significa ganar menos por acierto, caer poco significa rendir
+     menos. Callarlo sería vender lo que la portada dice no vender. */
+  "rec.titulo": ["What are you looking for?", "¿Qué estás buscando?"],
+  "rec.sub": ["each one sets the whole search, not just the filters",
+              "cada una configura la búsqueda entera, no sólo los filtros"],
+  "rec.puesta": ["Set up for: {nombre}. You can still change anything below.",
+                 "Configurado para: {nombre}. Podés cambiar lo que quieras abajo."],
+
+  "rec.fondeo": ["Pass a funded-account challenge", "Pasar un desafío de fondeo"],
+  /* Comparativa y no absoluta, a propósito por dos razones.
+
+     Una: medido, la primera que trae opera una vez cada 4,8 días en el S&P y
+     una cada 21 en Bitcoin. Prometer un número sería inventarlo.
+
+     Dos: la primera versión decía «cuida la caída», y eso ya lo dice «Dormir
+     tranquilo». Dos categorías con la misma promesa es una de sobra. Lo que
+     distingue a ésta es el ORDEN: entran las que aguantan y arriba quedan las
+     que más operan, que es lo que sirve con fecha de vencimiento. */
+  "rec.fondeo_que": ["The most active of the ones that hold up",
+                     "La más activa de las que no se hunden"],
+  "rec.fondeo_cuesta": ["Costs: it trades rarely — making money and trading often barely coexist",
+                        "Cuesta: opera poco — ganar y operar seguido casi no conviven"],
+
+  "rec.largo": ["Hold it for years", "Aguantarla años"],
+  "rec.largo_que": ["Few trades, edge that keeps working",
+                    "Pocas operaciones, ventaja que se sostiene"],
+  "rec.largo_cuesta": ["Costs: weeks can go by without a single trade",
+                       "Cuesta: pueden pasar semanas sin operar"],
+
+  "rec.aciertos": ["Win more often than you lose", "Acertar más veces de las que fallás"],
+  "rec.aciertos_que": ["Most trades close in the green",
+                       "La mayoría de las operaciones cierran en verde"],
+  "rec.aciertos_cuesta": ["Costs: each loss is bigger than each win",
+                          "Cuesta: cada pérdida es más grande que cada ganancia"],
+
+  "rec.tranquilo": ["Sleep at night", "Dormir tranquilo"],
+  "rec.tranquilo_que": ["The worst fall stays small",
+                        "La peor caída se mantiene chica"],
+  "rec.tranquilo_cuesta": ["Costs: it returns less per year",
+                           "Cuesta: rinde menos por año"],
+
   "m.trades_month": ["Trades per month", "Operaciones por mes"],
+  "m.trades_week": ["Trades per week", "Operaciones por semana"],
+  /* Desempata por frecuencia entre las que ya pasaron la vara. No es un
+     filtro: como filtro la frecuencia no devuelve casi nada. */
+  "mine.sort_activity": ["Score, favouring the most active",
+                         "Score, favoreciendo a las que más operan"],
   "m.retdd": ["Return / drawdown", "Retorno / drawdown"],
   "m.exposure": ["Time in market", "Tiempo en mercado"],
   "m.expectancy": ["Expectancy (R)", "Expectancy (R)"],
@@ -325,6 +373,8 @@ const STR = {
   "mine.spread": ["Spread", "Spread"],
   "mine.slippage": ["Slippage", "Slippage"],
   "mine.commission": ["Commission % per side", "Comisión % lado"],
+  "mine.swap": ["Overnight cost % per year", "Costo de mantener % anual"],
+  "mine.swap_help": ["What your broker charges per year for holding a position open (swap or overnight financing). It is on the symbol spec sheet. Leave it at 0 if you do not know it — your results will be slightly optimistic. Perpetual futures ignore it: they use their own funding series.", "Lo que te cobra tu bróker por año por dejar una posición abierta (swap o financiación). Está en la ficha del símbolo. Dejálo en 0 si no lo sabés — los resultados van a quedar un poco optimistas. Los perpetuos lo ignoran: usan su propia serie de funding."],
   /* ---------------------------------------- el chequeo del capital inicial
      Cambiar el capital no mueve ninguna metrica: el riesgo porcentual escala
      todo por igual. Lo que si cambia es el TAMANO de la posicion, y ahi esta
@@ -882,8 +932,29 @@ const STR = {
   /* ------------------------------------- antes de la primera búsqueda */
   "idle.title": ["Ready to search", "Listo para minar"],
   "idle.plan": [
-    "You are going to look for <b>{goal} strategies</b> on <b>{mercado}</b> in <b>{tf}</b> bars, {tamano} at a <b>1:{rr}</b> risk/reward. Anything with <b>{trades}+ trades</b> enters the databank",
-    "Vas a buscar <b>{goal} estrategias</b> sobre <b>{mercado}</b> en velas de <b>{tf}</b>, {tamano} y relación <b>1:{rr}</b>. Entran al databank las que hagan <b>{trades}+ operaciones</b>"],
+    "You are going to look for <b>{goal} strategies</b> on <b>{mercado}</b> in <b>{tf}</b> bars, {tamano} at <b>{rr}</b> risk/reward. Anything with <b>{trades}+ trades</b> enters the databank",
+    "Vas a buscar <b>{goal} estrategias</b> sobre <b>{mercado}</b> en velas de <b>{tf}</b>, {tamano} y relación <b>{rr}</b>. Entran al databank las que hagan <b>{trades}+ operaciones</b>"],
+  /* Cuando una receta busca varias relaciones riesgo:beneficio, decir "1:2"
+     sería mentir: esa corrida no va a usar ninguna relación fija. */
+  /* ─────────────────────── buscar la relación en vez de fijarla ───────────
+     Es la perilla que más cambia lo que la búsqueda puede encontrar, y hasta
+     ahora sólo se podía tocar eligiendo una categoría. */
+  "rr.fija": ["Fixed", "Fija"],
+  "rr.buscar": ["Search it", "Buscarla"],
+  "rr.fija_ayuda": [
+    "Every candidate uses the ratio above. It caps the win rate: risking 1 to "
+    + "make 2 needs about a third of trades to win, and that is what you get.",
+    "Todas las candidatas usan la relación de arriba. Es lo que le pone techo al "
+    + "win rate: arriesgar 1 para ganar 2 necesita acertar un tercio, y eso es lo "
+    + "que se acierta."],
+  "rr.buscar_ayuda": [
+    "Each candidate gets its own ratio, from 1:{desde} to 1:{hasta} ({n} values). "
+    + "Widens what the search can find: measured, the win rate range nearly doubles.",
+    "Cada candidata lleva la suya, de 1:{desde} a 1:{hasta} ({n} valores). Ensancha "
+    + "lo que la búsqueda puede encontrar: medido, el abanico de win rate casi se "
+    + "duplica."],
+  "rr.varias": ["1:{desde} to 1:{hasta} (searched)",
+                "de 1:{desde} a 1:{hasta} (se busca)"],
   "idle.and_meet": ["and also meets: {lista}.", "y cumplan: {lista}."],
   "idle.session_one": ["Only during {nombre} ({horas}).", "Sólo durante {nombre} ({horas})."],
   "idle.session_many": [
@@ -914,6 +985,7 @@ const STR = {
   /* Resumenes de fila plegada: valores, no frases. La version larga de
      cada uno vive dentro de la seccion, que es donde hace falta explicar. */
   "sum.vol_stop_short": ["ATR stop", "stop ATR"],
+  "sum.swap": ["holding {pct}%/yr", "mantener {pct}%/año"],
   "sum.costs": ["spread {spread} · slip {slip} · ${cap}",
                 "spread {spread} · slip {slip} · ${cap}"],
   "sum.method_rnd_short": ["Random", "Aleatorio"],
@@ -956,6 +1028,13 @@ const STR = {
   "crit.minTradesMonth": [
     "How often it trades per month. It is the trade count made comparable: 200 is a lot over two years and very few over twenty.",
     "Cuántas veces opera al mes. Es el total de operaciones pero comparable: 200 son muchas en dos años y pocas en veinte."],
+  /* La ayuda dice la equivalencia porque es la pregunta que sigue: alguien
+     que quiere operar todos los días necesita saber que eso son cinco. */
+  "crit.minTradesWeek": [
+    "How often it trades per week. Five is roughly one per trading day — the usual "
+    + "requirement for a funded-account challenge, which has a deadline.",
+    "Cuántas veces opera por semana. Cinco es aproximadamente una por día hábil — "
+    + "lo que suele pedir un desafío de cuenta fondeada, que tiene fecha de vencimiento."],
   "crit.minCagr": [
     "What it returned per year, compounded. It scales with the risk per trade.",
     "Cuánto rindió por año, en promedio compuesto. Escala con el riesgo por operación."],
@@ -1143,6 +1222,18 @@ const STR = {
   "inst.btcusd": [
     "Bitcoin / US Dollar — wide spread, careful with scalping",
     "Bitcoin / dólar — spread ancho, cuidado con el scalping"],
+
+  /* Los perpetuos de exchange. La descripción dice lo que los distingue de un
+     CFD y no una obviedad: que cobran o pagan por MANTENER la posición, y que
+     esa tasa históricamente le paga al lado corto. Medido sobre siete años de
+     BTCUSDT: media +11,61% anual cobrada por los vendedores. */
+  "inst.btcusdt": [
+    "Bitcoin perpetual — 24/7, and funding pays the short side (+11.6% a year on average)",
+    "Bitcoin perpetuo — 24/7, y el funding le paga al lado corto (+11,6% anual de media)"],
+  "inst.ethusdt": [
+    "Ethereum perpetual — same funding mechanics as Bitcoin, more movement",
+    "Ethereum perpetuo — mismo funding que Bitcoin, más movimiento"],
+  "cat.cripto": ["Crypto perpetuals", "Perpetuos de cripto"],
 
   "data.ready": ["{nombre}: {n} bars ready", "{nombre}: {n} velas listas"],
   "ui.n_bars": ["{n} bars", "{n} velas"],

@@ -263,6 +263,70 @@ class BacktestSettings:
     commission_pct: float = 0.0      # per side, % of notional
     slippage_pct: float = 0.0        # adverse fill, % of price
 
+    # EL FUNDING DE UN PERPETUO. Es la tercera clase de costo y funciona
+    # distinto a las otras dos: no se paga al abrir ni al cerrar, sino cada
+    # ocho horas por TENER la posición abierta.
+    #
+    # Va como serie y no como número porque la tasa cambia todo el tiempo.
+    # Medido sobre siete años de BTCUSDT: media +0,01061% por cobro —que son
+    # +11,61% anual— con extremos de ±0,30% y signo negativo el 14,3% del
+    # tiempo.
+    #
+    # CUIDADO CON ESE 11,61%: es lo que costaría estar comprado TODO el año.
+    # Como sólo se cobra con la posición abierta, el costo real es esa tasa por
+    # la exposición, y nuestras estrategias rondan el 11% de tiempo en mercado:
+    #
+    #     exposición   costo anual real
+    #          5%           0,54%
+    #         11%           1,19%      <- la típica de una estrategia nuestra
+    #         35%           3,80%
+    #        100%          10,85%
+    #
+    # O sea que se lleva alrededor del 15% de una estrategia de 8% anual, no
+    # toda. Y penaliza selectivamente a las que más tiempo pasan adentro, que
+    # es exactamente el comportamiento correcto.
+    #
+    # El signo es lo otro que importa. Tasa positiva: los largos le pagan a los
+    # cortos. Negativa: al revés. Como en cripto casi todo el mundo va
+    # comprado, la tasa es positiva la mayor parte del tiempo y el lado corto
+    # COBRA. No modelarlo no era sólo subestimar un costo: era no poder ver esa
+    # familia de estrategias.
+    #
+    # `None` por defecto, y con eso el motor se comporta exactamente como
+    # antes. Un CFD no tiene funding y no debe pagar nada.
+    funding: Any = None              # pd.Series de tasas, indexada por momento de cobro
+
+    # EL SWAP DE UN CFD. Es el mismo concepto que el funding —un costo por
+    # TENER la posición— pero de la otra mitad del catálogo, y hasta hoy no lo
+    # cobrábamos: los backtests de S&P, oro y EURUSD ignoraban por completo el
+    # costo de mantener. No era un hueco de cripto, era un hueco nuestro.
+    #
+    # POR QUÉ ES UN NÚMERO Y EL FUNDING UNA SERIE. La tasa de un perpetuo es
+    # pública, histórica y exacta: se baja en cuatro segundos. El swap lo fija
+    # cada bróker, cambia sin aviso y NADIE publica la serie histórica. Pedir
+    # el promedio anual —el número que está en la ficha del símbolo— es lo
+    # máximo que se puede sostener con honestidad.
+    #
+    # POR QUÉ NO ES LO MISMO QUE SUBIR LA COMISIÓN. La comisión escala con
+    # CUÁNTAS operaciones hacés; esto escala con CUÁNTO TIEMPO estás adentro.
+    # Una estrategia de 200 entradas al año que aguanta dos horas paga mucha
+    # comisión y casi nada de swap; una de 6 entradas que aguanta dos meses
+    # paga lo contrario. Un solo número no puede representar a las dos.
+    #
+    # Y EL SIGNO ES DISTINTO AL DEL FUNDING. El funding lo paga un lado y lo
+    # cobra el otro. El swap se lo cobra el bróker a los dos. Por eso no se
+    # pueden meter en el mismo campo aunque midan lo mismo.
+    #
+    # Se prorratea por barra en vez de cobrarse sólo de un día para el otro.
+    # Es una simplificación deliberada: el cobro real depende de la hora de
+    # rollover del bróker y del triple del miércoles, que no sabemos. Prorratear
+    # cobra de más a una estrategia intradía —del orden de 0,002% por operación
+    # con 5% anual— y da exacto donde el costo importa, que es aguantando días.
+    # Se equivoca hacia el lado pesimista, que es el lado correcto.
+    #
+    # 0 por defecto: quien no lo configure queda exactamente como estaba.
+    swap_anual: float = 0.0          # % anual sobre el nocional, cobrado a los dos lados
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -275,6 +339,11 @@ class BacktestSettings:
             slippage=max(float(d.get("slippage", base.slippage)), 0.0),
             commission_pct=float(d.get("commission_pct", base.commission_pct)),
             slippage_pct=float(d.get("slippage_pct", base.slippage_pct)),
+            # La serie no viaja por JSON: la pone quien carga el dataset, del
+            # lado del servidor. Si viniera del cliente habría que validarla
+            # entera, y no hay motivo para que el navegador la mande.
+            funding=d.get("funding", base.funding),
+            swap_anual=max(float(d.get("swap_anual", base.swap_anual)), 0.0),
         )
 
 

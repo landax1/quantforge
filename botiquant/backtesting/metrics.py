@@ -122,10 +122,23 @@ def compute_metrics(eq: pd.Series, trades: list[Trade], initial: float) -> dict[
         # y sobre el total no se puede pedir un mínimo que signifique lo mismo
         # en dos históricos de distinto largo.
         "trades_per_month": round(len(trades) / months_total, 2) if months_total else 0.0,
+        # El mismo dato en la unidad en la que se piensa una cuenta de fondeo.
+        # "Necesito operar casi todos los días" se verifica contra operaciones
+        # por SEMANA: por mes, un 20 puede ser cuatro días seguidos y después
+        # nada, y para un desafío con fecha de vencimiento eso no sirve.
+        #
+        # Se deriva de los mismos meses que la línea de arriba, y no del span
+        # en segundos, para que los dos números no puedan contradecirse.
+        "trades_per_week": (round(len(trades) / (months_total * _SEMANAS_POR_MES), 2)
+                            if months_total else 0.0),
         "worst_month_pct": round(worst_month, 2),
         "top_trade_share_pct": round(min(top_trade_share, 100.0), 2),
     }
 
+
+#: Semanas que tiene un mes en promedio (52,1775 / 12). Sale del año medio y
+#: no de 4, que acumularía casi un mes de error al año.
+_SEMANAS_POR_MES = 52.1775 / 12
 
 def _month_stats(eq: pd.Series, initial: float) -> tuple[float, int, float]:
     """(% de meses positivos, meses totales, peor mes en %)."""
@@ -218,4 +231,23 @@ def fitness(metrics: dict[str, float], mode: str = "composite") -> float:
         return metrics["profit_factor"] * min(np.sqrt(trades), 10.0)
     if mode == "sharpe":
         return metrics["sharpe"]
+    if mode == "activity":
+        # Para quien tiene FECHA DE VENCIMIENTO: un desafio de cuenta fondeada
+        # no premia a la mejor estrategia sino a la mejor que ademas alcance a
+        # operar dentro del plazo.
+        #
+        # Es un desempate y no un criterio nuevo, y eso importa. Pedir la
+        # frecuencia como FILTRO no funciona: medido sobre SP500 a 30 minutos,
+        # cuatro anios, 1400 candidatas, exigir tres operaciones por semana
+        # ademas de rentabilidad y caida chica devuelve cero, y exigir dos
+        # devuelve una — tan pocas que encontrar algo depende de la semilla.
+        # Ser rentable es ser selectivo, y ser selectivo es operar poco.
+        #
+        # Como orden en cambio siempre devuelve algo: entran las que pasaron la
+        # vara de calidad y arriba quedan las que mas operan. El premio se topa
+        # en cinco por semana —una por dia habil, que es lo que se pide— para
+        # que no gane la que opera trescientas veces por ruido.
+        base = bq_score(metrics)
+        por_semana = min(metrics.get("trades_per_week", 0.0), 5.0)
+        return base + 12.0 * (por_semana / 5.0)
     return bq_score(metrics)

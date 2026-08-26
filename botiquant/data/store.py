@@ -111,6 +111,48 @@ class DataStore:
     def _path(self, ds_id: str) -> Path:
         return self.root / f"{ds_id}.csv"
 
+    def _path_funding(self, ds_id: str) -> Path:
+        """El funding vive en un archivo hermano, no adentro del de velas.
+
+        Tiene otra frecuencia: se liquida cada ocho horas, no en cada barra.
+        Meterlo como columna obligaría a repetir el valor en miles de filas o a
+        dejar huecos, y ademas romperia todos los datasets que ya existen.
+        Como archivo aparte, el instrumento que no lo tiene simplemente no lo
+        tiene, y el motor se comporta igual que siempre.
+        """
+        return self.root / f"{self._raiz(ds_id)}.funding.csv"
+
+    @staticmethod
+    def _raiz(ds_id: str) -> str:
+        """El id sin el sufijo de resampleo: ``abc@1h`` es ``abc``.
+
+        Un frame a una hora y el mismo a treinta minutos comparten la serie de
+        funding: las tasas son del instrumento, no de la temporalidad.
+        """
+        return ds_id.split("@", 1)[0]
+
+    def guardar_funding(self, ds_id: str, serie) -> None:
+        """Guarda las tasas de un perpetuo al lado de sus velas."""
+        if serie is None or not len(serie):
+            return
+        serie.to_csv(self._path_funding(ds_id), index_label="time",
+                     header=["funding"])
+
+    def funding(self, ds_id: str):
+        """Las tasas de este instrumento, o ``None`` si no es un perpetuo.
+
+        Devolver ``None`` y no una serie vacía es deliberado: el motor
+        distingue "no hay funding" de "hay funding y vale cero", y un CFD es lo
+        primero.
+        """
+        ruta = self._path_funding(ds_id)
+        if not ruta.exists():
+            return None
+        s = pd.read_csv(ruta, index_col="time", parse_dates=["time"])["funding"]
+        if s.index.tz is None:
+            s.index = s.index.tz_localize("UTC")
+        return s
+
     @staticmethod
     def _es_derivado(key: str) -> bool:
         """Un resampleado se reconoce por el arroba: ``<id>@1h``."""

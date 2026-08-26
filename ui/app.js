@@ -46,6 +46,11 @@ const S = {
    no significa lo mismo en el S&P (7700) que en EURUSD (1.15).
 
    Esta es la perilla de rentabilidad, y su precio es el drawdown. */
+/* Las relaciones entre las que puede elegir la búsqueda cuando se la deja.
+   Son las mismas que conoce el minero (RR_CHOICES en generator.py); si las dos
+   listas se separan, la pantalla ofrece algo que el servidor no va a probar. */
+const RR_BUSCABLES = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0];
+
 const RR_PRESETS = [1, 1.5, 2, 3];
 const RISK_PRESETS = [0.5, 1, 2, 3];
 const LOT_PRESETS = [0.01, 0.1, 0.5, 1];
@@ -60,7 +65,7 @@ function lossStreakCost(pct, n = 10) {
 }
 
 const DEFAULT_CFG = {
-  spread: 0.36, slippage: 0.1, commission: 0, capital: 10000,
+  spread: 0.36, slippage: 0.1, commission: 0, swap: 0, capital: 10000,
   /* El volumen minimo que acepta tu broker para el instrumento. Es una
      referencia como el spread: se sugiere el del catalogo y se comprueba
      contra el broker propio. */
@@ -85,7 +90,7 @@ const DEFAULT_CFG = {
 
      Con 5 en vez de 3 la búsqueda se va a 518 segundos, que ya es demasiado
      para lo primero que alguien prueba. */
-  minCagr: 3, minExposure: 5, minRetDd: 1.5, minTradesMonth: 4,
+  minCagr: 3, minExposure: 5, minRetDd: 1.5, minTradesMonth: 4, minTradesWeek: 2,
   /* Dos varas prendidas de fábrica: que la estrategia haya ganado plata, y
      que haya ganado algo que valga la pena mirar.
 
@@ -117,6 +122,16 @@ const DEFAULT_CFG = {
   // cuánto había elegido la última vez que estuvo prendida, para que apagarla
   // y volver a prenderla no lo mande siempre al 30
   oosUltimo: 30,
+  /* Los R:B entre los que puede elegir cada candidata. `null` deja el
+     comportamiento de siempre: todas usan el configurado en el paso de riesgo.
+
+     Existe porque el R:B resultó ser lo que gobierna el win rate, y estaba
+     fijo. Medido sobre SP500 a una hora, treinta estrategias por corrida: con
+     1:2 la mediana de aciertos es 39,8% y NINGUNA llega a 60%; con 0,5 la
+     mediana es 59,5% y quince de treinta lo pasan. Buscar aciertos altos con
+     el 1:2 de fábrica no devuelve nada nunca, por más candidatas que se
+     prueben — el techo no lo pone la búsqueda, lo pone la aritmética. */
+  rrBuscado: null,
   fitness: "composite",
   // Cómo se dimensiona la posición. "risk" ajusta el tamaño para que tocar el
   // stop cueste un % fijo; "lots" manda siempre el mismo volumen — hay brokers
@@ -218,12 +233,195 @@ const INST_FAMILIA = {
 /* Los NOMBRES de las métricas viven en i18n.js y son los mismos en los dos
    idiomas: profit factor, drawdown, win rate, Sharpe se dicen así en la mesa,
    en MetaTrader y en TradingView. Lo que se traduce es la explicación. */
+/* ═══════════════════════ QUÉ ESTÁS BUSCANDO ═══════════════════════════════
+   Cada receta fija TEMPORALIDAD, R:B, COMPLEJIDAD y FILTROS. No sólo los
+   filtros, y ésa es toda la diferencia entre una categoría que funciona y una
+   que decora: pedir win rate ≥ 60% con el R:B 1:2 de fábrica no devuelve nada
+   nunca —medido, cero de treinta— por más que el filtro esté bien puesto.
+
+   Los números no son de gusto. Salen de barrer el espacio y mirar qué hay:
+   qué win rate aparece con cada relación, cuánta caída es alcanzable, con qué
+   frecuencia se opera en cada temporalidad. Una receta que pide algo que no
+   existe es peor que no tener recetas, porque manda a esperar veinte minutos
+   para que no salga nada.
+
+   Y cada una fija su TOPE DE CANDIDATAS, que no es un detalle. Medido: una
+   candidata cuesta 8,3 microsegundos por vela, así que a 30 minutos son 1,04
+   segundos y a 15 son 2,08. Con el tope de fábrica —veinte mil— una receta a
+   30 minutos correría casi SEIS HORAS antes de rendirse, y a 15 minutos once.
+   Los topes de acá abajo están puestos para que ninguna pase de unos diez
+   minutos en el peor caso, que es cuando no encuentra lo que busca.
+
+   Cada tarjeta dice qué busca Y QUÉ CUESTA. Todas cuestan algo: acertar más
+   seguido significa ganar menos por acierto, y caer poco significa rendir
+   menos. Callar la contrapartida sería vender lo que la portada dice no
+   vender. */
+const RECETAS = () => [
+  {
+    id: "fondeo", ico: "diana",
+    /* La más difícil de las cuatro, y los números explican por qué.
+
+       Un desafío tiene fecha de vencimiento, así que no alcanza con que la
+       estrategia sea buena: tiene que OPERAR dentro del plazo. El problema es
+       que las dos cosas se pelean. Medido sobre SP500 a 30 minutos, cuatro
+       años, 1400 candidatas, aflojando de a una exigencia:
+
+           rentable + caída ≤8% + 3 por semana ....... nada
+           rentable + 3 por semana (sin caída) ....... nada
+           rentable + caída ≤8% (sin frecuencia) .... 5, con 0,62 por semana
+           lo mismo pidiendo 2 por semana ........... 1
+           lo mismo pidiendo 1 por semana ........... 2, con 2,03 de mediana
+           rentable + 3 por semana + caída ≤15% ..... nada
+
+       La que ahoga es la frecuencia, no la caída: aflojar el drawdown al 15%
+       sigue sin dar nada. Y bajar a 15 minutos EMPEORA —ahí no sale nada ni
+       siquiera sin pedir frecuencia— porque se paga el spread tres veces más
+       seguido y se come la ventaja.
+
+       Ser rentable es ser selectivo, y ser selectivo es operar poco. Por eso
+       la frecuencia no filtra: ORDENA. Entran las que pasaron la vara y arriba
+       quedan las que más operan, así que siempre hay tabla.
+
+       Lo que trae, medido con esta misma configuración:
+
+           SP500    la primera opera 1,46 por semana — una cada 4,8 días
+                    con 8,89% anual y 6,3% de caída
+           BTCUSD   la primera opera 0,33 por semana — una cada 21 días
+
+       Por eso la tarjeta NO promete una frecuencia: varía demasiado entre
+       mercados y poner un número sería inventarlo. Promete lo que sí cumple en
+       los dos, que es la caída chica — y que además es la regla que de verdad
+       elimina gente en un desafío. */
+    cfg: {
+      timeframe: "30m", direction: "both", maxFilters: 1,
+      anios: 4, maxCandidates: 1400,
+      rrBuscado: [0.75, 1.0, 1.25, 1.5],
+      minTrades: 60,
+      // La frecuencia ORDENA, no filtra. Como filtro devolvía cero.
+      fitness: "activity",
+      critOn: { minPf: true, maxDd: true },
+      minPf: 1.15, maxDd: 8,
+    },
+  },
+  {
+    id: "largo", ico: "pico",
+    /* Lo contrario: acá no importa operar seguido sino que la ventaja se
+       sostenga. Temporalidad alta, pocas operaciones grandes, y se le exige
+       retorno sobre caída, que es lo que dice si valió la pena aguantarla. */
+    cfg: {
+      timeframe: "4h", direction: "both", maxFilters: 2,
+      maxCandidates: 5000,
+      rrBuscado: [1.5, 2.0, 2.5, 3.0],
+      minTrades: 40,
+      critOn: { minPf: true, minRetDd: true, minCagr: true },
+      minPf: 1.25, minRetDd: 2.5, minCagrFactor: 1.6,
+    },
+  },
+  {
+    id: "aciertos", ico: "estrella",
+    /* La que era imposible hasta ahora. El R:B bajo es TODO el truco: con 0,5
+       la mediana de aciertos es 59,5% y quince de treinta pasan el 60%; con
+       1:2 no lo pasa ninguna. Sin tocar la relación, este filtro no devuelve
+       nada por más candidatas que se prueben. */
+    cfg: {
+      timeframe: "1h", direction: "both", maxFilters: 1,
+      maxCandidates: 1200,
+      rrBuscado: [0.5, 0.6, 0.75],
+      minTrades: 40,
+      critOn: { minPf: true, minWinRate: true },
+      minPf: 1.1, minWinRate: 58,
+    },
+  },
+  {
+    id: "tranquilo", ico: "baja",
+    /* Caída baja. Medido: el mínimo alcanzable ronda 2,5% en cualquier
+       relación, y entre siete y diez de cada treinta quedan por debajo de 10%,
+       así que pedir 10 es exigente pero no imposible. Se le suma retorno sobre
+       caída para que no entren estrategias que caen poco porque no hacen nada. */
+    cfg: {
+      timeframe: "1h", direction: "both", maxFilters: 2,
+      maxCandidates: 1200,
+      rrBuscado: [0.75, 1.0, 1.5, 2.0],
+      minTrades: 40,
+      critOn: { minPf: true, maxDd: true, minRetDd: true },
+      minPf: 1.15, maxDd: 10, minRetDd: 2,
+    },
+  },
+];
+
+/* Acorta el período a los últimos N años.
+
+   Es la quinta cosa que una receta configura, y hace falta por dos motivos que
+   apuntan al mismo lado. Uno es de sentido: un desafío de cuenta fondeada se
+   juega con el comportamiento reciente, no con lo que el mercado hacía hace
+   diez años. El otro es aritmético: la mitad de velas es la mitad de costo por
+   candidata, así que en el mismo tiempo de espera entran el doble de
+   candidatas — y en una búsqueda que encuentra poco, eso es la diferencia
+   entre traer algo y no traer nada. */
+function acortarVentana(anios) {
+  const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
+  const b = datasetBounds(ds);
+  if (!b.hi) return;
+  const fin = new Date(b.hi + "T00:00:00Z");
+  const desde = new Date(Date.UTC(fin.getUTCFullYear() - anios,
+                                  fin.getUTCMonth(), fin.getUTCDate()))
+    .toISOString().slice(0, 10);
+  S.sel.dateFrom = desde > b.lo ? desde : b.lo;
+  S.sel.dateTo = b.hi;
+  // elegido por la receta: que la ventana automática no lo pise después
+  S.sel.rangoPropio = true;
+}
+
+/* Aplica una receta y deja al usuario en la pantalla de búsqueda.
+
+   Apaga TODOS los criterios antes de prender los suyos. Si no, los que había
+   tildados de antes se suman a los de la receta y la búsqueda termina pidiendo
+   una mezcla que nadie eligió — que es la forma más rápida de que una
+   categoría no devuelva nada y parezca rota. */
+function aplicarReceta(r) {
+  const c = S.cfg;
+  c.critOn = {};
+  for (const [k, v] of Object.entries(r.cfg)) {
+    if (k === "timeframe") { S.sel.timeframe = v; continue; }
+    if (k === "critOn") { c.critOn = { ...v }; continue; }
+    if (k === "anios") { acortarVentana(v); continue; }
+    /* El rendimiento anual pedido, como MÚLTIPLO del piso del instrumento y no
+       como número fijo.
+
+       Encontrado verificando las categorías en los cuatro mercados: "Aguantarla
+       años" pedía 5% anual y en EURUSD devolvía cero de cinco mil candidatas.
+       No es que buscara mal — el techo medido de EURUSD es 4,05% anual, así que
+       le estaba pidiendo por encima de lo que ese mercado da. En oro y Bitcoin,
+       donde el techo pasa el 20%, las mismas cinco unidades son un pedido
+       cómodo y salieron diez de diez.
+
+       Un número fijo no puede significar lo mismo en mercados cuyos techos van
+       de 4% a 22%. El piso por instrumento ya vive en el catálogo por esta
+       misma razón, así que la receta se apoya en él. */
+    if (k === "minCagrFactor") {
+      const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
+      c.minCagr = Math.round((ds?.min_cagr ?? 3) * v * 10) / 10;
+      continue;
+    }
+    c[k] = v;
+  }
+  S.recetaPuesta = r.id;
+  saveCfg();
+  navigate("mining", "buscar").then(() =>
+    toast(t("rec.puesta", { nombre: t(`rec.${r.id}`) }), "ok"));
+}
+
 const CRIT_DEF = [
   { key: "minPf",          metrica: "m.pf",           cmp: "≥", step: 0.05, min: 0, def: 1.0,  unit: "" },
   { key: "minRetDd",       metrica: "m.retdd",        cmp: "≥", step: 0.5,  min: 0, def: 1.5,  unit: "" },
   { key: "maxDd",          metrica: "m.dd",           cmp: "≤", step: 1,    min: 4, def: 25,   unit: "%" },
   { key: "minWinRate",     metrica: "m.winrate",      cmp: "≥", step: 1,    min: 0, def: 50,   unit: "%" },
   { key: "minTradesMonth", metrica: "m.trades_month", cmp: "≥", step: 1,    min: 0, def: 4,    unit: "" },
+  /* Por semana además de por mes. Quien está pasando un desafío de fondeo
+     tiene fecha de vencimiento: "cuatro por mes" puede ser cuatro días
+     seguidos y después nada, y eso no le sirve. Por semana es la unidad en
+     la que esa persona piensa el problema. */
+  { key: "minTradesWeek",  metrica: "m.trades_week",  cmp: "≥", step: 0.5,  min: 0, def: 2,    unit: "" },
   { key: "minCagr",        metrica: "m.cagr",         cmp: "≥", step: 1,    min: 0, def: 5,    unit: "%" },
   { key: "minSharpe",      metrica: "m.sharpe",       cmp: "≥", step: 0.1,  min: 0, def: 0.30, unit: "" },
   { key: "minExposure",    metrica: "m.exposure",     cmp: "≥", step: 1,    min: 0, def: 5,    unit: "%" },
@@ -466,7 +664,7 @@ const CRIT_FIELD = {
   minPf: "min_pf", minSharpe: "min_sharpe", maxDd: "max_dd_pct",
   minCagr: "min_cagr_pct", minExposure: "min_exposure_pct",
   minWinRate: "min_win_rate_pct", minRetDd: "min_ret_dd",
-  minTradesMonth: "min_trades_month",
+  minTradesMonth: "min_trades_month", minTradesWeek: "min_trades_week",
   //: "Ganancia total" ya no se ofrece —el total depende de cuántos años tenga
   //: el histórico, así que el mismo número exige cosas distintas según el
   //: instrumento— pero la clave queda para leer las corridas ya archivadas.
@@ -708,6 +906,16 @@ function adoptInstrumentDefaults() {
   if (!costos) return;
   S.cfg.spread = costos.spread;
   S.cfg.slippage = costos.slippage;
+  /* Y la comisión, que es donde cobra un exchange.
+     Va con `?? 0` a propósito: al pasar de un perpetuo a un CFD hay que
+     APAGARLA, y dejar la anterior puesta cobraría 0,04% sobre un índice que no
+     la cobra. Heredar un costo entre instrumentos es el mismo error que
+     heredar el spread, y ese ya nos costó una corrida entera de -100%. */
+  S.cfg.commission = ds?.suggested_commission ?? 0;
+  // Un perpetuo no paga swap: paga funding, y ese sale de la serie real.
+  // Arrastrar el swap del S&P a Bitcoin cobraria el costo de mantener dos
+  // veces, asi que cambiar de instrumento lo apaga.
+  S.cfg.swap = 0;
   /* La dirección también es propia del instrumento. Medido en EURUSD: buscando
      sólo largos el techo es 1.76% anual; permitiendo cortos, 4.52% — y con MÁS
      estrategias rentables, sin aflojar ninguna vara. Un par de divisas no sube:
@@ -911,6 +1119,23 @@ function cablearSesiones(root) {
    porque por debajo de eso deja de ser usable. Un error de medición tiene que
    degradar el ajuste, no romper la pantalla — de hecho ya salvó al segundo
    intento de este mismo arreglo. */
+/* Cómo se dice la relación riesgo:beneficio de una búsqueda.
+
+   Con una receta que la busca, decir "1:2" es mentir: esa corrida va a probar
+   candidatas con varias relaciones y ninguna va a ser la configurada. El
+   panel de "listo para buscar" es la promesa de lo que la aplicación está por
+   hacer, así que tiene que describir lo que va a hacer de verdad.
+
+   Se resuelve en una sola función porque lo decían dos lugares —el resumen
+   del paso de riesgo y el panel de arranque— y dos textos que dicen lo mismo
+   por caminos distintos terminan diciendo cosas distintas. */
+function comoSeDiceElRR() {
+  const lista = S.cfg.rrBuscado;
+  if (!lista || !lista.length) return `1:${S.cfg.rr}`;
+  if (lista.length === 1) return `1:${lista[0]}`;
+  return t("rr.varias", { desde: Math.min(...lista), hasta: Math.max(...lista) });
+}
+
 function medirHuecoDelPanel() {
   const panel = document.querySelector(".setup");
   if (!panel) return;
@@ -2094,7 +2319,7 @@ async function openSaved(s) {
        simplemente no aparecen, como antes: no hay forma de reconstruirlo. */
     split: meta.split || null,
     settings: { spread: meta.spread, slippage: meta.slippage,
-                commission_pct: meta.commission, initial_capital: meta.capital },
+                commission_pct: meta.commission, swap_anual: meta.swap, initial_capital: meta.capital },
   });
 }
 
@@ -2857,6 +3082,7 @@ function repetirCorrida(c) {
   if (ajustes.spread != null) S.cfg.spread = ajustes.spread;
   if (ajustes.slippage != null) S.cfg.slippage = ajustes.slippage;
   if (ajustes.commission_pct != null) S.cfg.commission = ajustes.commission_pct;
+  if (ajustes.swap_anual != null) S.cfg.swap = ajustes.swap_anual;
   if (ajustes.initial_capital != null) S.cfg.capital = ajustes.initial_capital;
 
   S.sel.timeframe = c.timeframe || "1h";
@@ -2899,6 +3125,7 @@ function abrirDelBanco(f) {
       spread: (ctx.settings || {}).spread,
       slippage: (ctx.settings || {}).slippage,
       commission: (ctx.settings || {}).commission_pct,
+      swap: (ctx.settings || {}).swap_anual,
       capital: (ctx.settings || {}).initial_capital,
       sizing: (ctx.risk || {}).size_mode === "fixed_units" ? "lots" : "risk",
       riskPct: (ctx.risk || {}).size_value,
@@ -3034,6 +3261,20 @@ const vistaBuscar = async (main) => {
 
   main.innerHTML = `
   ${pageHead(t("nav.mining"), esc(t("mine.sub")), ctxPill())}
+
+  <section class="recetas">
+    <h2>${esc(t("rec.titulo"))}
+      <span class="hint">${esc(t("rec.sub"))}</span></h2>
+    <div class="recetas-lista">
+      ${RECETAS().map(r => `
+        <button class="receta ${S.recetaPuesta === r.id ? "on" : ""}" data-receta="${r.id}">
+          <span class="r-ico">${icono(r.ico)}</span>
+          <b>${esc(t(`rec.${r.id}`))}</b>
+          <span class="r-que">${esc(t(`rec.${r.id}_que`))}</span>
+          <em class="r-cuesta">${esc(t(`rec.${r.id}_cuesta`))}</em>
+        </button>`).join("")}
+    </div>
+  </section>
 
   <div class="workbench">
     <aside class="setup">
@@ -3201,6 +3442,25 @@ const vistaBuscar = async (main) => {
                 ${RR_PRESETS.map(p => `<button data-v="${p}" class="${+c.rr === p ? "on" : ""}">1:${p}</button>`).join("")}
               </div>
               <p class="help-note" id="m-rrhelp"></p>
+
+              <!-- BUSCAR LA RELACIÓN, en vez de fijarla.
+
+                   Hasta ahora esto sólo se podía pedir eligiendo una categoría,
+                   y es la perilla que más cambia lo que la búsqueda puede
+                   encontrar: con 1:2 fija, ninguna de treinta estrategias llega
+                   a 60% de aciertos; dejándola buscar, el abanico de win rate
+                   casi se duplica. Esconder eso adentro de una receta es
+                   esconder la mitad de la aplicación. -->
+              <div class="seg full mt" id="rk-rr-modo">
+                <button data-rrmodo="fija" class="${c.rrBuscado?.length ? "" : "on"}"
+                  >${esc(t("rr.fija"))}</button>
+                <button data-rrmodo="buscar" class="${c.rrBuscado?.length ? "on" : ""}"
+                  >${esc(t("rr.buscar"))}</button>
+              </div>
+              <p class="help-note mt">${c.rrBuscado?.length
+                ? t("rr.buscar_ayuda", { n: c.rrBuscado.length,
+                    desde: Math.min(...c.rrBuscado), hasta: Math.max(...c.rrBuscado) })
+                : t("rr.fija_ayuda")}</p>
             </div>
 
             <label class="fld mt"><span>${esc(t("mine.capital"))}</span>
@@ -3227,6 +3487,10 @@ const vistaBuscar = async (main) => {
               <label class="fld"><span>${esc(t("mine.commission"))}</span><input type="number" step="0.001" data-cfg="commission" value="${c.commission}"></label>
               <label class="fld"><span>${esc(t("mine.min_lot"))}</span><input type="number" step="0.01" min="0.001" data-cfg="minLot" value="${c.minLot}"></label>
             </div>
+            <div class="fld-pair mt">
+              <label class="fld"><span>${esc(t("mine.swap"))}</span><input type="number" step="0.1" min="0" data-cfg="swap" value="${c.swap}"></label>
+            </div>
+            <p class="help-note">${esc(t("mine.swap_help"))}</p>
             <div class="sugerido" id="m-sugerido" hidden></div>
             <p class="stage-note" id="m-costnote"></p>
           </div>
@@ -3265,7 +3529,8 @@ const vistaBuscar = async (main) => {
                 ${opt("composite", c.fitness, `${esc(t("mine.sort_score"))} — ${esc(t("ui.recommended"))}`)}
                 ${opt("net_profit", c.fitness, esc(t("m.net")))}
                 ${opt("profit_factor", c.fitness, esc(t("m.pf")))}
-                ${opt("sharpe", c.fitness, esc(t("m.sharpe")))}</select></label>
+                ${opt("sharpe", c.fitness, esc(t("m.sharpe")))}
+                ${opt("activity", c.fitness, esc(t("mine.sort_activity")))}</select></label>
               <label class="fld"><span>${esc(t("mine.cap"))}
                   <span class="hint">${esc(t("mine.cap_hint"))}</span></span>
                 <input type="number" data-cfg="maxCandidates" value="${c.maxCandidates}" min="100" step="1000"></label>
@@ -3403,6 +3668,16 @@ const vistaBuscar = async (main) => {
     updateNotes();
   });
   bindKnob("rk-rr", "rk-rr-presets", "rr", 0.25, 10);
+
+  /* Prender "buscar" carga la lista entera de relaciones; apagarlo la borra y
+     vuelve a mandar la del control de arriba. Se guarda la lista y no un
+     booleano porque las recetas ya fijan sus propias listas acotadas —la de
+     aciertos busca sólo entre 0,5 y 0,75— y un booleano no podría expresarlas. */
+  $$("[data-rrmodo]").forEach(b => b.onclick = () => {
+    S.cfg.rrBuscado = b.dataset.rrmodo === "buscar" ? [...RR_BUSCABLES] : null;
+    saveCfg();
+    navigate("mining", "buscar");
+  });
 
   const dsSel = $("#sel-dataset"), tfSel = $("#sel-timeframe");
   dsSel.onchange = () => {
@@ -3687,10 +3962,15 @@ const vistaBuscar = async (main) => {
 
     set("sum-risk", (S.cfg.sizing === "lots"
       ? t("sum.lots", { lots: S.cfg.lots }) : t("sum.risk", { pct: S.cfg.riskPct }))
-      + ` · 1:${S.cfg.rr} · ${t("sum.vol_stop_short")}`);
+      + ` · ${comoSeDiceElRR()} · ${t("sum.vol_stop_short")}`);
 
+    /* El costo de mantener se muestra sólo cuando está puesto. Es el único
+       costo que puede quedar activo sin que se vea —la sección va plegada— y
+       un 5% anual encendido de más explicaría resultados malos sin motivo
+       aparente. Los otros dos van siempre porque siempre valen algo. */
     set("sum-cost", t("sum.costs", {
-      spread: S.cfg.spread, slip: S.cfg.slippage, cap: fmtInt(S.cfg.capital) }));
+      spread: S.cfg.spread, slip: S.cfg.slippage, cap: fmtInt(S.cfg.capital) })
+      + (+S.cfg.swap > 0 ? ` · ${t("sum.swap", { pct: S.cfg.swap })}` : ""));
 
     /* Con el valor y no sólo el nombre del filtro. Decía "Profit factor" a
        secas, que al lado de "30+ operaciones" se lee como una frase cortada —
@@ -3724,6 +4004,11 @@ const vistaBuscar = async (main) => {
       o.classList.toggle("on", +o.dataset.filtros === S.cfg.maxFilters));
     saveCfg();
     updateNotes();
+  });
+
+  $$("[data-receta]", main).forEach(b => b.onclick = () => {
+    const r = RECETAS().find(x => x.id === b.dataset.receta);
+    if (r) aplicarReceta(r);
   });
 
   cablearSesiones(main);
@@ -3795,6 +4080,9 @@ const vistaBuscar = async (main) => {
         // el objetivo manda; max_candidates es solo el tope de seguridad
         target_keep: cfg.goal, keep_top: Math.max(cfg.goal, 100),
         oos_pct: +cfg.oosPct || 0,
+        // sólo viaja si alguien lo pidió: sin la lista el servidor deja que
+        // cada candidata use el R:B configurado, como siempre
+        ...(cfg.rrBuscado?.length ? { rr_choices: cfg.rrBuscado } : {}),
         // sólo cuando se viene del botón de arreglo: repetir las mismas
         // candidatas es justo lo que hace que el arreglo funcione
         ...(SEMILLA_REINTENTO ? { seed: +SEMILLA_REINTENTO } : {}),
@@ -3807,7 +4095,7 @@ const vistaBuscar = async (main) => {
         risk: riskPayload(),
         settings: {
           spread: cfg.spread, slippage: cfg.slippage,
-          commission_pct: cfg.commission, initial_capital: cfg.capital,
+          commission_pct: cfg.commission, swap_anual: cfg.swap, initial_capital: cfg.capital,
         },
       }, j => {
         /* La semilla se consume acá, en la primera vuelta del sondeo: ya viajó
@@ -3879,7 +4167,7 @@ function renderIdle() {
           tf: esc(S.sel.timeframe || "1h"),
           tamano: S.cfg.sizing === "lots"
             ? t("sum.lots", { lots: S.cfg.lots }) : t("sum.risk", { pct: S.cfg.riskPct }),
-          rr: S.cfg.rr,
+          rr: comoSeDiceElRR(),
           trades: S.cfg.minTrades,
         })}${on.length
           ? " " + t("idle.and_meet", {
@@ -3984,6 +4272,11 @@ function etiquetaGenes(r) {
   if (r.stop_mult != null) partes.push(`SL=${r.stop_mult}×ATR`);
   if (r.trail_mult) partes.push(`${t("gene.trail")}=${r.trail_mult}×ATR`);
   if (r.max_bars) partes.push(t("gene.max_bars", { n: r.max_bars }));
+  /* La relación, sólo cuando la búsqueda la eligió. Con el R:B fijo por
+     configuración es el mismo para todas y repetirlo en cada fila es ruido;
+     cuando se busca, es lo que distingue una fila de otra — y la que más les
+     cambia el carácter, porque gobierna el win rate. */
+  if (r.rr_mult != null) partes.push(`R:B 1:${r.rr_mult}`);
   // la franja NO va acá: ya tiene su propia etiqueta al lado del nombre, y
   // repetirla hace la línea más larga sin decir nada nuevo
   return partes.join(" · ");
@@ -4653,14 +4946,14 @@ function ctxDeLaCorrida(snap) {
       riesgo: cfg.sizing === "lots" ? `${cfg.lots} ${t("mine.lots")}` : `${cfg.riskPct}%`,
     }),
     settings: { spread: cfg.spread, slippage: cfg.slippage,
-                commission_pct: cfg.commission, initial_capital: cfg.capital },
+                commission_pct: cfg.commission, swap_anual: cfg.swap, initial_capital: cfg.capital },
     // con que datos guardarla si el usuario aprieta Guardar desde la ficha
     guardar: {
       dataset_id: S.sel.dataset_id,
       dataset_name: (S.datasets.find(d => d.id === S.sel.dataset_id) || {}).name || "",
       timeframe: S.sel.timeframe || "1h", direction: cfg.direction,
       spread: cfg.spread, slippage: cfg.slippage,
-      commission: cfg.commission, capital: cfg.capital,
+      commission: cfg.commission, swap: cfg.swap, capital: cfg.capital,
       sizing: cfg.sizing, riskPct: cfg.riskPct, lots: cfg.lots, rr: cfg.rr,
       measured_range: r, split: (snap && snap.split) || null,
     },
@@ -5034,7 +5327,7 @@ async function openInspector(row, ctx) {
       spec: row.spec,
       settings: {
         spread: cfg.spread, slippage: cfg.slippage,
-        commission_pct: cfg.commission, initial_capital: cfg.capital,
+        commission_pct: cfg.commission, swap_anual: cfg.swap, initial_capital: cfg.capital,
       },
     });
     renderInspector($("#insp-body", host), row, result, ctx);
@@ -5306,6 +5599,7 @@ function renderInspector(box, row, res, ctx) {
           spread: g ? g.spread : S.cfg.spread,
           slippage: g ? g.slippage : S.cfg.slippage,
           commission: g ? g.commission : S.cfg.commission,
+          swap: g ? g.swap : S.cfg.swap,
           capital: g ? g.capital : S.cfg.capital,
           sizing: g ? g.sizing : S.cfg.sizing,
           riskPct: g ? g.riskPct : S.cfg.riskPct,

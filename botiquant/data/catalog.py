@@ -31,6 +31,21 @@ S&P 14,95%, oro 20,20%, Bitcoin 21,84% y EURUSD 4,05%. Pedirle 3% a los
 cuatro trata como iguales a mercados que no lo son: en EURUSD eso equivale a
 exigir casi el maximo posible, y la busqueda se va a decenas de minutos.
 
+``fuente`` dice de donde se baja el historico. Existe porque hay dos tipos de
+instrumento con costos que funcionan distinto:
+
+  · ``dukascopy`` son CFD. El costo esta en el SPREAD, en unidades de precio.
+  · ``binance`` son perpetuos de exchange. El libro es ajustado, asi que el
+    spread es despreciable y el costo real es la COMISION, en % del nocional.
+    Ademas cobran o pagan ``funding`` cada ocho horas por tener la posicion
+    abierta, que el CFD no tiene.
+
+La diferencia no es menor. Medido, ida y vuelta como % del precio: nuestro
+spread de S&P son 0,0072% y la comision taker de un exchange es 0,10% — trece
+veces mas. En Bitcoin la brecha se achica a 3,6x con taker y 1,4x con maker,
+porque su spread ya es alto. Por eso cripto es el mercado donde el exchange
+tiene sentido y los indices no.
+
 ``contract_size`` y ``min_lot`` son REFERENCIAS, igual que el spread: cada
 broker define las suyas y la pantalla dice que hay que comprobarlas. Existen
 para poder contestar la unica pregunta que el capital inicial deberia contestar
@@ -125,6 +140,59 @@ CATALOG: list[dict[str, Any]] = [
         "aliases": ["BTCUSD", "BTCUSDT", "Bitcoin"],
         "direction": "long",
     },
+    # ── Perpetuos de exchange ────────────────────────────────────────────
+    # Se bajan de Binance y no del exchange donde se opera. Medido: BTCUSDT en
+    # Binance y en BingX correlacionan 0,99974 en sus movimientos, con 0,0019%
+    # de diferencia media de precio — cien veces menos que la comision de una
+    # operacion. Y Binance da siete anios de historia contra los nueve meses de
+    # BingX. Se mina con los datos buenos y se ejecuta donde haya cuenta.
+    #
+    # `spread` en cero NO es un olvido: en un libro de ordenes el costo es la
+    # comision, y ponerlo tambien como spread seria cobrarlo dos veces.
+    {
+        "key": "btcusdt",
+        "label": "BTCUSDT",
+        "full_name": "Bitcoin perpetuo (Binance)",
+        "fuente": "binance",
+        "binance": "BTCUSDT",
+        "category": "cripto",
+        "from": "2019-09-08",
+        "spread": 0.0,
+        "slippage": 3.0,
+        "commission_pct": 0.04,
+        "stop_points": 800.0,
+        "target_points": 1600.0,
+        "contract_size": 1,
+        "min_lot": 0.001,
+        "min_cagr": 3.0,
+        "aliases": ["BTCUSDT", "BTC-USDT", "BTCUSD", "BTCPERP"],
+        # Bitcoin subio estos anios, pero a diferencia de los indices el
+        # funding le PAGA al lado corto: sobre siete anios la tasa media fue
+        # +11,61% anual, cobrada por los vendedores. Se permiten las dos
+        # direcciones para que la busqueda pueda encontrar esa familia.
+        "direction": "both",
+        "mejor_rendimiento": False,
+    },
+    {
+        "key": "ethusdt",
+        "label": "ETHUSDT",
+        "full_name": "Ethereum perpetuo (Binance)",
+        "fuente": "binance",
+        "binance": "ETHUSDT",
+        "category": "cripto",
+        "from": "2019-11-27",
+        "spread": 0.0,
+        "slippage": 0.2,
+        "commission_pct": 0.04,
+        "stop_points": 60.0,
+        "target_points": 120.0,
+        "contract_size": 1,
+        "min_lot": 0.001,
+        "min_cagr": 3.0,
+        "aliases": ["ETHUSDT", "ETH-USDT", "ETHUSD", "ETHPERP"],
+        "direction": "both",
+        "mejor_rendimiento": False,
+    },
 ]
 
 BY_KEY = {c["key"]: c for c in CATALOG}
@@ -159,6 +227,17 @@ def to_server_time(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def simbolo_fuente(entry: dict) -> str:
+    """El nombre del instrumento en SU fuente.
+
+    Existe porque el catálogo dejó de tener una sola: un CFD se identifica por
+    su símbolo de Dukascopy y un perpetuo por el de Binance. Todo lo que antes
+    leía `entry["dukascopy"]` directo rompía al aparecer el primer instrumento
+    que no viene de ahí.
+    """
+    return entry.get(entry.get("fuente", "dukascopy"), entry["label"])
+
+
 def download(key: str, workdir: Path, date_from: str | None = None,
              date_to: str | None = None,
              progress=None) -> pd.DataFrame:
@@ -176,13 +255,27 @@ def download(key: str, workdir: Path, date_from: str | None = None,
     if entry is None:
         raise ValueError(f"Instrumento desconocido: {key}")
 
-    if progress:
-        progress(0.02, f"Conectando con Dukascopy para {entry['label']}…")
+    fuente = entry.get("fuente", "dukascopy")
 
     def avance(frac: float, msg: str) -> None:
         if progress:
             progress(0.02 + frac * 0.88, f"{entry['label']} · {msg}")
 
+    if fuente == "binance":
+        # Un perpetuo de exchange ya viene en UTC y no pasa por el ajuste de
+        # hora de servidor: ese ajuste existe para alinear los CFD con el
+        # horario del broker, y un mercado que opera 24/7 no tiene sesiones
+        # que alinear.
+        from botiquant.data.binance import descargar as descargar_binance
+        if progress:
+            progress(0.02, f"Conectando con Binance para {entry['label']}…")
+        return descargar_binance(entry["binance"],
+                                 date_from or entry["from"],
+                                 date_to or _today(),
+                                 intervalo="1m", progreso=avance)
+
+    if progress:
+        progress(0.02, f"Conectando con Dukascopy para {entry['label']}…")
     df = descargar_dukascopy(entry["dukascopy"],
                              date_from or entry["from"],
                              date_to or _today(),

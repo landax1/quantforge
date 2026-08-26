@@ -41,7 +41,8 @@ from botiquant.core.jobs import DemasiadoTrabajo, JobManager
 from botiquant.core.models import (
     OPERATORS, PRICE_FIELDS, BacktestSettings, RiskConfig, StrategySpec, TimeFilter,
 )
-from botiquant.data.catalog import BY_KEY, CATALOG, default_stop_points
+from botiquant.data.catalog import (BY_KEY, CATALOG, default_stop_points,
+                                    simbolo_fuente)
 from botiquant.data.catalog import download as catalog_download
 from botiquant.data.loader import parse_ohlcv_csv
 from botiquant.data.sample import generate_sample
@@ -346,7 +347,25 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         return StrategySpec.from_dict(raw)
 
     def _settings(payload: dict[str, Any]) -> BacktestSettings:
-        return BacktestSettings.from_dict(payload.get("settings") or {})
+        """Los costos del pedido, más el funding si el instrumento lo tiene.
+
+        La serie NO viaja desde el navegador: la pone el servidor a partir del
+        dataset. Son miles de valores que el cliente no tiene motivo de conocer
+        —ni de poder falsear— y mandarlos en cada pedido sería absurdo.
+
+        Un CFD no tiene archivo de funding, así que `funding()` devuelve None y
+        el motor se comporta exactamente como antes.
+        """
+        ajustes = BacktestSettings.from_dict(payload.get("settings") or {})
+        ds_id = payload.get("dataset_id")
+        if ds_id:
+            try:
+                ajustes.funding = store.funding(ds_id)
+            except (OSError, ValueError, KeyError):
+                # una serie ilegible no puede tumbar una búsqueda: se mina sin
+                # ella, que es exactamente como se minaba antes de que existiera
+                ajustes.funding = None
+        return ajustes
 
     def _risk(payload: dict[str, Any]) -> RiskConfig:
         risk = RiskConfig.from_dict(payload.get("risk") or {})
@@ -379,7 +398,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     def _catalog_entry_for(name: str) -> dict[str, Any] | None:
         low = name.lower()
         for entry in CATALOG:
-            if entry["label"].lower() in low or entry["dukascopy"].lower() in low:
+            if (entry["label"].lower() in low
+                    or simbolo_fuente(entry).lower() in low):
                 return entry
         return None
 
@@ -402,6 +422,16 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             out.append({**d, "suggested_stop": stop, "suggested_target": target,
                         "suggested_spread": entry["spread"] if entry else None,
                         "suggested_slippage": entry["slippage"] if entry else None,
+                        # LA COMISIÓN, para los instrumentos que cobran así.
+                        #
+                        # Un CFD cobra en el spread y no manda nada acá; un
+                        # perpetuo de exchange cobra en % del nocional y ES todo
+                        # su costo de transacción. Sin esto la pantalla heredaba
+                        # la comisión en cero del instrumento anterior y se
+                        # minaba SIN costo de operar, que es la forma más fácil
+                        # de encontrar estrategias que no existen.
+                        "suggested_commission": (entry.get("commission_pct")
+                                                 if entry else None),
                         # Con qué unidad opera el bróker este instrumento. Sin
                         # esto la pantalla no puede contestar si la posición que
                         # sale del capital y el riesgo es siquiera operable: en
@@ -450,7 +480,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         owned = [d for d in store.list(duenio(request)) if d["source"] != "sample"]
         out = []
         for entry in CATALOG:
-            names = (entry["label"].lower(), entry["dukascopy"].lower())
+            names = (entry["label"].lower(), simbolo_fuente(entry).lower())
             have = next((d for d in owned
                          if any(n in d["name"].lower() for n in names)), None)
             out.append({**entry,
@@ -486,8 +516,30 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
         def work(progress):
             df = catalog_download(key, workdir, progress=progress)
-            progress(0.98, "Guardando…")
-            return store.add(f"{entry['label']} M1", df, source="dukascopy")
+            progress(0.96, "Guardando…")
+            fuente = entry.get("fuente", "dukascopy")
+            ds = store.add(f"{entry['label']} M1", df, source=fuente)
+
+            # EL FUNDING SE BAJA CON LAS VELAS, no después ni aparte.
+            #
+            # Si no se guardara acá, el instrumento quedaría minable pero sin
+            # su costo de mantener la posición, y el motor —que no tiene forma
+            # de saber que falta— minaría en silencio con números que no son.
+            # Es la peor manera de fallar: resultados que parecen correctos.
+            #
+            # Un fallo bajando las tasas NO tira abajo la descarga: las velas
+            # ya están guardadas y son lo caro. Se avisa y el instrumento queda
+            # utilizable, aunque sin funding.
+            if fuente == "binance":
+                progress(0.97, "Bajando el funding…")
+                try:
+                    from botiquant.data.binance import funding as bajar_funding
+                    tasas = bajar_funding(entry["binance"], entry["from"])
+                    store.guardar_funding(ds["id"], tasas)
+                    progress(0.99, f"{len(tasas):,} tasas de funding")
+                except Exception as exc:                    # noqa: BLE001
+                    progress(0.99, f"Sin funding ({exc}); las velas están bien")
+            return ds
         return {"job_id": jobs.submit("download", work)}
 
     @app.post("/api/datasets/import-path")
@@ -814,12 +866,39 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         def _crit(key):
             v = payload.get(key)
             return float(v) if v not in (None, "") else None
+        def _rr_choices(p: dict[str, Any]) -> list[float] | None:
+            """Los R:B entre los que puede elegir cada candidata.
+
+            Sin lista, cada una usa el configurado y todo funciona como antes.
+            Con lista, la relación pasa a ser un gen — que es lo único que
+            permite encontrar familias de win rate alto: medido sobre SP500 a
+            una hora, con 1:2 fijo ninguna de treinta llega a 60% de aciertos,
+            y con 0,5 lo pasan quince.
+
+            Se acota a un rango con sentido: por debajo de 0,2 el objetivo cae
+            adentro del spread en casi cualquier instrumento, y por encima de
+            10 casi ninguna operación llega a tocarlo.
+            """
+            crudo = p.get("rr_choices")
+            if not isinstance(crudo, (list, tuple)) or not crudo:
+                return None
+            vistos: list[float] = []
+            for x in crudo[:24]:
+                try:
+                    v = round(float(x), 4)
+                except (TypeError, ValueError):
+                    continue
+                if 0.2 <= v <= 10.0 and v not in vistos:
+                    vistos.append(v)
+            return vistos or None
+
         accept = {"min_pf": _crit("min_pf"), "min_sharpe": _crit("min_sharpe"),
                   "min_win_rate_pct": _crit("min_win_rate_pct"),
                   "max_dd_pct": _crit("max_dd_pct"), "min_net_pct": _crit("min_net_pct"),
                   "min_cagr_pct": _crit("min_cagr_pct"),
                   "min_ret_dd": _crit("min_ret_dd"),
                   "min_trades_month": _crit("min_trades_month"),
+                  "min_trades_week": _crit("min_trades_week"),
                   "min_exposure_pct": _crit("min_exposure_pct")}
 
         # the goal is a number of ACCEPTED strategies; max_candidates only caps
@@ -904,6 +983,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 keep_top=int(min(max(int(payload.get("keep_top", 100)), 10), 1000)),
                 oos_pct=float(min(max(float(payload.get("oos_pct") or 0.0), 0.0), 80.0)),
                 sessions=ses,
+                rr_choices=_rr_choices(payload),
                 method="evolution" if payload.get("method") == "evolution" else "random",
                 population=int(min(max(int(payload.get("population", 40)), 8), 200)),
                 seed=seed,

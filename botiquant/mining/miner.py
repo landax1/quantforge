@@ -35,7 +35,7 @@ _ROW_METRICS = ("net_profit_pct", "cagr_pct", "profit_factor", "max_drawdown_pct
                 # los dos que se pueden exigir como filtro tienen que viajar en
                 # la fila: si no, el databank no puede mostrar ni ordenar por
                 # aquello mismo que se le pidió a la búsqueda
-                "recovery_factor", "trades_per_month")
+                "recovery_factor", "trades_per_month", "trades_per_week")
 
 # after this many consecutive duplicate genomes the space is considered mined out
 _EXHAUSTED_AFTER = 300
@@ -86,6 +86,11 @@ def _row(genome: Genome, spec, m: dict[str, float], score: float,
         "stop_mult": genome.stop_mult,
         "trail_mult": genome.trail_mult,
         "max_bars": genome.max_bars,
+        # El R:B viaja en la fila desde que dejo de ser configuracion fija. Sin
+        # esto, dos estrategias que solo se diferencian en la relacion se ven
+        # IDENTICAS en el databank — y es el gen que mas les cambia el caracter:
+        # a 0,5 el win rate mediano es 59,5% y a 2,0 es 39,8%.
+        "rr_mult": genome.rr_mult,
         # la franja viaja como id y como etiquetas: el banco tiene que poder
         # mostrar y ordenar por horario sin volver a consultar el catálogo
         "session": genome.session,
@@ -115,6 +120,10 @@ _CRITERIA: tuple[tuple[str, str, str, str], ...] = (
     # operación: subir el riesgo agranda las dos partes por igual.
     ("min_ret_dd", "recovery_factor", "min", "retorno / drawdown"),
     ("min_trades_month", "trades_per_month", "min", "operaciones por mes"),
+    # Por semana además de por mes: quien está pasando un desafío de fondeo
+    # tiene fecha de vencimiento y necesita saber que va a operar seguido, no
+    # que el promedio mensual cierre.
+    ("min_trades_week", "trades_per_week", "min", "operaciones por semana"),
     ("min_cagr_pct", "cagr_pct", "min", "retorno anual"),
     ("min_exposure_pct", "exposure_pct", "min", "tiempo en mercado"),
     # Sigue aceptándose para no romper las corridas ya archivadas, pero la
@@ -166,6 +175,11 @@ def mine(
     population: int = 40,
     oos_pct: float = 0.0,
     sessions: list[str] | None = None,
+    #: Los R:B entre los que puede elegir cada candidata. Vacío o None deja el
+    #: comportamiento de siempre: todas usan el configurado. Con una lista, la
+    #: relación pasa a ser un gen más — que es lo único que permite encontrar
+    #: familias de win rate alto, imposibles con un 1:2 fijo.
+    rr_choices: list[float] | None = None,
     handle: JobHandle | None = None,
 ) -> dict[str, Any]:
     """Mining loop over the strategy space.
@@ -580,7 +594,8 @@ def mine(
         """A genome not tried yet, or None once the space looks exhausted."""
         nonlocal dupes
         for _ in range(_EXHAUSTED_AFTER):
-            g = random_genome(drivers, filters, max_filters, rng, sessions=sessions)
+            g = random_genome(drivers, filters, max_filters, rng,
+                              sessions=sessions, rr_choices=rr_choices)
             if g.key() not in seen:
                 seen.add(g.key())
                 dupes = 0

@@ -37,6 +37,45 @@ STOP_ATR_MIN, STOP_ATR_MAX, STOP_ATR_STEP = 1.0, 5.0, 0.25
 TRAIL_CHOICES: tuple[float, ...] = (0.0, 0.0, 0.0, 1.0, 1.5, 2.0, 3.0, 4.0)
 MAX_BARS_CHOICES: tuple[int, ...] = (0, 0, 0, 0, 12, 24, 48, 96, 192)
 
+# EL RIESGO:BENEFICIO, cuando se lo deja buscar.
+#
+# Era lo único de la salida que seguía siendo configuración fija y multiplicaba
+# a todas las candidatas por igual. Medido sobre SP500 a una hora, 30
+# estrategias por corrida: con 1:2 la mediana de aciertos es 39,8% y NINGUNA
+# llega a 60%; con 0,5 la mediana es 59,5% y quince de treinta pasan el 60%.
+#
+# O sea que pedir win rate alto con el 1:2 de fábrica no devuelve nada nunca,
+# por más candidatas que se prueben: el techo no lo pone la búsqueda, lo pone
+# la aritmética de la relación. Con el R:B adentro del genoma, la misma
+# búsqueda puede traer las dos familias.
+#
+# Se ofrece SÓLO si se pide una lista: sin ella cada candidata usa el valor
+# configurado, que es exactamente lo que hacía antes.
+RR_CHOICES: tuple[float, ...] = (0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0)
+
+# EL TIPO DE STOP SE EVALUO COMO GEN Y SE DESCARTO. Queda anotado para que no se
+# vuelva a derivar.
+#
+# La sospecha era razonable y paralela a la del R:B: `stop_type` esta fijo en
+# "atr" y la busqueda no lo toca, mientras el motor tambien soporta "percent",
+# "points" y "money". Un stop ATR se ensancha cuando sube la volatilidad y uno
+# porcentual no, asi que en principio son familias distintas.
+#
+# Medido dos veces. Sobre genomas crudos el win rate apenas se movia —34,6% a
+# 37,6%— aunque la caida iba de 23% a 75%, lo bastante sugestivo como para
+# mirarlo en serio. La prueba que decide corrio el minero entero con el mismo
+# filtro y la misma semilla, SP500 a una hora, diez anios, tope de 1500:
+#
+#     stop            caida (rango)     win rate (rango)   anual   caida <=10%
+#     ATR (hoy)       3,3-30,9  27,6    37,0-52,7  15,7    2,80%    10 de 28
+#     porcentual 1%   3,7-21,7  18,0    26,7-55,8  29,1    2,98%     9 de 30
+#     porcentual 0,5% 5,5-30,9  25,5    37,3-52,1  14,8    2,67%     8 de 30
+#
+# Las medianas son casi identicas y los rangos se solapan. NO abre perfiles que
+# la busqueda no alcance ya con el stop ATR, que es lo contrario de lo que paso
+# con el R:B —ahi eran cero de treinta contra quince de treinta por encima de
+# 60% de aciertos—. Volverlo gen seria complejidad sin variedad.
+
 
 def random_stop_mult(rng) -> float:
     steps = int(round((STOP_ATR_MAX - STOP_ATR_MIN) / STOP_ATR_STEP))
@@ -66,6 +105,11 @@ class Genome:
     stop_mult: float | None = None
     trail_mult: float = 0.0
     max_bars: int = 0
+    # La relación riesgo:beneficio. `None` significa "la que configuró el
+    # usuario", que es como funcionó siempre; con un número, esta candidata
+    # lleva el suyo. Es un gen por la misma razón que la franja: cuál conviene
+    # depende de las entradas, y el usuario no lo puede saber de antemano.
+    rr_mult: float | None = None
     # En qué franja horaria opera. Es un gen y no configuración porque cuál
     # sirve depende de las entradas: una ruptura de rango vive de la apertura
     # de Londres y una reversión a la media de las horas quietas. Ver
@@ -87,6 +131,11 @@ class Genome:
         # misma y la búsqueda descarta la segunda por duplicada
         if self.session and self.session != sesiones.SIN_RESTRICCION:
             exit_sig += f"/hs={self.session}"
+        # sin esto, dos candidatas iguales salvo el R:B cuentan como la misma y
+        # la búsqueda descarta la segunda por duplicada — que es justo la que
+        # tiene el perfil de aciertos distinto
+        if self.rr_mult is not None:
+            exit_sig += f"/rb={self.rr_mult:g}"
         return "|".join(parts) + "#" + gene_sig + exit_sig
 
 
@@ -94,10 +143,17 @@ def exit_risk(risk: RiskConfig | None, genome: "Genome") -> RiskConfig | None:
     """El RiskConfig de una candidata: sus salidas evolucionadas + el R:B pedido."""
     if risk is None or genome.stop_mult is None:
         return risk
+    # El R:B de esta candidata si lo trae, y si no el configurado. Se escribe
+    # también en `reward_ratio` y no sólo en el objetivo: es lo que queda
+    # guardado en la estrategia y lo que lee el exportador a MetaTrader, así
+    # que si no se actualiza, el robot sale con una relación que no es la que
+    # se midió.
+    rb = genome.rr_mult if genome.rr_mult is not None else risk.reward_ratio
     return replace(
         risk,
         stop_type="atr", stop_value=genome.stop_mult,
-        target_type="atr", target_value=round(genome.stop_mult * risk.reward_ratio, 4),
+        target_type="atr", target_value=round(genome.stop_mult * rb, 4),
+        reward_ratio=rb,
         trail_atr=genome.trail_mult,
         max_bars_in_trade=genome.max_bars,
     )
@@ -147,6 +203,18 @@ def random_genes(t_id: str, rng) -> dict[str, float]:
     return out
 
 
+def random_rr(opciones: list[float] | None, rng) -> float | None:
+    """Un R:B de los permitidos. Sin lista, `None` = usar el configurado."""
+    if not opciones:
+        return None
+    limpias = [float(x) for x in opciones if float(x) > 0]
+    if not limpias:
+        return None
+    if len(limpias) == 1:
+        return limpias[0]
+    return limpias[int(rng.integers(0, len(limpias)))]
+
+
 def random_session(sessions: list[str] | None, rng) -> str:
     """Una franja horaria de las permitidas. Con una sola, siempre esa."""
     opciones = sesiones.normalizar(sessions)
@@ -157,7 +225,8 @@ def random_session(sessions: list[str] | None, rng) -> str:
 
 def random_genome(drivers: list[str], filters: list[str],
                   max_filters: int, rng, evolve_exits: bool = True,
-                  sessions: list[str] | None = None) -> Genome:
+                  sessions: list[str] | None = None,
+                  rr_choices: list[float] | None = None) -> Genome:
     """One random strategy recipe: driver + filter subset + random genes."""
     drv = drivers[int(rng.integers(0, len(drivers)))]
     k = int(rng.integers(0, max_filters + 1)) if filters else 0
@@ -168,6 +237,7 @@ def random_genome(drivers: list[str], filters: list[str],
                   stop_mult=random_stop_mult(rng) if evolve_exits else None,
                   trail_mult=random_trail_mult(rng) if evolve_exits else 0.0,
                   max_bars=random_max_bars(rng) if evolve_exits else 0,
+                  rr_mult=random_rr(rr_choices, rng),
                   session=random_session(sessions, rng))
 
 

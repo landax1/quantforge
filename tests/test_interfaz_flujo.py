@@ -279,8 +279,14 @@ def test_cada_consejo_tiene_su_dibujo():
     No son adornos: el mapa GRAFICOS se indexa por el id del consejo, así que
     un consejo nuevo sin dibujo se ve como una tarjeta a medias al lado de las
     otras cinco."""
-    consejos = re.findall(r'id: "(\w+)",\s*ico:', APP)
-    assert consejos, "no se pudo leer la lista de consejos"
+    # Sólo adentro de CONSEJOS. Las recetas de búsqueda tienen la misma forma
+    # —`id` y `ico`— y las estaba contando como consejos, exigiéndoles un
+    # dibujo que no les corresponde: son botones que configuran la búsqueda,
+    # no tarjetas de lectura.
+    bloque = re.search(r"const CONSEJOS = \(\) => \[(.*?)\];", APP, re.S)
+    assert bloque, "no se pudo leer la lista de consejos"
+    consejos = re.findall(r'id: "(\w+)",\s*ico:', bloque.group(1))
+    assert consejos, "la lista de consejos quedó vacía"
     mapa = re.search(r"const GRAFICOS = \{(.*?)\};", APP, re.S)
     assert mapa, "falta el mapa de gráficos"
     dibujados = set(re.findall(r"(\w+):", mapa.group(1)))

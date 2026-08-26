@@ -88,6 +88,44 @@ def run_backtest(
     abs_slip = settings.spread / 2.0 + settings.slippage
 
     equity = np.empty(n, dtype=np.float64)
+    # EL FUNDING DE UN PERPETUO, precalculado por barra.
+    #
+    # Se resuelve acá y no adentro del bucle porque el bucle corre una vez por
+    # vela y esto es una búsqueda por fecha: hacerlo adentro multiplicaría por
+    # cien mil el trabajo. Acá se suma cuánto se cobra en CADA barra, mirando
+    # qué liquidaciones caen en su intervalo.
+    #
+    # Queda en ceros cuando no hay serie, y con eso un CFD se comporta igual
+    # que antes de que esto existiera.
+    fund_bar = np.zeros(n, dtype=float)
+    if getattr(settings, "funding", None) is not None and len(settings.funding):
+        tasas = settings.funding
+        # a qué barra pertenece cada liquidación; searchsorted da el índice de
+        # la primera vela cuyo tiempo es >= el del cobro
+        idx = np.searchsorted(df.index.values, tasas.index.values, side="left")
+        dentro = idx < n
+        np.add.at(fund_bar, idx[dentro], tasas.values[dentro])
+
+    # EL SWAP DE UN CFD, prorrateado a la duración de la barra.
+    #
+    # Viene como un solo número anual —el que está en la ficha del símbolo del
+    # bróker— porque no existe la serie histórica que sí existe para el
+    # funding. Se reparte parejo en el tiempo: la mediana del salto entre velas
+    # da cuánto año ocupa una barra.
+    #
+    # Se mide la mediana y no el primer salto porque los datos tienen huecos de
+    # fin de semana, y un salto de 48 horas convertiría el swap de todo el
+    # backtest en el de tres días.
+    swap_bar = 0.0
+    tasa_swap = float(getattr(settings, "swap_anual", 0.0) or 0.0)
+    if tasa_swap > 0.0 and n > 1:
+        # Se le pregunta a pandas en vez de dividir enteros a mano: la
+        # resolución del índice puede ser de nanosegundos o de microsegundos
+        # según cómo se armó el dataset, y asumir una da un swap mil veces
+        # más chico sin que nada falle a la vista.
+        seg = (df.index[1:] - df.index[:-1]).median().total_seconds()
+        swap_bar = tasa_swap / 100.0 * seg / 31_557_600.0
+
     cash = settings.initial_capital
     pos = 0            # +1 long, -1 short, 0 flat
     units = 0.0
@@ -217,6 +255,17 @@ def run_backtest(
                 best_px = min(best_px, l[i])
                 nuevo = best_px + trail_dist
                 stop_px = nuevo if np.isnan(stop_px) else min(stop_px, nuevo)
+
+        # 5) el funding se cobra —o se cobra a favor— sobre la posición ABIERTA.
+        #    Tasa positiva: el largo paga y el corto cobra. `pos` vale +1 o -1,
+        #    así que el signo sale solo.
+        if pos != 0:
+            if fund_bar[i]:
+                cash -= pos * units * c[i] * fund_bar[i]
+            # El swap, en cambio, se lo cobra el BRÓKER: lo pagan los dos
+            # lados. Por eso no lleva el signo de `pos`.
+            if swap_bar:
+                cash -= units * c[i] * swap_bar
 
         equity[i] = cash + (pos * units * (c[i] - entry_px) if pos != 0 else 0.0)
 
