@@ -300,3 +300,30 @@ def test_el_registro_viene_de_lo_mas_nuevo_a_lo_mas_viejo(piloto):
     piloto.bot = bot
     assert [f["cuando"] for f in piloto.estado()["registro"]] == \
         ["t4", "t3", "t2", "t1", "t0"]
+
+
+# ------------------------------------------- lo que el bot NO sabe reproducir
+
+def test_se_niega_a_operar_una_estrategia_con_trailing():
+    """El motor mueve el stop cada vela; el bot deja UNA orden en el exchange.
+
+    Operar igual seria operar algo distinto de lo que se midio, y sin ningun
+    error a la vista: la estrategia entra, sale y cierra — solo que por
+    niveles que no son los del backtest. Encontrado comparando una estrategia
+    minada de verdad contra su backtest.
+    """
+    ema = lambda p: {"type": "indicator", "name": "EMA", "params": {"period": p}}
+    doc = {"formato": "botiquant-bot", "version": 1, "nombre": "t",
+           "ejecucion": {"simbolo": "BTC-USDT", "timeframe": "1h"},
+           "estrategia": {"name": "t", "direction": "both",
+                          "entry_long": [{"left": ema(5), "op": "cross_above",
+                                          "right": ema(20)}],
+                          "risk": {"size_mode": "risk_pct", "size_value": 1.0,
+                                   "stop_type": "atr", "stop_value": 2.0,
+                                   "target_type": "atr", "target_value": 4.0,
+                                   "atr_period": 14, "trail_atr": 1.5}}}
+    with pytest.raises(ValueError, match="trailing"):
+        Bot(doc=doc, adaptador=_Exchange(), modo=SIMULACRO)
+
+    doc["estrategia"]["risk"]["trail_atr"] = 0
+    Bot(doc=doc, adaptador=_Exchange(), modo=SIMULACRO)   # sin trailing, arranca

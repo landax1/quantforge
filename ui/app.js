@@ -1846,6 +1846,12 @@ function panelBot(e, hayClave) {
             `<option value="${esc(x.id)}">${esc(x.name)} · ${
               esc(String((x.meta || {}).dataset_name || "").split(" ")[0])}</option>`).join("")}
         </select></label>
+      <label class="fld"><span>${esc(t("bot.tope"))}</span>
+        <input type="number" id="bot-tope" min="0" step="1" value="0"
+               placeholder="0"></label>
+    </div>
+    <p class="help-note">${esc(t("bot.tope_nota"))}</p>
+    <div class="fld-pair mt">
       <label class="fld"><span>${esc(t("bot.modo"))}</span>
         <select id="bot-modo">
           <option value="">${esc(t("bot.elegir"))}</option>
@@ -2016,7 +2022,9 @@ PAGES.exchanges = async (main) => {
         timeframe: (fila.meta || {}).timeframe,
         settings: { commission_pct: (fila.meta || {}).commission },
       });
-      await api.post("/api/bot/encender", { bot: archivo, modo });
+      const tope = parseFloat(($("#bot-tope", main) || {}).value) || 0;
+      await api.post("/api/bot/encender",
+                     { bot: archivo, modo, perdida_maxima: tope });
       toast(t("bot.encendido"), "ok");
       await navigate("exchanges");
     } catch (e) { toast(e.message, "err"); }

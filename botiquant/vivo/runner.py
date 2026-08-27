@@ -76,6 +76,26 @@ class Bot:
         doc = leer_bingx(Path(ruta).read_text(encoding="utf-8"))
         return cls(doc=doc, adaptador=adaptador, modo=modo, capital=capital)
 
+    def __post_init__(self) -> None:
+        """Se niega a operar lo que no sabe reproducir.
+
+        EL TRAILING NO ESTA IMPLEMENTADO EN VIVO. El motor mueve el stop cada
+        vela siguiendo el maximo a favor; el bot deja UNA orden puesta en el
+        exchange y no la mueve. Operar igual seria operar algo distinto de lo
+        que se midio, sin ningun error a la vista: la estrategia sale, entra y
+        cierra, sólo que por niveles que no son los del backtest.
+
+        Negarse es peor experiencia y mejor producto. Cuando el trailing este
+        implementado —hay que reemplazar la orden de stop en cada vela que el
+        maximo mejore— esto se saca.
+        """
+        if getattr(self.spec.risk, "trail_atr", 0) > 0:
+            raise ValueError(
+                "Esta estrategia usa un stop dinámico (trailing), y el bot "
+                "todavía no sabe moverlo en el exchange. Operaría con un stop "
+                "fijo, que no es lo que se midió. Usá una estrategia sin "
+                "trailing, o exportala a TradingView, que sí lo reproduce.")
+
     # ------------------------------------------------------------- lo básico
     @property
     def spec(self) -> StrategySpec:

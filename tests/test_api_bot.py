@@ -153,3 +153,27 @@ def test_servido_a_varios_no_existe(tmp_path, monkeypatch):
     finally:
         monkeypatch.delenv("BQ_MULTIUSER", raising=False)
         importlib.reload(modulo)
+
+
+def test_el_tope_de_perdida_llega_hasta_el_bot(client):
+    """Se configura en la pantalla y tiene que llegar a la guarda.
+
+    Estaba conectado del motor para abajo pero no habia forma de ponerlo desde
+    la aplicacion: una proteccion que existe y no se puede activar no protege
+    de nada.
+    """
+    from botiquant.vivo.piloto import PILOTO
+    r = client.post("/api/bot/encender", json={
+        "bot": _doc(), "modo": "simulacro", "perdida_maxima": 250.0})
+    assert r.status_code == 200, r.text
+    assert PILOTO.bot.perdida_maxima_diaria == 250.0
+    client.post("/api/bot/apagar")
+
+
+def test_sin_tope_declarado_queda_en_cero(client):
+    """Cero es SIN tope. Inventar uno prudente por defecto detendria bots que
+    su dueno no pidio detener, y a la hora equivocada."""
+    from botiquant.vivo.piloto import PILOTO
+    client.post("/api/bot/encender", json={"bot": _doc(), "modo": "simulacro"})
+    assert PILOTO.bot.perdida_maxima_diaria == 0.0
+    client.post("/api/bot/apagar")
