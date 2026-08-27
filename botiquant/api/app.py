@@ -951,7 +951,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "min_trades": out.get("min_trades"), "accept": out.get("accept") or {},
                 "target_keep": out.get("target_keep"),
                 "sessions": out.get("sessions") or [],
-                "risk": dataclasses.asdict(risk), "settings": dataclasses.asdict(settings),
+                "risk": dataclasses.asdict(risk),
+                # to_dict() y NO asdict(): el segundo arrastra la serie de
+                # funding entera y revienta al archivar la corrida, despues de
+                # haber corrido todas las candidatas.
+                "settings": settings.to_dict(),
                 "measured_range": out.get("measured_range"), "range": out.get("range"),
                 "split": out.get("split"), "exhausted": out.get("exhausted"),
                 "hit_cap": out.get("hit_cap"),
@@ -1651,10 +1655,27 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                    dir: str = "", limite: int = _PAGINA_BANCO,
                    desde: int = 0) -> list[dict[str, Any]]:
         desc = None if dir not in ("asc", "desc") else (dir == "desc")
-        return db.list_banco(
+        filas = db.list_banco(
             corrida_id=corrida or None, orden=orden, desc=desc,
             limite=max(1, min(limite, _PAGINA_BANCO)), desde=max(0, desde),
             user_id=duenio(request))
+
+        # HASTA DÓNDE LLEGA CADA UNA, en la lista y no después de guardarla.
+        #
+        # Una corrida deja cien candidatas y de esas unas pocas tienen
+        # evidencia fuera de muestra suficiente para operar con plata. Sin
+        # esto hay que guardarlas de a una para enterarse, que es justo el
+        # trabajo que la cantera existe para evitar.
+        from botiquant import cantera
+        for f in filas:
+            entrada = {"metrics": f.get("metrics"), "oos": f.get("oos")}
+            r = cantera.revisar(entrada, cantera.REAL)
+            f["cantera"] = {
+                "real": r.pasa,
+                "practica": cantera.revisar(entrada, cantera.PRACTICA).pasa,
+                "por_que_no": cantera.por_que_no(r),
+            }
+        return filas
 
     @app.delete("/api/corridas/{cid}")
     def borrar_corrida(request: Request, cid: str) -> dict[str, int]:

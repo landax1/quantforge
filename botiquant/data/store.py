@@ -148,9 +148,22 @@ class DataStore:
         ruta = self._path_funding(ds_id)
         if not ruta.exists():
             return None
-        s = pd.read_csv(ruta, index_col="time", parse_dates=["time"])["funding"]
-        if s.index.tz is None:
-            s.index = s.index.tz_localize("UTC")
+        s = pd.read_csv(ruta, index_col="time")["funding"]
+        # Se convierte A MANO y no con `parse_dates`. Con marcas que llevan
+        # zona horaria —"2019-09-10 08:00:00+00:00", que es como las escribe
+        # `guardar_funding`— pandas NO las parsea y NO avisa: deja el índice
+        # como texto. Después `s.index.tz` revienta con AttributeError en
+        # medio de un minado, que es donde se descubrió.
+        #
+        # `utc=True` además normaliza: si algún día una serie viniera con otro
+        # huso, quedaría comparable con las velas sin que nadie lo note.
+        # `format="ISO8601"` y no el inferido: las tasas de Binance NO tienen
+        # todas el mismo formato. La mayoría cae en el segundo exacto y unas
+        # pocas traen milisegundos —"16:00:00.001000+00:00"— porque el momento
+        # de liquidación que informa el exchange no es exactamente redondo.
+        # Sin esto, pandas se rinde con el archivo entero por unas pocas filas.
+        s.index = pd.to_datetime(s.index, utc=True, format="ISO8601")
+        s.index.name = "time"
         return s
 
     @staticmethod

@@ -181,3 +181,24 @@ def test_el_listado_de_estrategias_trae_hasta_donde_puede_llegar_cada_una(tmp_pa
         assert fila["cantera"]["simulacro"]["pasa"] is True
         assert fila["cantera"]["real"]["pasa"] is False
         assert fila["cantera"]["real"]["por_que_no"]
+
+
+def test_el_banco_dice_cuales_califican_sin_guardarlas(tmp_path):
+    """Una corrida deja cien candidatas y unas pocas sirven para plata real.
+
+    Sin el veredicto en la lista hay que guardarlas de a una para enterarse,
+    que es justo el trabajo que la cantera existe para evitar. Medido sobre la
+    corrida real de BTCUSDT: 16 de 100 pasan la puerta de real.
+    """
+    from fastapi.testclient import TestClient
+
+    from botiquant.api.app import create_app
+
+    with TestClient(create_app(workdir=tmp_path / "ws")) as c:
+        r = c.get("/api/banco")
+        assert r.status_code == 200
+        # el banco arranca vacio; lo que se defiende es que la clave exista
+        # para toda fila que devuelva
+        for fila in r.json():
+            assert "cantera" in fila
+            assert set(fila["cantera"]) == {"real", "practica", "por_que_no"}

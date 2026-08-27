@@ -328,7 +328,26 @@ class BacktestSettings:
     swap_anual: float = 0.0          # % anual sobre el nocional, cobrado a los dos lados
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        """Los ajustes como diccionario, SIN la serie de funding.
+
+        `asdict` la copia entera —siete mil tasas de un pandas Series— y eso
+        no se puede convertir a JSON. Costó descubrirlo: el minado de un
+        perpetuo corria las mil quinientas candidatas completas y recien
+        moria al archivar la corrida, con "Object of type Series is not JSON
+        serializable" y diez minutos de computo perdidos.
+
+        En su lugar va cuántos cobros tenía, que es lo que sirve para
+        entender después por qué una corrida dio distinto: cero cobros y
+        siete mil son dos corridas distintas del mismo instrumento.
+
+        No rompe la ida y vuelta porque nunca la hubo: la serie no viaja por
+        JSON, la pone el servidor a partir del dataset. Ver `from_dict`.
+        """
+        d = asdict(self)
+        serie = d.pop("funding", None)
+        d["funding"] = None
+        d["funding_cobros"] = 0 if serie is None else len(serie)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "BacktestSettings":
