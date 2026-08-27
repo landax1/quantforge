@@ -3200,3 +3200,27 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 .bot-hora { color: var(--muted); font-variant-numeric: tabular-nums; }
 .bot-det { color: var(--muted); overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; }
+
+/* ---- las familias de instrumentos en Datos ----
+   Agrupadas desde que hay dos familias de cripto: un CFD de bitcoin y un
+   perpetuo de bitcoin se ven casi iguales en una grilla plana —el nombre
+   difiere en una letra— y son cosas distintas. El subtítulo de cada familia
+   dice para qué sirve, que es la pregunta real de alguien que elige. */
+.inst-fam { margin-top: 24px; }
+.inst-fam:first-child { margin-top: 16px; }
+
+.fam-tit { display: flex; align-items: baseline; gap: 8px; margin: 0 0 12px;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.02em; }
+.fam-sub { font-size: 12px; font-weight: 400; color: var(--muted);
+  letter-spacing: 0; }
+.fam-n { margin-left: auto; flex: none; font-size: 11px; color: var(--muted);
+  background: var(--panel-2); border-radius: 999px; padding: 2px 8px;
+  font-variant-numeric: tabular-nums; }
+
+/* En pantallas angostas el subtítulo se va abajo en vez de apretar el nombre
+   de la familia, que es lo que hay que poder leer de un vistazo. */
+@media (max-width: 640px) {
+  .fam-tit { flex-wrap: wrap; }
+  .fam-sub { flex-basis: 100%; }
+  .fam-n { margin-left: 0; }
+}

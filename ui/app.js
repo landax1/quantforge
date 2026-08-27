@@ -217,6 +217,10 @@ const INST_FAMILIA = {
     '<circle cx="12" cy="12" r="8.5"/>' +
     '<path d="M9.6 8.4h4a1.9 1.9 0 0 1 0 3.8H9.6h4.6a1.9 1.9 0 0 1 0 3.8H9.6"/>' +
     '<path d="M11.2 6.6v1.8M11.2 16v1.8"/>' },
+  perpetuos: { icono:
+    '<circle cx="12" cy="12" r="8.5"/>' +
+    '<path d="M9.6 8.4h4a1.9 1.9 0 0 1 0 3.8H9.6h4.6a1.9 1.9 0 0 1 0 3.8H9.6"/>' +
+    '<path d="M11.2 6.6v1.8M11.2 16v1.8"/>' },
   _otro: { icono:
     '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M9 10h6M9 14h6"/>' },
 };
@@ -2085,11 +2089,27 @@ PAGES.consejos = async (main) => {
     <p class="stage-note tips-pie">${esc(t("tips.foot"))}</p>`;
 };
 
+/* Las familias de instrumentos, en el orden en que se muestran.
+
+   El orden NO es alfabético: va de lo que la mayoría ya conoce a lo más
+   nuevo. Alfabético pondría los perpetuos primero por casualidad.
+
+   Los rótulos se piden ENTEROS y no armando la clave con el nombre de la
+   categoría: armados así, el examen de textos ve el prefijo suelto y una
+   clave que falte se dibuja en crudo sin que nada avise. */
+const FAMILIAS = () => [
+  { cat: "indices", rotulo: t("cat.indices"), sub: t("famsub.indices") },
+  { cat: "forex", rotulo: t("cat.forex"), sub: t("famsub.forex") },
+  { cat: "metals", rotulo: t("cat.metals"), sub: t("famsub.metals") },
+  { cat: "crypto", rotulo: t("cat.crypto"), sub: t("famsub.crypto") },
+  { cat: "perpetuos", rotulo: t("cat.perpetuos"), sub: t("famsub.perpetuos") },
+];
+
 /* ============================================================ página DATOS */
 PAGES.data = async (main) => {
   await refreshDatasets();
 
-  const cards = S.catalog.map(c => {
+  const tarjeta = (c) => {
     const ready = !!c.dataset_id;
     const fam = INST_FAMILIA[c.category] || INST_FAMILIA._otro;
     return `<div class="inst-card ${ready ? "ready" : ""}">
@@ -2115,12 +2135,46 @@ PAGES.data = async (main) => {
              ? `<span class="muted" style="font-size:11.5px">${esc(t("data.unavailable"))}</span>`
              : `<button class="btn" data-dl="${c.key}">${icono("bajar")} ${esc(t("data.download"))}</button>`}`}
     </div>`;
-  }).join("") + `
-    <button class="inst-card add-card" id="inst-add">
-      <span class="add-plus">+</span>
-      <b>${esc(t("data.add"))}</b>
-      <span>${esc(t("data.add_sub"))}</span>
-    </button>`;
+  };
+
+  /* AGRUPADAS POR FAMILIA, y el orden se fija acá.
+
+     Con cuatro instrumentos daba igual; con dos familias de cripto no. Un
+     CFD de bitcoin y un perpetuo de bitcoin se ven casi iguales en una grilla
+     plana —el nombre difiere en una letra— y son cosas distintas: uno se
+     opera por MetaTrader y paga spread, el otro en un exchange y paga
+     comisión y funding.
+
+     El orden NO es alfabético: va de lo que la mayoría ya conoce a lo más
+     nuevo. Alfabético pondría los perpetuos primero por casualidad. */
+  const familias = FAMILIAS()
+    .map(f => ({ ...f, xs: S.catalog.filter(c => c.category === f.cat) }))
+    .filter(f => f.xs.length);
+  // por si algún día se agrega una categoría y nadie se acuerda de esa lista
+  const conocidas = new Set(FAMILIAS().map(f => f.cat));
+  const sueltas = S.catalog.filter(c => !conocidas.has(c.category));
+  if (sueltas.length) {
+    familias.push({ cat: "_otro", rotulo: t("cat.otros"), sub: "", xs: sueltas });
+  }
+
+  const cards = familias.map(f => `
+    <section class="inst-fam">
+      <h3 class="fam-tit">
+        <span>${esc(f.rotulo)}</span>
+        <span class="fam-sub">${esc(f.sub)}</span>
+        <span class="fam-n">${f.xs.filter(c => c.dataset_id).length}/${f.xs.length}</span>
+      </h3>
+      <div class="inst-grid">${f.xs.map(tarjeta).join("")}</div>
+    </section>`).join("") + `
+    <section class="inst-fam">
+      <div class="inst-grid">
+        <button class="inst-card add-card" id="inst-add">
+          <span class="add-plus">+</span>
+          <b>${esc(t("data.add"))}</b>
+          <span>${esc(t("data.add_sub"))}</span>
+        </button>
+      </div>
+    </section>`;
 
   const rows = S.datasets.map(d => `
     <tr>
@@ -2145,7 +2199,7 @@ PAGES.data = async (main) => {
        tenia la aplicacion. -->
   <div class="card llana">
     <h2>${esc(t("data.library"))} <span class="hint">${esc(t("data.library_hint"))}</span></h2>
-    <div class="inst-grid">${cards}</div>
+    ${cards}
     ${progressHtml("dl-prog")}
   </div>
 

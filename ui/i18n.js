@@ -1294,10 +1294,21 @@ const STR = {
 
      El servidor conserva lo que de verdad le importa —símbolo, fechas, spread,
      distancias— y la categoría como CLAVE, no como rótulo. */
+  "cat.otros": ["Other", "Otros"],
+  "famsub.indices": ["stock index CFDs, for MetaTrader",
+                     "CFDs de índices bursátiles, para MetaTrader"],
+  "famsub.forex": ["currency pairs, for MetaTrader",
+                   "pares de divisas, para MetaTrader"],
+  "famsub.metals": ["gold and silver CFDs, for MetaTrader",
+                    "CFDs de metales, para MetaTrader"],
+  "famsub.crypto": ["crypto CFDs, for MetaTrader — spread, no funding",
+                    "CFDs de cripto, para MetaTrader — spread, sin funding"],
+  "famsub.perpetuos": ["perpetual futures, for an exchange — commission and funding",
+                       "futuros perpetuos, para un exchange — comisión y funding"],
   "cat.indices": ["Indices", "Índices"],
   "cat.forex": ["Forex", "Forex"],
   "cat.metals": ["Metals", "Metales"],
-  "cat.crypto": ["Crypto", "Cripto"],
+  "cat.crypto": ["Crypto CFD", "Cripto CFD"],
 
   /* El distintivo del instrumento que más estrategias produce. El texto tiene
      que ser cierto: sale de medir los cuatro con la misma vara sobre los datos
@@ -1330,7 +1341,7 @@ const STR = {
   "inst.ethusdt": [
     "Ethereum perpetual — same funding mechanics as Bitcoin, more movement",
     "Ethereum perpetuo — mismo funding que Bitcoin, más movimiento"],
-  "cat.cripto": ["Crypto perpetuals", "Perpetuos de cripto"],
+  "cat.perpetuos": ["Crypto perpetuals", "Perpetuos de cripto"],
 
   "data.ready": ["{nombre}: {n} bars ready", "{nombre}: {n} velas listas"],
   "ui.n_bars": ["{n} bars", "{n} velas"],

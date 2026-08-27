@@ -126,7 +126,7 @@ CATALOG: list[dict[str, Any]] = [
     {
         "key": "btcusd",
         "label": "BTCUSD",
-        "full_name": "Bitcoin / US Dollar",
+        "full_name": "Bitcoin CFD (para MetaTrader)",
         "dukascopy": "btcusd",
         "category": "crypto",
         "from": "2017-01-01",
@@ -137,7 +137,10 @@ CATALOG: list[dict[str, Any]] = [
         "contract_size": 1,
         "min_lot": 0.01,
         "min_cagr": 3.0,
-        "aliases": ["BTCUSD", "BTCUSDT", "Bitcoin"],
+        # "BTCUSDT" NO es alias de este: es el nombre del perpetuo, que es
+        # otro instrumento con otros costos. Estaba de cuando el perpetuo no
+        # existia, y buscarlo devolvia el CFD.
+        "aliases": ["BTCUSD", "Bitcoin CFD"],
         "direction": "long",
     },
     # ── Perpetuos de exchange ────────────────────────────────────────────
@@ -152,10 +155,10 @@ CATALOG: list[dict[str, Any]] = [
     {
         "key": "btcusdt",
         "label": "BTCUSDT",
-        "full_name": "Bitcoin perpetuo (Binance)",
+        "full_name": "Bitcoin perpetuo (para exchange)",
         "fuente": "binance",
         "binance": "BTCUSDT",
-        "category": "cripto",
+        "category": "perpetuos",
         "from": "2019-09-08",
         "spread": 0.0,
         "slippage": 3.0,
@@ -176,10 +179,10 @@ CATALOG: list[dict[str, Any]] = [
     {
         "key": "ethusdt",
         "label": "ETHUSDT",
-        "full_name": "Ethereum perpetuo (Binance)",
+        "full_name": "Ethereum perpetuo (para exchange)",
         "fuente": "binance",
         "binance": "ETHUSDT",
-        "category": "cripto",
+        "category": "perpetuos",
         "from": "2019-11-27",
         "spread": 0.0,
         "slippage": 0.2,
