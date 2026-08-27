@@ -2135,6 +2135,64 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                                  headers={"Content-Disposition":
                                           f'attachment; filename="{archivo}"'})
 
+    @app.post("/api/export/portafolio")
+    def export_portafolio(payload: dict[str, Any],
+                          request: Request) -> dict[str, Any]:
+        """Baja un CONJUNTO de EA que van a convivir en una cuenta.
+
+        No es exportar cinco veces de a uno con menos clics: el reparto del
+        capital, la concentracion y el riesgo combinado solo existen mirando el
+        conjunto, y exportando de a uno nadie los mira nunca.
+
+        Cada EA sale con SU PORCION ya adentro. Con cinco archivos exportados
+        por separado, cada uno se cree dueno del 100% de la cuenta y entre
+        todos arriesgan cinco veces lo que se pidio — y el aviso de riesgo de
+        cada uno dice que esta bien, porque contra su propio numero lo esta.
+        """
+        _exigir_para_descargar(request)
+        from botiquant.reports import portafolio as port
+
+        ids = [str(x) for x in (payload.get("ids") or [])]
+        if not ids:
+            raise HTTPException(400, "Elegí al menos una estrategia.")
+        if len(ids) > 20:
+            raise HTTPException(
+                400, "Veinte es el máximo por conjunto. Con más, las porciones "
+                     "quedan tan chicas que el lote mínimo del bróker manda "
+                     "sobre lo que la estrategia quiere arriesgar.")
+
+        dueno = duenio(request)
+        filas = []
+        for sid in ids:
+            try:
+                filas.append(db.get_strategy(sid, dueno))
+            except KeyError:
+                raise HTTPException(404, f"La estrategia {sid} ya no está.")
+
+        reparto = port.repartir(
+            filas, usar_pct=float(payload.get("usar_pct") or 90.0))
+
+        carpeta = carpeta_de_estrategias()
+        carpeta.mkdir(parents=True, exist_ok=True)
+        escritos = []
+        for f in filas:
+            meta = f.get("meta") or {}
+            nombre = _nombre_de_archivo(f"BQ_{f['name']}", "BQ_Strategy")
+            codigo = export_mql5(
+                StrategySpec.from_dict(f["spec"]), ea_name=nombre,
+                symbol_hint=meta.get("dataset_name") or "",
+                timeframe_hint=meta.get("timeframe") or "",
+                metrics=meta.get("metrics"),
+                server_utc_offset=_offset_broker(payload),
+                porcion=reparto.porciones[str(f["id"])])
+            destino = carpeta / f"{nombre}.mq5"
+            destino.write_text(codigo, encoding="utf-8")
+            escritos.append({"nombre": f["name"], "archivo": destino.name,
+                             "porcion_pct": reparto.porciones[str(f["id"])]})
+
+        return {"carpeta": str(carpeta), "archivos": escritos,
+                **port.resumen(filas, reparto)}
+
     @app.post("/api/export/{formato}/archivo")
     def export_a_disco(formato: str, payload: dict[str, Any],
                        request: Request) -> dict[str, Any]:
