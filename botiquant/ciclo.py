@@ -63,6 +63,19 @@ class Parametros:
     #: Hasta dónde promueve solo. Ver el encabezado: llega hasta práctica.
     promover_hasta: str = estados.PRACTICA
 
+    #: Cuántas estrategias del MISMO instrumento pueden correr a la vez.
+    #:
+    #: Es el filtro barato contra los gemelos ocultos. Medido sobre las cinco
+    #: que el ciclo puso en práctica: dos de BTCUSDT correlacionan +0,71 y dos
+    #: de S&P +0,64, mientras que entre instrumentos distintos va de -0,18 a
+    #: +0,11. Nombres distintos, reglas distintas, y se mueven juntas.
+    #:
+    #: Dos y no una: dos estrategias sobre el mismo mercado PUEDEN ser
+    #: opuestas —una de tendencia y una de reversión— y prohibirlo del todo
+    #: dejaría afuera diversificación real. Dos es el punto donde todavía se
+    #: puede argumentar y tres ya es concentración.
+    max_por_instrumento: int = 2
+
     # ------------------------------------------------------------ retirar
     #: Con el semáforo en naranja, cuántas vueltas espera antes de retirar.
     #: No cero: un naranja puede volver a verde, y retirar de inmediato haría
@@ -91,6 +104,7 @@ class Parametros:
             instrumentos=[str(x) for x in (d.get("instrumentos") or [])][:20],
             reservar_pct=entero("reservar_pct", 0, 60),
             validar_por_vuelta=entero("validar_por_vuelta", 1, 50),
+            max_por_instrumento=entero("max_por_instrumento", 1, 10),
             max_en_practica=entero("max_en_practica", 1, 20),
             # NO se acepta `produccion` aunque venga en el payload. La
             # promoción automática a plata real no es una preferencia que se
@@ -145,14 +159,41 @@ def que_toca(p: Parametros, *, estrategias: list[dict[str, Any]],
 
     # 2) promover lo que ya está probado, si queda lugar
     if en_practica < p.max_en_practica:
-        listas = [e["id"] for e in estrategias
-                  if estados.normalizar(e.get("estado")) == estados.VALIDADA
-                  and (e.get("cantera") or {}).get("practica")]
+        # CUANTAS DE CADA INSTRUMENTO YA ESTAN CORRIENDO. Sin esto el ciclo
+        # promueve por orden de llegada, y si un dia encuentra tres estrategias
+        # buenisimas de Bitcoin promueve las tres — y eso no es un portafolio
+        # de tres, es una apuesta con tres nombres.
+        corriendo = {}
+        for e in estrategias:
+            if estados.normalizar(e.get("estado")) in (estados.PRACTICA,
+                                                       estados.PRODUCCION):
+                inst = str(e.get("instrumento") or "")
+                if inst:
+                    corriendo[inst] = corriendo.get(inst, 0) + 1
+
+        listas, llenos = [], set()
+        for e in estrategias:
+            if estados.normalizar(e.get("estado")) != estados.VALIDADA:
+                continue
+            if not (e.get("cantera") or {}).get("practica"):
+                continue
+            inst = str(e.get("instrumento") or "")
+            # Sin instrumento conocido no se puede juzgar la concentracion, y
+            # frenarla por eso seria castigarla por un dato que falta.
+            if inst and corriendo.get(inst, 0) >= p.max_por_instrumento:
+                llenos.add(inst)
+                continue
+            listas.append(e["id"])
+            if inst:
+                corriendo[inst] = corriendo.get(inst, 0) + 1
+
         if listas:
             hueco = p.max_en_practica - en_practica
-            return Tarea(PROMOVER,
-                         f"hay {hueco} lugar(es) libre(s) y {len(listas)} "
-                         f"validada(s) esperando", listas[:hueco])
+            motivo = (f"hay {hueco} lugar(es) libre(s) y {len(listas)} "
+                      f"validada(s) esperando")
+            if llenos:
+                motivo += f"; {len(llenos)} instrumento(s) ya al tope"
+            return Tarea(PROMOVER, motivo, listas[:hueco])
 
     # 3) validar lo que se encontró y nadie probó
     sin_probar = [e["id"] for e in estrategias

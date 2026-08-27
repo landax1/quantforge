@@ -184,3 +184,82 @@ def test_un_valor_que_no_es_numero_no_rompe_el_ciclo():
 def test_la_ida_y_vuelta_conserva_todo():
     p = _p(minar_cada_horas=24, max_en_practica=8, instrumentos=["BTCUSDT"])
     assert Parametros.from_dict(p.to_dict()).to_dict() == p.to_dict()
+
+
+# ------------------------------------------------------- los gemelos ocultos
+
+def _ei(id_, estado, instrumento, *, practica_ok=True):
+    return {"id": id_, "estado": estado, "instrumento": instrumento,
+            "cantera": {"practica": practica_ok}, "vueltas_en_naranja": 0}
+
+
+def test_no_promueve_una_tercera_del_mismo_instrumento():
+    """Medido sobre las cinco que el ciclo puso en practica de verdad: dos de
+    BTCUSDT correlacionan +0,71 y dos de S&P +0,64.
+
+    Sin este tope, el ciclo promueve por orden de llegada — y si un dia
+    encuentra tres estrategias buenisimas de Bitcoin promueve las tres. Eso no
+    es un portafolio de tres: es una apuesta con tres nombres.
+    """
+    t = que_toca(_p(max_por_instrumento=2, max_en_practica=5),
+                 estrategias=[_ei("v1", estados.PRACTICA, "btc"),
+                              _ei("v2", estados.PRACTICA, "btc"),
+                              _ei("nueva", estados.VALIDADA, "btc")],
+                 horas_desde_el_ultimo_minado=1, en_practica=2)
+    assert t.accion != PROMOVER
+
+
+def test_pero_SI_promueve_una_de_otro_instrumento():
+    """La contracara. Si frenara todo, el tope dejaria de diversificar y
+    pasaria a impedir que crezca la cartera."""
+    t = que_toca(_p(max_por_instrumento=2, max_en_practica=5),
+                 estrategias=[_ei("v1", estados.PRACTICA, "btc"),
+                              _ei("v2", estados.PRACTICA, "btc"),
+                              _ei("otra", estados.VALIDADA, "sp500")],
+                 horas_desde_el_ultimo_minado=1, en_practica=2)
+    assert t.accion == PROMOVER
+    assert t.ids == ["otra"]
+
+
+def test_el_motivo_dice_que_hay_instrumentos_al_tope():
+    """Si no, alguien ve "promovio una de tres" y no entiende por que."""
+    t = que_toca(_p(max_por_instrumento=1, max_en_practica=5),
+                 estrategias=[_ei("v1", estados.PRACTICA, "btc"),
+                              _ei("btc2", estados.VALIDADA, "btc"),
+                              _ei("otra", estados.VALIDADA, "sp500")],
+                 horas_desde_el_ultimo_minado=1, en_practica=1)
+    assert t.accion == PROMOVER
+    assert t.ids == ["otra"]
+    assert "al tope" in t.motivo
+
+
+def test_no_promueve_dos_del_mismo_instrumento_en_la_MISMA_vuelta():
+    """El tope se cuenta sobre lo que ya corre MAS lo que se esta por promover.
+
+    Sin eso, una vuelta con cinco lugares libres y tres candidatas de BTC las
+    promueve las tres de un saque, y el tope no sirve para nada.
+    """
+    t = que_toca(_p(max_por_instrumento=2, max_en_practica=5),
+                 estrategias=[_ei("a", estados.VALIDADA, "btc"),
+                              _ei("b", estados.VALIDADA, "btc"),
+                              _ei("c", estados.VALIDADA, "btc")],
+                 horas_desde_el_ultimo_minado=1, en_practica=0)
+    assert len(t.ids) == 2
+
+
+def test_sin_instrumento_conocido_no_se_frena():
+    """Frenarla por un dato que falta seria castigarla por algo que no es
+    suyo, y las guardadas viejas no lo tienen."""
+    t = que_toca(_p(max_por_instrumento=1),
+                 estrategias=[_ei("v1", estados.PRACTICA, "btc"),
+                              _ei("sin", estados.VALIDADA, "")],
+                 horas_desde_el_ultimo_minado=1, en_practica=1)
+    assert t.accion == PROMOVER
+    assert t.ids == ["sin"]
+
+
+def test_el_tope_por_instrumento_es_configurable_y_acotado():
+    from botiquant.ciclo import Parametros
+    assert Parametros().max_por_instrumento == 2
+    assert Parametros.from_dict({"max_por_instrumento": 0}).max_por_instrumento == 1
+    assert Parametros.from_dict({"max_por_instrumento": 99}).max_por_instrumento == 10

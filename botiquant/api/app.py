@@ -2359,6 +2359,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             entrada = {"metrics": meta.get("metrics"), "oos": meta.get("oos")}
             filas.append({
                 "id": f["id"], "estado": est.normalizar(f.get("estado")),
+                # EL INSTRUMENTO, para el tope de concentracion. Sin esto el
+                # ciclo no ve que tres candidatas son todas de Bitcoin y las
+                # promueve las tres — que no es un portafolio de tres sino una
+                # apuesta con tres nombres.
+                "instrumento": str(meta.get("dataset_id") or ""),
                 "cantera": {"practica": cantera.revisar(entrada, cantera.PRACTICA).pasa,
                             "real": cantera.revisar(entrada, cantera.REAL).pasa},
                 # El semaforo cuenta vueltas en naranja, y eso todavia no se
