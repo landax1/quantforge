@@ -3136,3 +3136,38 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 }
 .guia-aviso b { font-size: 14px; }
 .guia-aviso span { color: var(--text-2); font-size: 13px; line-height: 1.55; }
+
+/* ---- la pantalla donde alguien pega la clave de su exchange ----
+   Es el momento de más confianza que le pedimos a nadie en la aplicación, así
+   que las tres reglas van ARRIBA y con peso tipográfico, no en gris al final.
+   La tarjeta de la cuenta real lleva un borde distinto: no para decorar, sino
+   porque es la única pantalla donde un clic de más mueve plata de verdad. */
+.ex-aviso { border-color: color-mix(in srgb, var(--ok) 28%, transparent); }
+.ex-reglas { list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 12px; }
+.ex-reglas li { display: flex; flex-direction: column; gap: 2px; }
+.ex-reglas b { font-size: 14px; color: var(--ok); }
+.ex-reglas span { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+.ex-card { margin-top: 16px; }
+.ex-real { border-color: color-mix(in srgb, var(--warn) 34%, transparent); }
+.ex-head { display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 16px; }
+.ex-head b { font-size: 16px; }
+.ex-head .help-note { margin-top: 2px; }
+
+.ex-estado { flex: none; font-size: 12px; padding: 4px 12px; border-radius: 999px;
+  background: var(--panel-2); color: var(--muted);
+  font-variant-numeric: tabular-nums; }
+.ex-estado.on { background: color-mix(in srgb, var(--ok) 14%, transparent);
+  color: var(--ok); }
+
+.ex-pasos { margin-top: 16px; display: flex; flex-direction: column; gap: 2px; }
+.ex-paso { display: flex; align-items: baseline; gap: 8px; font-size: 13px;
+  padding: 6px 0; border-top: 1px solid var(--line); }
+.ex-paso:first-child { border-top: 0; }
+.ex-paso .ex-ic { flex: none; }
+.ex-paso.ok .ex-ic { color: var(--ok); }
+.ex-paso.mal .ex-ic { color: var(--danger); }
+.ex-paso b { flex: none; }
+.ex-paso span:last-child { color: var(--muted); }

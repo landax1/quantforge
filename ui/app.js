@@ -1243,6 +1243,7 @@ async function navigate(page, vista) {
 const TITULOS = () => ({
   bienvenida: t("wel.title"), data: t("nav.data"), mining: t("nav.mining"),
   saved: t("nav.saved"), consejos: t("nav.tips"),
+  exchanges: t("nav.exchanges"),
 });
 
 /* Todo lo que vive fuera del <main> y por lo tanto no se repinta al navegar:
@@ -1749,6 +1750,145 @@ const CONSEJOS = () => [
   { id: "riesgo",   ico: "baja", clave: "tip.riesgo" },
   { id: "zona",     ico: "info", clave: "tip.zona" },
 ];
+
+/* ---------------------------------------------------------------- exchanges
+
+   La pantalla donde alguien pega la clave de su exchange. Es el momento de
+   mas confianza que le pedimos a nadie en toda la aplicacion, asi que la
+   pantalla tiene que decir tres cosas antes que nada: que la clave se queda
+   en su computadora, que hay que crearla SIN RETIRO, y que se empieza en
+   practica. No al final y en gris: arriba, donde se lee.
+
+   PRACTICA Y REAL SON DOS TARJETAS SEPARADAS y no un interruptor. Con un
+   interruptor, un clic de mas opera con plata de verdad. Asi hay que cargar
+   otra clave a proposito. */
+PAGES.exchanges = async (main) => {
+  const estado = await api.get("/api/exchanges");
+  const por = {};
+  estado.forEach(x => { por[x.entorno] = x; });
+
+  const tarjeta = (entorno) => {
+    const e = por[entorno] || { configurada: false };
+    const real = entorno === "real";
+    return `
+    <div class="card ex-card${real ? " ex-real" : ""}">
+      <div class="ex-head">
+        <div>
+          <b>${esc(t(real ? "ex.real" : "ex.practica"))}</b>
+          <p class="help-note">${esc(t(real ? "ex.real_sub" : "ex.practica_sub"))}</p>
+        </div>
+        <span class="ex-estado ${e.configurada ? "on" : ""}">${
+          esc(e.configurada
+              ? (e.ilegible ? t("ex.ilegible") : t("ex.cargada", { cola: e.termina_en || "" }))
+              : t("ex.vacia"))}</span>
+      </div>
+      <div class="fld-pair mt">
+        <label class="fld"><span>${esc(t("ex.api_key"))}</span>
+          <input type="text" autocomplete="off" spellcheck="false"
+                 data-ex="key" data-entorno="${entorno}"
+                 placeholder="${e.configurada ? "········" + esc(e.termina_en || "") : ""}"></label>
+        <label class="fld"><span>${esc(t("ex.secret"))}</span>
+          <input type="password" autocomplete="off" spellcheck="false"
+                 data-ex="secret" data-entorno="${entorno}"
+                 placeholder="${e.configurada ? "········" : ""}"></label>
+      </div>
+      <div class="controls mt">
+        <button class="btn" data-ex-guardar="${entorno}">${esc(t("ex.guardar"))}</button>
+        <button class="btn ghost" data-ex-probar="${entorno}" ${e.configurada ? "" : "disabled"}
+          >${esc(t("ex.probar"))}</button>
+        <button class="linkbtn" data-ex-borrar="${entorno}" ${e.configurada ? "" : "hidden"}
+          >${esc(t("ex.borrar"))}</button>
+      </div>
+      <div class="ex-pasos" id="ex-pasos-${entorno}" hidden></div>
+    </div>`;
+  };
+
+  main.innerHTML = pageHead(t("nav.exchanges"), esc(t("ex.sub"))) + `
+    <div class="card ex-aviso">
+      <ul class="ex-reglas">
+        <li><b>${esc(t("ex.regla1_t"))}</b><span>${esc(t("ex.regla1"))}</span></li>
+        <li><b>${esc(t("ex.regla2_t"))}</b><span>${esc(t("ex.regla2"))}</span></li>
+        <li><b>${esc(t("ex.regla3_t"))}</b><span>${esc(t("ex.regla3"))}</span></li>
+      </ul>
+    </div>
+    ${tarjeta("practica")}
+    ${tarjeta("real")}`;
+
+  const campo = (entorno, cual) =>
+    $(`[data-ex="${cual}"][data-entorno="${entorno}"]`, main);
+
+  /* Los nombres de los pasos se escriben ENTEROS y no se arman concatenando
+     el prefijo con el nombre del paso. Armados así, el examen de textos no
+     puede saber qué claves se piden —ve el prefijo suelto— y una clave que
+     falte se dibuja en crudo en la pantalla sin que nada avise.
+
+     (El examen lee el archivo como texto, así que ni siquiera se puede
+     ESCRIBIR la versión mala en un comentario: la cuenta igual.) */
+  const NOMBRE_PASO = () => ({
+    responde: t("ex.paso_responde"), clave: t("ex.paso_clave"),
+    saldo: t("ex.paso_saldo"), modo: t("ex.paso_modo"),
+    posiciones: t("ex.paso_posiciones"),
+  });
+
+  const pintarPasos = (entorno, r) => {
+    const caja = $(`#ex-pasos-${entorno}`, main);
+    const nombres = NOMBRE_PASO();
+    caja.hidden = false;
+    caja.innerHTML = r.pasos.map(p => `
+      <div class="ex-paso ${p.ok ? "ok" : "mal"}">
+        <span class="ex-ic">${icono(p.ok ? "tilde" : "alerta")}</span>
+        <b>${esc(nombres[p.paso] || p.paso)}</b>
+        <span>${esc(p.detalle)}</span>
+      </div>`).join("");
+  };
+
+  $$("[data-ex-guardar]", main).forEach(b => {
+    b.onclick = async () => {
+      const entorno = b.dataset.exGuardar;
+      const key = campo(entorno, "key").value.trim();
+      const secret = campo(entorno, "secret").value.trim();
+      if (!key || !secret) return toast(t("ex.faltan"), "err");
+      b.disabled = true;
+      try {
+        await api.post(`/api/exchanges/bingx/${entorno}`,
+                       { api_key: key, secret });
+        /* Los campos se vacian apenas se guardo. Una clave que queda a la
+           vista en un input se ve en una captura de pantalla, en un video de
+           YouTube y en cualquiera que pase por atras. */
+        campo(entorno, "key").value = "";
+        campo(entorno, "secret").value = "";
+        toast(t("ex.guardada"), "ok");
+        await navigate("exchanges");
+      } catch (e) { toast(e.message, "err"); }
+      b.disabled = false;
+    };
+  });
+
+  $$("[data-ex-probar]", main).forEach(b => {
+    b.onclick = async () => {
+      const entorno = b.dataset.exProbar;
+      b.disabled = true;
+      try {
+        pintarPasos(entorno,
+                    await api.post(`/api/exchanges/bingx/${entorno}/comprobar`, {}));
+      } catch (e) { toast(e.message, "err"); }
+      b.disabled = false;
+    };
+  });
+
+  $$("[data-ex-borrar]", main).forEach(b => {
+    b.onclick = async () => {
+      const entorno = b.dataset.exBorrar;
+      if (!confirm(t("ex.borrar_seguro"))) return;
+      try {
+        await api.del(`/api/exchanges/bingx/${entorno}`);
+        toast(t("ex.borrada"), "ok");
+        await navigate("exchanges");
+      } catch (e) { toast(e.message, "err"); }
+    };
+  });
+};
+
 
 PAGES.consejos = async (main) => {
   main.innerHTML = pageHead(t("nav.tips"), esc(t("tips.sub"))) + `

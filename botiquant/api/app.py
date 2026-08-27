@@ -2015,6 +2015,103 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             raise HTTPException(500, f"No se pudo abrir: {exc}") from exc
         return {"ruta": str(ruta)}
 
+    # ------------------------------------------------------------- exchanges
+    #
+    # SOLO EN EL ESCRITORIO. En un servidor compartido, guardar las claves de
+    # trading de otras personas es un problema completamente distinto —custodia
+    # de credenciales ajenas— y no es lo que esta aplicacion hace. Con
+    # BQ_MULTIUSER=1 estos endpoints no existen.
+
+    def _solo_escritorio() -> None:
+        if MULTIUSER:
+            raise HTTPException(
+                404, "Las claves de exchange sólo se configuran en la "
+                     "aplicación de escritorio.")
+
+    @app.get("/api/exchanges")
+    def exchanges_listar() -> list[dict[str, Any]]:
+        """Qué claves hay cargadas. NUNCA devuelve un secreto."""
+        _solo_escritorio()
+        from botiquant.vivo import claves
+        return claves.listar(workdir / "claves")
+
+    @app.post("/api/exchanges/{exchange}/{entorno}")
+    def exchanges_guardar(exchange: str, entorno: str,
+                          payload: dict[str, Any]) -> dict[str, Any]:
+        """Cifra y guarda una clave. Devuelve sólo lo que se puede mostrar."""
+        _solo_escritorio()
+        from botiquant.vivo import claves
+        try:
+            return claves.guardar(
+                workdir / "claves", exchange, entorno,
+                api_key=str(payload.get("api_key") or ""),
+                secret=str(payload.get("secret") or ""))
+        except claves.ClaveError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.delete("/api/exchanges/{exchange}/{entorno}")
+    def exchanges_borrar(exchange: str, entorno: str) -> dict[str, Any]:
+        _solo_escritorio()
+        from botiquant.vivo import claves
+        try:
+            return {"borrada": claves.borrar(workdir / "claves", exchange, entorno)}
+        except claves.ClaveError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+    @app.post("/api/exchanges/{exchange}/{entorno}/comprobar")
+    def exchanges_comprobar(exchange: str, entorno: str) -> dict[str, Any]:
+        """Prueba la conexión de menos a más riesgo. NO manda ninguna orden.
+
+        Los dos primeros pasos no usan la clave, así que si fallan el problema
+        no es de credenciales: es de red o de región. Distinguirlo acá ahorra
+        media hora de revisar una clave que estaba bien.
+        """
+        _solo_escritorio()
+        from botiquant.data import bingx
+        from botiquant.vivo import claves
+        from botiquant.vivo.adaptador import BASE_PRACTICA, BASE_REAL, BingX
+
+        pasos: list[dict[str, Any]] = []
+
+        def paso(nombre: str, fn) -> bool:
+            try:
+                pasos.append({"paso": nombre, "ok": True, "detalle": fn()})
+                return True
+            except bingx.BingXError as exc:
+                # El rechazo del exchange, sin envolverlo en una frase nuestra:
+                # su texto viene en inglés siempre y la interfaz está en dos
+                # idiomas, así que una frase en español alrededor queda mal en
+                # los dos. El código es lo que se busca cuando hay que
+                # preguntarle a alguien.
+                pasos.append({"paso": nombre, "ok": False,
+                              "detalle": exc.del_exchange})
+                return False
+            except Exception as exc:                       # noqa: BLE001
+                pasos.append({"paso": nombre, "ok": False, "detalle": str(exc)})
+                return False
+
+        base = BASE_REAL if entorno == "real" else BASE_PRACTICA
+        lector = BingX("", "", base=base)
+
+        if not paso("responde", lambda: f"{len(lector.velas('BTC-USDT', '1h', 2))} velas"):
+            return {"pasos": pasos, "listo": False}
+
+        try:
+            api_key, secret = claves.leer(workdir / "claves", exchange, entorno)
+        except claves.ClaveError as exc:
+            pasos.append({"paso": "clave", "ok": False, "detalle": str(exc)})
+            return {"pasos": pasos, "listo": False}
+
+        cliente = BingX(api_key, secret, base=base)
+        if not paso("saldo", lambda: f"{cliente.capital():,.2f} disponible"):
+            return {"pasos": pasos, "listo": False}
+        paso("modo", lambda: "cobertura" if cliente.cobertura() else "simple")
+        paso("posiciones",
+             lambda: "hay una abierta" if cliente.posicion("BTC-USDT").abierta
+             else "ninguna abierta")
+
+        return {"pasos": pasos, "listo": all(p["ok"] for p in pasos)}
+
     @app.post("/api/abrir-carpeta")
     def abrir_carpeta(payload: dict[str, Any] | None = None) -> dict[str, str]:
         """Abre en el explorador una de NUESTRAS carpetas de salida.

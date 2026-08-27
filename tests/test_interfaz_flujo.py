@@ -84,13 +84,23 @@ def test_cada_veredicto_tiene_su_frase(clave):
     assert f'"{clave}"' in DICC
 
 
-def test_el_menu_tiene_cuatro_secciones():
-    """Datos, Minado, Mis estrategias, Consejos. Nada más.
+def test_el_menu_tiene_cinco_secciones():
+    """Datos, Minado, Mis estrategias, Exchanges, Consejos. Nada más.
 
     El databank dejó de ser una entrada del menú y pasó a ser la segunda vista
-    de Minado: uno busca y después mira lo que salió, es la misma tarea."""
+    de Minado: uno busca y después mira lo que salió, es la misma tarea.
+
+    Exchanges se agregó cuando el bot pasó a poder operar: es una sección y no
+    un panel adentro de otra pantalla porque configurar una clave de trading
+    no es un paso de ningún flujo — se hace una vez, aparte, y se vuelve a
+    mirar cuando algo falla.
+
+    Esta lista es a propósito difícil de cambiar sin querer: cada entrada nueva
+    del menú compite con las que ya están por la atención de alguien que
+    todavía no entiende la aplicación.
+    """
     paginas = re.findall(r'data-page="([^"]+)"', INDEX)
-    assert paginas == ["data", "mining", "saved", "consejos"], (
+    assert paginas == ["data", "mining", "saved", "exchanges", "consejos"], (
         f"el menú cambió sin querer: {paginas}")
 
 

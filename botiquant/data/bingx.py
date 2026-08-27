@@ -56,7 +56,27 @@ INTERVALOS = ("1m", "5m", "15m", "30m", "1h", "4h", "1d")
 
 
 class BingXError(RuntimeError):
-    """Algo salió mal hablando con BingX, con un texto que se puede mostrar."""
+    """Algo salió mal hablando con BingX, con un texto que se puede mostrar.
+
+    Cuando el rechazo viene del exchange, `codigo` y `mensaje` traen sus dos
+    campos por separado. Sirve para mostrarlos sin envolverlos en una frase
+    nuestra: la interfaz está en dos idiomas y el texto de BingX viene en
+    inglés siempre, así que una frase en español alrededor de un mensaje en
+    inglés queda mal en los dos.
+    """
+
+    def __init__(self, texto: str, codigo: int | None = None,
+                 mensaje: str = "") -> None:
+        super().__init__(texto)
+        self.codigo = codigo
+        self.mensaje = mensaje
+
+    @property
+    def del_exchange(self) -> str:
+        """El rechazo tal como lo dijo BingX, sin envoltorio."""
+        if self.codigo is None:
+            return str(self)
+        return f"[{self.codigo}] {self.mensaje or '—'}"
 
 
 #: Los caracteres que no pueden aparecer en el valor de un parámetro. Romperían
@@ -142,7 +162,8 @@ def _pedir(ruta: str, params: dict[str, Any] | None = None,
     if isinstance(cuerpo, dict) and cuerpo.get("code") not in (0, None):
         raise BingXError(
             f"BingX rechazó el pedido ({cuerpo.get('code')}): "
-            f"{cuerpo.get('msg') or 'sin detalle'}")
+            f"{cuerpo.get('msg') or 'sin detalle'}",
+            codigo=cuerpo.get("code"), mensaje=str(cuerpo.get("msg") or ""))
     return cuerpo.get("data") if isinstance(cuerpo, dict) else cuerpo
 
 
