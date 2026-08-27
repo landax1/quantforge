@@ -2299,6 +2299,118 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     # plata, asi que todo lo de esta seccion es explicito: el modo se manda, el
     # entorno se manda, y ninguno tiene un default que opere.
 
+    # ------------------------------------------------------------ el ciclo
+    #
+    # SOLO EN EL ESCRITORIO, igual que el bot. Un ciclo que mina, promueve y
+    # opera solo, corriendo en un servidor compartido, seria operar la cuenta
+    # de otra persona sin que este mirando.
+
+    def _leer_para_el_ciclo() -> dict[str, Any]:
+        """Lo que el ciclo necesita para decidir, y nada mas.
+
+        Se arma aca y no en el orquestador para que aquel se pueda probar sin
+        base de datos: se le pasan funciones y se comprueba a cuales llamo.
+        """
+        from botiquant import cantera, estados as est
+        from botiquant.vivo.piloto import PILOTO
+
+        filas = []
+        for f in db.list_strategies(None):
+            meta = f.get("meta") or {}
+            entrada = {"metrics": meta.get("metrics"), "oos": meta.get("oos")}
+            filas.append({
+                "id": f["id"], "estado": est.normalizar(f.get("estado")),
+                "cantera": {"practica": cantera.revisar(entrada, cantera.PRACTICA).pasa,
+                            "real": cantera.revisar(entrada, cantera.REAL).pasa},
+                # El semaforo cuenta vueltas en naranja, y eso todavia no se
+                # persiste: hasta que exista, nada se retira solo. Es la
+                # direccion segura del error — el ciclo deja corriendo algo
+                # que habria que sacar, y eso lo ve una persona; al reves,
+                # retiraria estrategias buenas sin que nadie se entere.
+                "vueltas_en_naranja": 0,
+            })
+
+        corridas = db.list_corridas(None) or []
+        horas = 9_999.0
+        if corridas:
+            try:
+                ultima = datetime.fromisoformat(str(corridas[0]["created"]))
+                if ultima.tzinfo is None:
+                    ultima = ultima.replace(tzinfo=timezone.utc)
+                horas = (datetime.now(timezone.utc) - ultima).total_seconds() / 3600.0
+            except (ValueError, KeyError, TypeError):
+                pass
+
+        return {"estrategias": filas, "horas_desde_minado": horas,
+                "en_practica": 1 if PILOTO.encendido else 0}
+
+    def _orq():
+        """El ciclo del proceso, armado la primera vez que se lo pide."""
+        from botiquant import ciclo as cic, estados as est, orquestador as orq
+
+        if orq.ORQUESTADOR is None:
+            def validar(ids):
+                for sid in ids:
+                    validar_estrategia(sid, {}, _PedidoLocal())
+
+            def promover(ids):
+                for sid in ids:
+                    actual = est.normalizar(db.get_strategy(sid, None).get("estado"))
+                    db.mover_estado(sid, est.mover(actual, est.PRACTICA), None)
+
+            orq.ORQUESTADOR = orq.Orquestador(
+                leer_estado=_leer_para_el_ciclo,
+                # MINAR y RETIRAR no estan conectados todavia, y eso es
+                # deliberado: sin ellos el ciclo no hace nada irreversible.
+                # Una accion sin quien la haga se anota con su error en vez de
+                # decir que la hizo, asi que se ve en el registro que falta.
+                acciones={cic.VALIDAR: validar, cic.PROMOVER: promover})
+        return orq.ORQUESTADOR
+
+    class _PedidoLocal:
+        """Un pedido de mentira para llamar a los endpoints desde adentro.
+
+        El ciclo corre sin nadie del otro lado: no hay sesion ni cookie. En el
+        escritorio el dueno es siempre el que esta sentado adelante.
+        """
+        cookies: dict = {}
+        headers: dict = {}
+
+    @app.get("/api/ciclo")
+    def ciclo_estado() -> dict[str, Any]:
+        """Que esta haciendo el ciclo y que va a hacer.
+
+        `proxima` es lo que HARIA ahora, sin haberlo hecho: se puede mirar sin
+        encender nada, que es como conviene estrenarlo.
+        """
+        _solo_escritorio()
+        return _orq().estado()
+
+    @app.post("/api/ciclo/params")
+    def ciclo_params(payload: dict[str, Any]) -> dict[str, Any]:
+        """Con que se maneja. Ver `botiquant/ciclo.py` para que hace cada uno."""
+        _solo_escritorio()
+        from botiquant import ciclo as cic
+
+        o = _orq()
+        o.params = cic.Parametros.from_dict(payload)
+        if o.params.encendido and not o.corriendo:
+            o.encender()
+        elif not o.params.encendido and o.corriendo:
+            o.apagar()
+        return o.estado()
+
+    @app.post("/api/ciclo/paso")
+    def ciclo_paso() -> dict[str, Any]:
+        """Una vuelta a mano, para verlo dar un paso sin dejarlo corriendo.
+
+        Es como conviene estrenarlo: se mira que iba a hacer, se le pide que
+        lo haga, y se comprueba que hizo lo que decia.
+        """
+        _solo_escritorio()
+        return {"hizo": _orq().una_vuelta(a_mano=True).to_dict(),
+                "estado": _orq().estado()}
+
     @app.get("/api/bot")
     def bot_estado() -> dict[str, Any]:
         _solo_escritorio()
