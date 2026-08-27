@@ -138,10 +138,24 @@ def main() -> int:
         return 1
 
     minimo = float(c.get("tradeMinQuantity") or 0.0)
+
+    # CON STOP Y OBJETIVO PUESTOS, y no una orden pelada. Es la parte más
+    # delicada del formato —viajan como JSON adentro de un parámetro, y el
+    # precio tiene que ser un NÚMERO y no un texto— así que probar sin ellos
+    # deja sin verificar justo lo que más chance tiene de estar mal.
+    #
+    # Los niveles van lejísimos a propósito: 30% abajo y 50% arriba. No se
+    # tocan mientras dura la prueba, y la posición se cierra a los dos
+    # segundos igual.
+    marca = float(bingx.funding_actual(args.simbolo)["precio_marca"])
+    stop = round(marca * 0.70, 1)
+    objetivo = round(marca * 1.50, 1)
+
     print(f"\nPaso 6 — una orden de {minimo} {args.simbolo} en PRÁCTICA, "
+          f"con stop en {stop:,.1f} y objetivo en {objetivo:,.1f}, "
           f"y su cierre inmediato.")
     try:
-        r = ex.abrir(args.simbolo, 1, minimo, float("nan"), float("nan"))
+        r = ex.abrir(args.simbolo, 1, minimo, stop, objetivo)
         _linea(OK, f"orden aceptada: {r}")
     except Exception as exc:                                  # noqa: BLE001
         _linea(MAL, f"la orden fue rechazada: {exc}")
