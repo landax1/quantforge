@@ -34,7 +34,7 @@ from typing import Any
 import pandas as pd
 
 from botiquant.data.bingx import BingXError
-from botiquant.vivo import vigilante
+from botiquant.vivo import semaforo, vigilante
 from botiquant.vivo.nucleo import DURACION
 from botiquant.vivo.runner import Bot
 
@@ -90,6 +90,12 @@ class Piloto:
             # registro ENTERO y no sobre las últimas cuarenta: recortar la
             # ventana haría que un bot viejo pareciera que nunca opera.
             "vigilante": self._vigilar(),
+
+            # Y CÓMO LE VA, que es la otra mitad. El vigilante mira cuánto
+            # opera; esto mira si sigue rindiendo como decía el backtest.
+            # Van separados porque se contestan en momentos distintos: la
+            # frecuencia se estabiliza en semanas y el rendimiento en meses.
+            "semaforo": self._semaforo(),
         }
 
     def _vigilar(self) -> dict[str, Any]:
@@ -100,6 +106,16 @@ class Piloto:
                               self.arrancado or None)
         return {"estado": v.estado, "razon": v.razon,
                 "esperadas": round(v.esperadas, 2), "observadas": v.observadas}
+
+    def _semaforo(self) -> dict[str, Any]:
+        b = self.bot
+        if b is None:
+            return {"estado": semaforo.CALLADO, "motivo": ""}
+        v = semaforo.revisar(b.registro, b.doc.get("respaldo") or {})
+        return {"estado": v.estado, "motivo": v.motivo,
+                "recomendacion": v.recomendacion, "cerradas": v.cerradas,
+                "pf_vivo": v.pf_vivo, "pf_base": v.pf_base,
+                "conserva": v.conserva}
 
     # -------------------------------------------------------------- encender
     def encender(self, bot: Bot) -> dict[str, Any]:
