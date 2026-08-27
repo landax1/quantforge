@@ -1222,6 +1222,7 @@ const STR = {
   "bot.no_habilitado": ["not qualified yet", "todavía no habilitada"],
   "bot.falta_clave_larga": ["You need to load the API key for that account above.",
                             "Hace falta cargar arriba la clave de esa cuenta."],
+  "bot.vig_titulo": ["Not trading as measured:", "No opera como se midió:"],
   "bot.title": ["Run a strategy", "Operar una estrategia"],
   "bot.sub": ["It trades while this app is open. Closing the app stops it.",
               "Opera mientras esta aplicación esté abierta. Al cerrarla, para."],

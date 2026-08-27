@@ -1826,6 +1826,11 @@ function panelBot(e, hayClave) {
         esc(rotuloModo(e.modo))}</span>
     </div>` : ""}
 
+    ${(e.vigilante || {}).estado === "amarillo" ? `<div class="bot-alerta mt">
+      <span class="g-ic">${icono("alerta")}</span>
+      <span><b>${esc(t("bot.vig_titulo"))}</b> ${esc(e.vigilante.razon)}</span>
+    </div>` : ""}
+
     ${detenido ? `<div class="bot-alerta mt">
       <span class="g-ic">${icono("alerta")}</span>
       <span>${esc(e.motivo_detencion || e.error || "")}</span>

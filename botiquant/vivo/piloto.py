@@ -34,6 +34,7 @@ from typing import Any
 import pandas as pd
 
 from botiquant.data.bingx import BingXError
+from botiquant.vivo import vigilante
 from botiquant.vivo.nucleo import DURACION
 from botiquant.vivo.runner import Bot
 
@@ -84,7 +85,21 @@ class Piloto:
             # Las últimas vueltas, de la más nueva a la más vieja: es como se
             # lee un registro cuando uno quiere saber qué acaba de pasar.
             "registro": list(reversed(b.registro[-40:])),
+
+            # ¿Está operando como decía que iba a operar? Se calcula sobre el
+            # registro ENTERO y no sobre las últimas cuarenta: recortar la
+            # ventana haría que un bot viejo pareciera que nunca opera.
+            "vigilante": self._vigilar(),
         }
+
+    def _vigilar(self) -> dict[str, Any]:
+        b = self.bot
+        if b is None:
+            return {"estado": vigilante.CALLADO, "razon": ""}
+        v = vigilante.revisar(b.doc.get("respaldo") or {}, b.registro,
+                              self.arrancado or None)
+        return {"estado": v.estado, "razon": v.razon,
+                "esperadas": round(v.esperadas, 2), "observadas": v.observadas}
 
     # -------------------------------------------------------------- encender
     def encender(self, bot: Bot) -> dict[str, Any]:
