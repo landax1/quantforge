@@ -1762,10 +1762,129 @@ const CONSEJOS = () => [
    PRACTICA Y REAL SON DOS TARJETAS SEPARADAS y no un interruptor. Con un
    interruptor, un clic de mas opera con plata de verdad. Asi hay que cargar
    otra clave a proposito. */
+/* ---- el bot: encenderlo, mirarlo y apagarlo ----
+
+   Vive abajo de las claves porque ese es el orden real: primero conectás el
+   exchange, despues encendés algo. Al reves, el boton de encender esta ahi
+   pidiendo que lo aprieten antes de que exista con que.
+
+   EL MODO SE ELIGE CADA VEZ y no se recuerda. Recordar "real" y que alcance
+   con apretar encender es exactamente el clic de mas que este proyecto viene
+   evitando en todas las pantallas. */
+/* Las claves se escriben ENTERAS. Armadas pegando el prefijo con el modo, el
+   examen de textos ve el prefijo suelto y una que falte se dibuja en crudo en
+   la pantalla sin que nada avise. */
+/* Las acciones son un conjunto CERRADO —cuatro— y se traducen. Los `motivo`
+   no: los escribe el motor y son frases libres en español. Se muestran igual
+   porque son lo único que explica por qué el bot hizo lo que hizo, y una
+   frase en el idioma equivocado sigue siendo mejor que ninguna. */
+function rotuloAccion(a) {
+  if (a === "abrir_largo") return t("bot.acc_largo");
+  if (a === "abrir_corto") return t("bot.acc_corto");
+  if (a === "cerrar") return t("bot.acc_cerrar");
+  if (a === "panico") return t("bot.acc_panico");
+  if (a === "nada") return t("bot.acc_nada");
+  return a || "—";
+}
+
+function rotuloModo(modo) {
+  if (modo === "real") return t("bot.modo_real");
+  if (modo === "practica") return t("bot.modo_practica");
+  return t("bot.modo_simulacro");
+}
+
+function panelBot(e, hayClave) {
+  const on = e.encendido;
+  /* SOLO las estrategias minadas sobre un perpetuo. Un exchange de cripto no
+     opera el S&P ni el oro: encender una de esas mandaria un simbolo que
+     BingX no conoce, y el error llegaria recien al intentar operar. Se filtra
+     por la FUENTE del dataset y no por el nombre, que alguien puede cambiar. */
+  const cripto = new Set((S.datasets || [])
+    .filter(d => d.source === "binance").map(d => d.id));
+  const operables = (S.saved || []).filter(
+    x => cripto.has((x.meta || {}).dataset_id));
+  const detenido = e.detenido || e.error;
+  return `
+  <div class="card bot-card${on ? " bot-on" : ""}">
+    <div class="ex-head">
+      <div>
+        <b>${esc(t("bot.title"))}</b>
+        <p class="help-note">${esc(t("bot.sub"))}</p>
+      </div>
+      <span class="ex-estado ${on ? "on" : ""}">${
+        esc(on ? t("bot.on") : (detenido ? t("bot.detenido") : t("bot.off")))}</span>
+    </div>
+
+    ${e.hay_bot ? `
+    <div class="bot-linea mt">
+      <span><b>${esc(e.nombre || "—")}</b> · ${esc(e.simbolo || "")} ${esc(e.timeframe || "")}</span>
+      <span class="bot-modo bot-modo-${esc(e.modo || "")}">${
+        esc(rotuloModo(e.modo))}</span>
+    </div>` : ""}
+
+    ${detenido ? `<div class="bot-alerta mt">
+      <span class="g-ic">${icono("alerta")}</span>
+      <span>${esc(e.motivo_detencion || e.error || "")}</span>
+    </div>` : ""}
+
+    ${on ? `
+    <div class="controls mt">
+      <button class="btn ghost" id="bot-apagar">${esc(t("bot.apagar"))}</button>
+      <button class="btn danger" id="bot-panico">${esc(t("bot.panico"))}</button>
+    </div>
+    <p class="help-note mt">${esc(t("bot.apagar_nota"))}</p>` : `
+    ${!operables.length ? `
+    <div class="empty-state mt">
+      <b>${esc(t("bot.sin_cripto"))}</b>
+      <p class="mt">${esc(t("bot.sin_cripto_sub"))}</p>
+    </div>` : `
+    <div class="fld-pair mt">
+      <label class="fld"><span>${esc(t("bot.estrategia"))}</span>
+        <select id="bot-cual">
+          <option value="">${esc(t("bot.elegir"))}</option>
+          ${operables.map(x =>
+            `<option value="${esc(x.id)}">${esc(x.name)} · ${
+              esc(String((x.meta || {}).dataset_name || "").split(" ")[0])}</option>`).join("")}
+        </select></label>
+      <label class="fld"><span>${esc(t("bot.modo"))}</span>
+        <select id="bot-modo">
+          <option value="">${esc(t("bot.elegir"))}</option>
+          <option value="simulacro">${esc(t("bot.modo_simulacro"))}</option>
+          <option value="practica" ${hayClave.practica ? "" : "disabled"}>${
+            esc(t("bot.modo_practica"))}${hayClave.practica ? "" : " — " + esc(t("bot.sin_clave"))}</option>
+          <option value="real" ${hayClave.real ? "" : "disabled"}>${
+            esc(t("bot.modo_real"))}${hayClave.real ? "" : " — " + esc(t("bot.sin_clave"))}</option>
+        </select></label>
+    </div>
+    <div class="controls mt">
+      <button class="btn" id="bot-encender">${esc(t("bot.encender"))}</button>
+    </div>`}`}
+
+    ${(e.registro || []).length ? `
+    <div class="bot-registro mt">
+      ${e.registro.slice(0, 8).map(f => `
+        <div class="bot-fila">
+          <span class="bot-hora">${esc(String(f.cuando || "").slice(11, 19))}</span>
+          <span class="bot-que">${esc(rotuloAccion(f.accion))}</span>
+          <span class="bot-det">${esc(f.bloqueado || f.error || f.motivo || "")}</span>
+        </div>`).join("")}
+    </div>` : ""}
+  </div>`;
+}
+
+
 PAGES.exchanges = async (main) => {
-  const estado = await api.get("/api/exchanges");
+  const [estado, bot] = await Promise.all([
+    api.get("/api/exchanges"), api.get("/api/bot"),
+  ]);
+  await refreshSavedCount();
+  // Hace falta para saber la FUENTE de cada dataset: sin esto, el filtro de
+  // estrategias operables no puede distinguir un perpetuo de un CFD.
+  if (!(S.datasets || []).length) await refreshDatasets();
   const por = {};
   estado.forEach(x => { por[x.entorno] = x; });
+  const hayClave = { practica: !!(por.practica || {}).configurada,
+                     real: !!(por.real || {}).configurada };
 
   const tarjeta = (entorno) => {
     const e = por[entorno] || { configurada: false };
@@ -1812,7 +1931,8 @@ PAGES.exchanges = async (main) => {
       </ul>
     </div>
     ${tarjeta("practica")}
-    ${tarjeta("real")}`;
+    ${tarjeta("real")}
+    ${panelBot(bot, hayClave)}`;
 
   const campo = (entorno, cual) =>
     $(`[data-ex="${cual}"][data-entorno="${entorno}"]`, main);
@@ -1875,6 +1995,57 @@ PAGES.exchanges = async (main) => {
       b.disabled = false;
     };
   });
+
+  /* ---- el bot ---- */
+  const btnEncender = $("#bot-encender", main);
+  if (btnEncender) btnEncender.onclick = async () => {
+    const id = $("#bot-cual", main).value;
+    const modo = $("#bot-modo", main).value;
+    if (!id || !modo) return toast(t("bot.falta_elegir"), "err");
+    /* La confirmacion es SOLO para plata real. Pedirla en simulacro y en
+       practica entrena a la gente a apretar "si" sin leer, y despues el
+       cartel que si importaba se lee igual de rapido que los otros dos. */
+    if (modo === "real" && !confirm(t("bot.real_seguro"))) return;
+    const fila = (S.saved || []).find(x => x.id === id);
+    if (!fila) return toast(t("bot.no_esta"), "err");
+    btnEncender.disabled = true;
+    try {
+      const archivo = await api.post("/api/export/bingx/objeto", {
+        spec: fila.spec, name: fila.name,
+        dataset_id: (fila.meta || {}).dataset_id,
+        timeframe: (fila.meta || {}).timeframe,
+        settings: { commission_pct: (fila.meta || {}).commission },
+      });
+      await api.post("/api/bot/encender", { bot: archivo, modo });
+      toast(t("bot.encendido"), "ok");
+      await navigate("exchanges");
+    } catch (e) { toast(e.message, "err"); }
+    btnEncender.disabled = false;
+  };
+
+  const btnApagar = $("#bot-apagar", main);
+  if (btnApagar) btnApagar.onclick = async () => {
+    btnApagar.disabled = true;
+    try {
+      await api.post("/api/bot/apagar", {});
+      toast(t("bot.apagado"), "ok");
+      await navigate("exchanges");
+    } catch (e) { toast(e.message, "err"); }
+    btnApagar.disabled = false;
+  };
+
+  const btnPanico = $("#bot-panico", main);
+  if (btnPanico) btnPanico.onclick = async () => {
+    if (!confirm(t("bot.panico_seguro"))) return;
+    btnPanico.disabled = true;
+    try {
+      const r = await api.post("/api/bot/panico", {});
+      toast(t("bot.panico_hecho"), "ok");
+      await navigate("exchanges");
+      if (r && r.cerrado) console.info("[bot] pánico:", r.cerrado);
+    } catch (e) { toast(e.message, "err"); }
+    btnPanico.disabled = false;
+  };
 
   $$("[data-ex-borrar]", main).forEach(b => {
     b.onclick = async () => {

@@ -1907,6 +1907,20 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                                  headers={"Content-Disposition":
                                           f'attachment; filename="{archivo}"'})
 
+    @app.post("/api/export/bingx/objeto")
+    def export_bingx_objeto(payload: dict[str, Any],
+                            request: Request) -> dict[str, Any]:
+        """El mismo archivo de enlace, pero como objeto y sin bajar nada.
+
+        Lo usa el botón de encender: para arrancar un bot desde la aplicación
+        no tiene sentido escribir un archivo en Descargas y volver a leerlo.
+        Es el MISMO renderizado —no una segunda versión que un día diverja—
+        así que lo que se enciende es exactamente lo que se exportaría.
+        """
+        import json as _json
+        code, _ = _codigo_exportado("bingx", payload, request)
+        return _json.loads(code)
+
     @app.post("/api/export/pine")
     def export_pine_endpoint(payload: dict[str, Any], request: Request) -> PlainTextResponse:
         """Render a mined strategy as a TradingView Pine Script v5 strategy."""
@@ -2111,6 +2125,88 @@ def create_app(workdir: Path | None = None) -> FastAPI:
              else "ninguna abierta")
 
         return {"pasos": pasos, "listo": all(p["ok"] for p in pasos)}
+
+    # ------------------------------------------------------------------- bot
+    #
+    # Encender un bot es la unica accion de toda la aplicacion que puede mover
+    # plata, asi que todo lo de esta seccion es explicito: el modo se manda, el
+    # entorno se manda, y ninguno tiene un default que opere.
+
+    @app.get("/api/bot")
+    def bot_estado() -> dict[str, Any]:
+        _solo_escritorio()
+        from botiquant.vivo.piloto import PILOTO
+        return PILOTO.estado()
+
+    @app.post("/api/bot/encender")
+    def bot_encender(payload: dict[str, Any]) -> dict[str, Any]:
+        """Arranca un bot desde un archivo de enlace.
+
+        `modo` no tiene default a proposito. Un default que opere convierte un
+        payload incompleto —un bug nuestro, un cliente viejo— en ordenes
+        reales; sin default, lo peor que pasa es que no arranque.
+        """
+        _solo_escritorio()
+        from botiquant.vivo import claves
+        from botiquant.vivo.adaptador import (BASE_PRACTICA, BASE_REAL, BingX,
+                                              Papel, SoloDatos)
+        from botiquant.vivo.piloto import PILOTO
+        from botiquant.vivo.runner import PRACTICA, REAL, SIMULACRO, Bot
+
+        modo = str(payload.get("modo") or "")
+        if modo not in (SIMULACRO, PRACTICA, REAL):
+            raise HTTPException(
+                400, "Falta decir en qué modo arrancar: simulacro, práctica o real.")
+
+        # Se valida ACA, antes de tocar una clave o abrir un hilo. Un
+        # documento incompleto reventaba despues con un KeyError en medio del
+        # arranque: un error que no dice nada y que aparece mas tarde de lo
+        # necesario.
+        from botiquant.reports.bingx import validar as validar_bot
+        try:
+            doc = validar_bot(payload.get("bot"))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+        if modo == SIMULACRO:
+            # Sin credenciales: los datos de mercado son publicos y este modo
+            # no manda ninguna orden. Asi se puede mirar que haria el bot
+            # antes de haber creado siquiera la clave.
+            adaptador: Any = Papel(datos=SoloDatos(BASE_PRACTICA),
+                                   capital_inicial=float(payload.get("capital") or 1000.0))
+        else:
+            entorno = "real" if modo == REAL else "practica"
+            try:
+                api_key, secret = claves.leer(workdir / "claves", "bingx", entorno)
+            except claves.ClaveError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            adaptador = BingX(api_key, secret,
+                              base=BASE_REAL if modo == REAL else BASE_PRACTICA)
+
+        try:
+            bot = Bot(doc=doc, adaptador=adaptador, modo=modo,
+                      perdida_maxima_diaria=float(payload.get("perdida_maxima") or 0.0))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+        try:
+            return PILOTO.encender(bot)
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @app.post("/api/bot/apagar")
+    def bot_apagar() -> dict[str, Any]:
+        """Deja de operar. NO cierra la posición: para eso está el pánico."""
+        _solo_escritorio()
+        from botiquant.vivo.piloto import PILOTO
+        return PILOTO.apagar()
+
+    @app.post("/api/bot/panico")
+    def bot_panico() -> dict[str, Any]:
+        """Apaga y cierra lo que haya abierto."""
+        _solo_escritorio()
+        from botiquant.vivo.piloto import PILOTO
+        return PILOTO.panico()
 
     @app.post("/api/abrir-carpeta")
     def abrir_carpeta(payload: dict[str, Any] | None = None) -> dict[str, str]:

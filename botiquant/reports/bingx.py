@@ -124,6 +124,18 @@ def leer_bingx(texto: str) -> dict[str, Any]:
         doc = json.loads(texto)
     except json.JSONDecodeError as exc:
         raise ValueError(f"El archivo no es un JSON válido: {exc}") from exc
+    return validar(doc)
+
+
+def validar(doc: Any) -> dict[str, Any]:
+    """Las mismas comprobaciones, sobre un diccionario ya parseado.
+
+    Existe aparte de `leer_bingx` porque el archivo llega por dos caminos: de
+    un disco, como texto, y del navegador, ya como objeto. Sin esto, el camino
+    del navegador se saltaba TODAS las validaciones y un documento incompleto
+    reventaba después con un KeyError en medio del arranque del bot — un error
+    que no dice nada y que aparece más tarde de lo necesario.
+    """
     if not isinstance(doc, dict) or doc.get("formato") != FORMATO:
         raise ValueError("Ese archivo no lo exportó Botiquant.")
     v = doc.get("version")

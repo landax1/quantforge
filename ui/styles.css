@@ -3171,3 +3171,32 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 .ex-paso.mal .ex-ic { color: var(--danger); }
 .ex-paso b { flex: none; }
 .ex-paso span:last-child { color: var(--muted); }
+
+/* ---- el bot: encendido, apagado, y el registro de lo que hizo ----
+   La tarjeta cambia de borde cuando esta operando. Es la unica pantalla donde
+   el estado importa mas que el contenido: hay que poder saber de un vistazo,
+   desde lejos, si hay algo operando con plata. */
+.bot-card { margin-top: 16px; }
+.bot-on { border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+
+.bot-linea { display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; font-size: 13px; }
+.bot-modo { flex: none; font-size: 12px; padding: 4px 12px; border-radius: 999px;
+  background: var(--panel-2); color: var(--muted); }
+.bot-modo-real { background: color-mix(in srgb, var(--warn) 16%, transparent);
+  color: var(--warn); }
+
+.bot-alerta { display: flex; align-items: baseline; gap: 8px; font-size: 13px;
+  padding: 12px; border-radius: 8px; line-height: 1.5;
+  background: color-mix(in srgb, var(--warn) 10%, transparent);
+  color: var(--text); }
+.bot-alerta .g-ic { flex: none; color: var(--warn); }
+
+.bot-registro { display: flex; flex-direction: column;
+  border-top: 1px solid var(--line); }
+.bot-fila { display: grid; grid-template-columns: 64px 1fr 1.4fr; gap: 8px;
+  padding: 6px 0; font-size: 12px; border-bottom: 1px solid var(--line); }
+.bot-fila:last-child { border-bottom: 0; }
+.bot-hora { color: var(--muted); font-variant-numeric: tabular-nums; }
+.bot-det { color: var(--muted); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
