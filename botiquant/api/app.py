@@ -1672,7 +1672,39 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         # evidencia fuera de muestra suficiente para operar con plata. Sin
         # esto hay que guardarlas de a una para enterarse, que es justo el
         # trabajo que la cantera existe para evitar.
-        from botiquant import cantera
+        from botiquant import azar, cantera
+
+        # CUANTO DE ESTO PUEDE SER HABER BUSCADO MUCHO.
+        #
+        # La dispersion se calcula sobre las candidatas de LA MISMA corrida,
+        # que es la comparacion que corresponde: el umbral del azar depende de
+        # cuantas veces se probo en esa busqueda, no en todas las del historial.
+        #
+        # Y sale de las que sobrevivieron el filtro, que son parecidas entre
+        # si: eso SUBESTIMA la dispersion y por lo tanto el umbral. Va marcado
+        # en la respuesta para que no se lea como un numero exacto.
+        # La dispersion sale de la CORRIDA ENTERA y no de esta pagina.
+        #
+        # Calculada sobre lo que toco venir en la respuesta, el umbral cambia
+        # con la paginacion: medido, cuatro filas de la corrida de BTCUSDT
+        # daban 2,00 y las cien daban 1,56. Un numero que depende de cuantas
+        # filas pediste no significa nada.
+        por_corrida: dict[str, tuple[float, float, int]] = {}
+        for cid in {str(f.get("corrida_id") or "") for f in filas}:
+            if not cid:
+                continue
+            todas = db.list_banco(corrida_id=cid, limite=_PAGINA_BANCO,
+                                  user_id=duenio(request))
+            sh = [float(v) for x in todas
+                  if (v := (x.get("metrics") or {}).get("sharpe")) is not None]
+            if len(sh) >= 2:
+                media = sum(sh) / len(sh)
+                var = sum((x - media) ** 2 for x in sh) / (len(sh) - 1)
+                por_corrida[cid] = (media, var ** 0.5, len(sh))
+
+        intentos_de = {c["id"]: int(c.get("tested") or 0)
+                       for c in (db.list_corridas(duenio(request)) or [])}
+
         for f in filas:
             entrada = {"metrics": f.get("metrics"), "oos": f.get("oos")}
             r = cantera.revisar(entrada, cantera.REAL)
@@ -1681,6 +1713,13 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "practica": cantera.revisar(entrada, cantera.PRACTICA).pasa,
                 "por_que_no": cantera.por_que_no(r),
             }
+            cid = str(f.get("corrida_id") or "")
+            if cid in por_corrida and intentos_de.get(cid, 0) >= 2:
+                media, desvio, muestra = por_corrida[cid]
+                f["azar"] = azar.contexto(
+                    (f.get("metrics") or {}).get("sharpe"),
+                    media_sr=media, desvio_sr=desvio,
+                    intentos=intentos_de[cid], muestra=muestra)
         return filas
 
     @app.delete("/api/corridas/{cid}")
