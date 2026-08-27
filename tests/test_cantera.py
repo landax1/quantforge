@@ -153,3 +153,31 @@ def test_lo_que_pasa_a_real_pasa_tambien_a_practica():
     assert revisar(m, REAL).pasa
     assert revisar(m, PRACTICA).pasa
     assert revisar(m, SIMULACRO).pasa
+
+
+# --------------------------------------------- el veredicto llega a la pantalla
+
+def test_el_listado_de_estrategias_trae_hasta_donde_puede_llegar_cada_una(tmp_path):
+    """Que el destino aparezca cerrado ANTES de apretar es la mitad del valor.
+
+    Un rechazo despues del clic ensena lo mismo pero se siente como un
+    obstaculo; uno antes se lee como una guia. Y se calcula con la MISMA
+    funcion que usa el endpoint de encender, asi que lo que se ve y lo que se
+    hace no pueden divergir.
+    """
+    from fastapi.testclient import TestClient
+
+    from botiquant.api.app import create_app
+
+    with TestClient(create_app(workdir=tmp_path / "ws")) as c:
+        r = c.post("/api/strategies", json={
+            "name": "sin probar", "spec": {"name": "x", "direction": "long"},
+            "meta": {"metrics": {"trades": 9, "profit_factor": 32.0,
+                                 "expectancy_r": 3.0, "max_drawdown_pct": 2.0}}})
+        assert r.status_code in (200, 201), r.text
+
+        fila = c.get("/api/strategies").json()[0]
+        assert "cantera" in fila, "el veredicto no llegó al listado"
+        assert fila["cantera"]["simulacro"]["pasa"] is True
+        assert fila["cantera"]["real"]["pasa"] is False
+        assert fila["cantera"]["real"]["por_que_no"]

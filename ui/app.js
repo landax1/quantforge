@@ -1860,12 +1860,11 @@ function panelBot(e, hayClave) {
         <select id="bot-modo">
           <option value="">${esc(t("bot.elegir"))}</option>
           <option value="simulacro">${esc(t("bot.modo_simulacro"))}</option>
-          <option value="practica" ${hayClave.practica ? "" : "disabled"}>${
-            esc(t("bot.modo_practica"))}${hayClave.practica ? "" : " — " + esc(t("bot.sin_clave"))}</option>
-          <option value="real" ${hayClave.real ? "" : "disabled"}>${
-            esc(t("bot.modo_real"))}${hayClave.real ? "" : " — " + esc(t("bot.sin_clave"))}</option>
+          <option value="practica">${esc(t("bot.modo_practica"))}</option>
+          <option value="real">${esc(t("bot.modo_real"))}</option>
         </select></label>
     </div>
+    <p class="bot-porque" id="bot-porque" hidden></p>
     <div class="controls mt">
       <button class="btn" id="bot-encender">${esc(t("bot.encender"))}</button>
     </div>`}`}
@@ -2007,6 +2006,50 @@ PAGES.exchanges = async (main) => {
   });
 
   /* ---- el bot ---- */
+  /* Qué destinos puede tomar la estrategia elegida, y por qué no los otros.
+
+     Se recalcula al cambiar cualquiera de los dos desplegables porque un
+     destino puede estar cerrado por DOS motivos distintos —la cantera o la
+     clave que falta— y decir el equivocado manda a alguien a crear una clave
+     que no le va a servir. */
+  const revisarDestinos = () => {
+    const selCual = $("#bot-cual", main);
+    const selModo = $("#bot-modo", main);
+    const nota = $("#bot-porque", main);
+    if (!selCual || !selModo || !nota) return;
+
+    const fila = (S.saved || []).find(x => x.id === selCual.value);
+    const puertas = (fila || {}).cantera || {};
+
+    let motivo = "";
+    [...selModo.options].forEach(o => {
+      if (!o.value) return;
+      const p = puertas[o.value] || {};
+      const faltaClave = o.value !== "simulacro" && !hayClave[o.value];
+      // Sin estrategia elegida no se bloquea nada: sería decir que no antes
+      // de que haya algo sobre lo que decidir.
+      o.disabled = !!fila && (faltaClave || (p.pasa === false));
+      o.textContent = rotuloModo(o.value)
+        + (faltaClave ? " — " + t("bot.sin_clave")
+           : (fila && p.pasa === false ? " — " + t("bot.no_habilitado") : ""));
+      if (o.value === selModo.value && o.disabled) {
+        motivo = faltaClave ? t("bot.falta_clave_larga")
+                            : (p.por_que_no || t("bot.no_habilitado"));
+      }
+    });
+    if (selModo.selectedOptions[0] && selModo.selectedOptions[0].disabled) {
+      selModo.value = "";
+    }
+    nota.hidden = !motivo;
+    nota.textContent = motivo;
+  };
+
+  const selCual = $("#bot-cual", main);
+  const selModo = $("#bot-modo", main);
+  if (selCual) selCual.onchange = revisarDestinos;
+  if (selModo) selModo.onchange = revisarDestinos;
+  revisarDestinos();
+
   const btnEncender = $("#bot-encender", main);
   if (btnEncender) btnEncender.onclick = async () => {
     const id = $("#bot-cual", main).value;

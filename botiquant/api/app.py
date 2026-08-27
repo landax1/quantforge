@@ -1557,7 +1557,27 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     # ------------------------------------------------------------ strategies
     @app.get("/api/strategies")
     def list_strategies(request: Request) -> list[dict[str, Any]]:
-        return db.list_strategies(duenio(request))
+        """Las estrategias guardadas, con hasta dónde puede llegar cada una.
+
+        El veredicto de la cantera viaja acá y no se calcula en la pantalla
+        por dos motivos. Uno: es la MISMA función que usa el endpoint de
+        encender, así que lo que se ve y lo que se hace no pueden divergir.
+        Dos: que el destino aparezca cerrado ANTES de apretar es la mitad del
+        valor del filtro — un rechazo después del clic enseña lo mismo pero
+        se siente como un obstáculo, y uno antes se lee como una guía.
+        """
+        from botiquant import cantera
+
+        filas = db.list_strategies(duenio(request))
+        for f in filas:
+            meta = f.get("meta") or {}
+            entrada = {"metrics": meta.get("metrics"), "oos": meta.get("oos")}
+            f["cantera"] = {
+                d: {"pasa": (r := cantera.revisar(entrada, d)).pasa,
+                    "por_que_no": cantera.por_que_no(r)}
+                for d in (cantera.SIMULACRO, cantera.PRACTICA, cantera.REAL)
+            }
+        return filas
 
     @app.post("/api/strategies")
     def save_strategy(request: Request, payload: dict[str, Any]) -> dict[str, str]:

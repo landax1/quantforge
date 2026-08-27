@@ -3224,3 +3224,9 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
   .fam-sub { flex-basis: 100%; }
   .fam-n { margin-left: 0; }
 }
+
+/* El motivo por el que un destino esta cerrado. Va debajo de los dos
+   desplegables porque puede venir de cualquiera de los dos —la estrategia o
+   la clave— y ponerlo al lado de uno solo sugeriria que el problema es ese. */
+.bot-porque { margin-top: 8px; font-size: 12px; color: var(--warn);
+  line-height: 1.5; }
