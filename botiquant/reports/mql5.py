@@ -134,6 +134,39 @@ def _fmt_num(v: Any) -> str:
     return str(int(f)) if f == int(f) else f"{f:g}"
 
 
+#: De dónde arranca la numeración. Un número alto y poco redondo para no
+#: chocar con los que ponen otros programas: muchos EA comerciales usan 1, 100,
+#: 12345 y cosas así, y dos EA con el mismo Magic Number en la misma cuenta se
+#: pisan las posiciones sin que nada avise.
+_MAGIC_BASE = 770_000_000
+
+
+def magic_de(nombre: str) -> int:
+    """Un Magic Number propio para cada estrategia, siempre el mismo.
+
+    ES EL NÚMERO QUE SEPARA UN BOT DE OTRO. MetaTrader no tiene otra forma de
+    saber de quién es una posición: cada EA marca sus órdenes con el suyo y
+    después filtra por él. Dos EA con el mismo número en la misma cuenta creen
+    cada uno que las posiciones del otro son suyas — uno cierra lo que el otro
+    abrió, y ninguno de los dos da error.
+
+    Hasta acá todos los EA exportados salían con 770001. O sea que poner dos
+    bots de Botiquant en una cuenta no funcionaba, y la forma de enterarse era
+    ver operaciones cerrándose solas.
+
+    DETERMINISTA A PROPÓSITO: la misma estrategia da siempre el mismo número.
+    Si cambiara al reexportar, el EA nuevo no reconocería la posición que dejó
+    abierta el viejo y la trataría como ajena — quedaría huérfana, sin nadie
+    que la gestione ni la cierre.
+    """
+    import hashlib
+    h = hashlib.sha256(nombre.encode("utf-8")).digest()
+    # 24 bits alcanzan para dieciséis millones de estrategias sin repetir y
+    # dejan el número corto de leer, que importa cuando hay que reconocerlo
+    # en la lista de operaciones de MetaTrader.
+    return _MAGIC_BASE + int.from_bytes(h[:3], "big")
+
+
 def export_mql5(spec: StrategySpec, *, ea_name: str = "BQ_Strategy",
                 symbol_hint: str = "", timeframe_hint: str = "",
                 metrics: dict[str, float] | None = None,
@@ -209,6 +242,12 @@ def export_mql5(spec: StrategySpec, *, ea_name: str = "BQ_Strategy",
     tp_short = _target_expr(risk.target_type, risk.target_value, "short")
     needs_atr = risk.stop_type == "atr" or risk.target_type == "atr"
 
+    # El número que separa este bot de los demás en la misma cuenta. Sale del
+    # NOMBRE y no del contenido: dos exportaciones de la misma estrategia con
+    # ajustes distintos son el mismo bot para MetaTrader, y tienen que poder
+    # reconocer las posiciones que dejó la anterior.
+    magic = magic_de(ea_name)
+
     return f"""//+------------------------------------------------------------------+
 //| {ea_name}.mq5
 //| Generado por Botiquant — estrategia minada{f" sobre {symbol_hint} {timeframe_hint}" if symbol_hint else ""}
@@ -229,7 +268,7 @@ input double InpTargetValue = {_fmt_num(risk.target_value)};  // Take profit ({_
 input double InpTrailATR    = {_fmt_num(risk.trail_atr)};  // Trailing (multiplo de ATR, 0 = sin trailing)
 input int    InpMaxBars     = {int(risk.max_bars_in_trade)};     // Cerrar tras N velas (0 = sin limite)
 input int    InpATRPeriod   = {int(risk.atr_period)};     // Periodo del ATR de riesgo
-input long   InpMagic       = 770001;  // Magic number
+input long   InpMagic       = {magic};  // Magic number (propio de esta estrategia)
 input int    InpSlippage    = 30;      // Desviacion maxima (points)
 input bool   InpVerbose     = true;    // Explicar en el log por que no opera
 input bool   InpAllowLong   = {'true' if want_long else 'false'};    // Permitir largos
