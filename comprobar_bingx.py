@@ -93,6 +93,27 @@ def main() -> int:
     # ------------------------------------------------------------ la clave
     api_key = os.getenv("BINGX_API_KEY", "").strip()
     secret = os.getenv("BINGX_SECRET", "").strip()
+
+    # SI YA LA CARGASTE EN LA APLICACIÓN, se usa esa y no hace falta escribirla
+    # otra vez. Es lo preferible: ahí está cifrada con la credencial de tu
+    # sesión de Windows, y en el `.env` estaría en texto plano.
+    #
+    # Se busca DESPUÉS de las variables de entorno para que quien quiera
+    # probar otra clave puntualmente pueda hacerlo sin borrar la guardada.
+    if not api_key or not secret:
+        try:
+            from botiquant.rutas import carpeta_de_trabajo
+            from botiquant.vivo import claves
+            # nombre propio y no `entorno`, que arriba es el texto que se
+            # muestra: pisarlo deja el encabezado diciendo una cosa y el
+            # resto usando otra
+            cual = "real" if args.real else "practica"
+            api_key, secret = claves.leer(
+                carpeta_de_trabajo() / "claves", "bingx", cual)
+            _linea(OK, f"usando la clave de {cual} guardada en la aplicación")
+        except Exception:                                     # noqa: BLE001
+            pass
+
     if not api_key or not secret:
         print()
         _linea(INFO, "Sin credenciales: hasta acá llega la comprobación.")
@@ -101,7 +122,10 @@ def main() -> int:
         print("\nPara seguir, poné en el .env (que no se versiona):")
         print("    BINGX_API_KEY=...")
         print("    BINGX_SECRET=...")
-        print("\nCreá la clave con permiso de lectura y trading, SIN RETIRO.\n")
+        print("\nCreá la clave con permiso de lectura y trading, SIN RETIRO.")
+        print("\nMejor todavía: cargala en la aplicación, en Exchanges. Ahí "
+              "queda cifrada\ncon tu sesión de Windows y este comando la toma "
+              "de ahí, sin que quede\nuna copia en texto plano dando vueltas.\n")
         return 0
 
     ex = BingX(api_key, secret, base=base)
