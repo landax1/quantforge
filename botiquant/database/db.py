@@ -175,6 +175,24 @@ class Database:
         if "validacion" not in have:
             self._conn.execute(
                 "ALTER TABLE strategies ADD COLUMN validacion TEXT NOT NULL DEFAULT '{}'")
+        # EN QUE PUNTO DEL CAMINO ESTA. Hasta ahora todo lo guardado vivia en
+        # la misma lista: la que acabas de encontrar, la que corriste seis
+        # meses en demo y la que se fundio. Mezcladas no se puede decidir nada.
+        #
+        # El default es "nueva" y no vacio porque las que ya existian se
+        # guardaron antes de que esto existiera: nadie las valido ni las
+        # corrio, asi que nuevas es lo que son. Con eso no hay que migrar nada.
+        if "estado" not in have:
+            self._conn.execute(
+                "ALTER TABLE strategies ADD COLUMN estado TEXT NOT NULL "
+                "DEFAULT 'nueva'")
+        # La autopsia: por que se retiro y de donde venia. Un cementerio sin
+        # esto es una lista de nombres, y la proxima con el mismo problema se
+        # enciende igual.
+        if "retiro" not in have:
+            self._conn.execute(
+                "ALTER TABLE strategies ADD COLUMN retiro TEXT NOT NULL "
+                "DEFAULT '{}'")
         # De quién es cada cosa. Cadena vacía = de nadie en particular, que es
         # lo que corresponde en una instalación local: ahí no hay cuentas y todo
         # es del que está sentado adelante. Servido a varios, cada fila lleva el
@@ -306,17 +324,20 @@ class Database:
         row["spec"] = json.loads(row["spec"])
         row["meta"] = json.loads(row.get("meta") or "{}")
         row["validacion"] = json.loads(row.get("validacion") or "{}")
+        row["retiro"] = json.loads(row.get("retiro") or "{}") or None
         return row
 
     def list_strategies(self, user_id: str | None = None) -> list[dict[str, Any]]:
         cond, args = self._de(user_id)
         rows = self._rows(
-            "SELECT id, name, notes, created, updated, spec, meta, validacion "
+            "SELECT id, name, notes, created, updated, spec, meta, validacion, "
+            "estado, retiro "
             f"FROM strategies WHERE 1=1{cond} ORDER BY updated DESC", args)
         for r in rows:
             r["spec"] = json.loads(r["spec"])
             r["meta"] = json.loads(r.get("meta") or "{}")
             r["validacion"] = json.loads(r.get("validacion") or "{}")
+            r["retiro"] = json.loads(r.get("retiro") or "{}") or None
         return rows
 
     def guardar_validacion(self, sid: str, datos: dict[str, Any],
@@ -330,6 +351,24 @@ class Database:
         cond, args = self._de(user_id)
         cur = self._exec(f"UPDATE strategies SET validacion=? WHERE id=?{cond}",
                          (json.dumps(datos), sid) + args)
+        if cur.rowcount == 0:
+            raise KeyError(f"Strategy {sid} not found")
+
+    def mover_estado(self, sid: str, cambio: dict[str, Any],
+                     user_id: str | None = None) -> None:
+        """Mueve una estrategia de estado. `cambio` viene de `estados.mover`.
+
+        La VALIDACION del movimiento no vive acá: vive en `botiquant.estados`,
+        que no sabe de bases de datos y por eso se puede probar entero sin
+        una. Acá solo se guarda lo que aquel ya aprobo.
+
+        Tampoco toca `updated`: mover de estado no modifica la estrategia, y
+        si lo tocara, cada movimiento la mandaria al tope de la lista.
+        """
+        cond, args = self._de(user_id)
+        cur = self._exec(
+            f"UPDATE strategies SET estado=?, retiro=? WHERE id=?{cond}",
+            (cambio["estado"], json.dumps(cambio.get("retiro") or {}), sid) + args)
         if cur.rowcount == 0:
             raise KeyError(f"Strategy {sid} not found")
 

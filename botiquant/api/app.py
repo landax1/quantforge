@@ -1570,10 +1570,16 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         valor del filtro — un rechazo después del clic enseña lo mismo pero
         se siente como un obstáculo, y uno antes se lee como una guía.
         """
-        from botiquant import cantera
+        from botiquant import cantera, estados
 
         filas = db.list_strategies(duenio(request))
         for f in filas:
+            # DONDE ESTA, que es distinto de hasta donde PODRIA llegar. Una
+            # estrategia puede estar habilitada para real y no haberse
+            # encendido nunca; si el estado se dedujera de las metricas,
+            # encender un bot no cambiaria nada en la pantalla.
+            f["estado"] = estados.normalizar(f.get("estado"))
+            f["siguiente"] = estados.siguiente(f["estado"])
             meta = f.get("meta") or {}
             entrada = {"metrics": meta.get("metrics"), "oos": meta.get("oos")}
             f["cantera"] = {
@@ -1685,6 +1691,125 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     def borrar_del_banco(request: Request, payload: dict[str, Any]) -> dict[str, int]:
         ids = [str(x) for x in (payload.get("ids") or [])]
         return {"borradas": db.borrar_banco(ids, duenio(request))}
+
+    @app.post("/api/strategies/{sid}/estado")
+    def mover_estado(sid: str, payload: dict[str, Any],
+                     request: Request) -> dict[str, Any]:
+        """Mueve una estrategia por el camino, o la retira.
+
+        La regla que importa esta en `botiquant.estados` y no acá: no se puede
+        saltear un paso, y del cementerio se vuelve al PRINCIPIO. Reactivar en
+        produccion algo retirado "porque venia teniendo mala suerte" es el
+        movimiento con el que se pierde plata.
+        """
+        from botiquant import estados
+
+        dueno = duenio(request)
+        try:
+            actual = estados.normalizar(db.get_strategy(sid, dueno).get("estado"))
+        except KeyError as exc:
+            raise HTTPException(404, "Esa estrategia ya no está.") from exc
+
+        try:
+            cambio = estados.mover(actual, str(payload.get("estado") or ""),
+                                   motivo=str(payload.get("motivo") or ""))
+        except estados.EstadoError as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+        db.mover_estado(sid, cambio, dueno)
+        return {"id": sid, "estado": cambio["estado"],
+                "siguiente": estados.siguiente(cambio["estado"]),
+                "retiro": cambio.get("retiro")}
+
+    @app.post("/api/strategies/{sid}/validar")
+    def validar_estrategia(sid: str, payload: dict[str, Any],
+                           request: Request) -> dict[str, Any]:
+        """Le corre las pruebas de robustez y la mueve a `validada`.
+
+        ES UN PASO DEL CAMINO, no un botón suelto. La diferencia importa: un
+        botón que hay que apretar es un paso que en un sistema automático no
+        ocurre nunca. Acá el ciclo puede llamarlo solo sobre todo lo que esté
+        en `nueva`.
+
+        QUE SIGNIFICA "VALIDADA": que se le corrieron las pruebas y quedaron
+        registradas. NO que las pasó — eso lo decide la cantera, que es otra
+        cosa y mira otras métricas. Confundirlas haría que "validada" sonara a
+        aprobación y alguien la encendiera por eso.
+
+        Monte Carlo reordena las mismas operaciones mil veces. Contesta algo
+        que el backtest no puede: la caída histórica es UNA realización, y acá
+        se ve cuánto llegó a caer en el 95% de los ordenamientos. Medido sobre
+        las de BTCUSDT, esa cifra fue entre 1,3 y 3,9 veces la histórica.
+        """
+        from botiquant import estados
+
+        dueno = duenio(request)
+        try:
+            fila = db.get_strategy(sid, dueno)
+        except KeyError as exc:
+            raise HTTPException(404, "Esa estrategia ya no está.") from exc
+
+        actual = estados.normalizar(fila.get("estado"))
+        meta = fila.get("meta") or {}
+        if not meta.get("dataset_id"):
+            raise HTTPException(
+                422, "No sabemos con qué instrumento se encontró, así que no "
+                     "se le puede volver a correr el backtest.")
+
+        medido = meta.get("measured_range") or {}
+        ajustes = {"initial_capital": meta.get("capital"),
+                   "spread": meta.get("spread"), "slippage": meta.get("slippage"),
+                   "commission_pct": meta.get("commission")}
+        ajustes = {k: v for k, v in ajustes.items() if v is not None}
+
+        df = _load_df({"dataset_id": meta["dataset_id"],
+                       "timeframe": meta.get("timeframe") or "1h",
+                       **({"date_from": medido["from"], "date_to": medido["to"]}
+                          if medido.get("from") else {})})
+        res = run_backtest(df, StrategySpec.from_dict(fila["spec"]),
+                           _settings({"dataset_id": meta["dataset_id"],
+                                      "settings": ajustes}))
+        crudo = res.to_dict()
+        mc = monte_carlo(
+            [t["pnl"] for t in crudo.get("trades", [])],
+            initial_capital=float(ajustes.get("initial_capital") or 10_000.0),
+            simulations=int(min(max(int(payload.get("simulations", 1000)), 100), 5000)),
+            seed=int(payload.get("seed", 42)))
+
+        dd_hist = float(crudo["metrics"].get("max_drawdown_pct") or 0.0)
+        dd_p95 = float(mc["max_drawdown_pct"]["p95"])
+        validacion = {
+            "cuando": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "operaciones": mc["trades_per_sim"],
+            "dd_historica_pct": round(dd_hist, 2),
+            "dd_p95_pct": round(dd_p95, 2),
+            # Cuánto peor puede ser el mismo conjunto de operaciones en otro
+            # orden. Es el número que enseña algo: una caída histórica baja
+            # con un múltiplo alto significa que tuvo suerte con la secuencia.
+            "cuanto_peor": round(dd_p95 / dd_hist, 2) if dd_hist > 1e-9 else None,
+            "peor_razonable": mc["final_equity"]["ci_90"][0],
+            "prob_perder_pct": mc["final_equity"]["prob_loss"],
+        }
+        db.guardar_validacion(sid, validacion, dueno)
+
+        movida = False
+        if actual == estados.NUEVA:
+            db.mover_estado(sid, estados.mover(actual, estados.VALIDADA), dueno)
+            movida = True
+        return {"id": sid, "validacion": validacion,
+                "estado": estados.VALIDADA if movida else actual}
+
+    @app.get("/api/estrategias/resumen")
+    def resumen_estados(request: Request) -> dict[str, Any]:
+        """Cuántas hay en cada punto del camino.
+
+        Lo pide el ciclo automático tanto como la pantalla: para saber si hay
+        algo que validar o que retirar hay que poder contar sin traerse las
+        estrategias enteras.
+        """
+        from botiquant import estados
+        return {"por_estado": estados.resumen(db.list_strategies(duenio(request))),
+                "orden": estados.ORDEN, "cementerio": estados.RETIRADA}
 
     @app.post("/api/banco/guardar")
     def guardar_del_banco(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
