@@ -59,29 +59,75 @@ class BingXError(RuntimeError):
     """Algo salió mal hablando con BingX, con un texto que se puede mostrar."""
 
 
+#: Los caracteres que no pueden aparecer en el valor de un parámetro. Romperían
+#: la query que se firma, y una firma sobre una query distinta de la que se
+#: manda es un rechazo con un mensaje que no explica nada.
+_PROHIBIDOS = ("&", "=", "?", "#", "\r", "\n")
+
+
+def _valor(v: Any) -> str:
+    """Un parámetro como texto, listo para firmar.
+
+    Los diccionarios van como JSON compacto y NO como su `str()` de Python:
+    `str({"a": 1})` da `{'a': 1}` con comillas simples, que no es JSON y BingX
+    rechaza. Es la forma más fácil de romper `stopLoss` sin darse cuenta.
+    """
+    if isinstance(v, dict):
+        return json.dumps(v, separators=(",", ":"))
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    return str(v)
+
+
 def _pedir(ruta: str, params: dict[str, Any] | None = None,
-           api_key: str = "", secret: str = "") -> Any:
+           api_key: str = "", secret: str = "", metodo: str = "GET") -> Any:
     """Un pedido a la API, firmado si le dan credenciales.
 
-    La firma es HMAC-SHA256 sobre la query tal como se manda, y la clave viaja
-    en el header `X-BX-APIKEY`. El secreto NO viaja a ningún lado: se usa para
-    firmar y no sale de esta función.
+    TRES COSAS QUE HAY QUE HACER EXACTAMENTE ASÍ, contrastadas contra la
+    referencia oficial de BingX. Las tres las tenía mal y ninguna avisa: el
+    exchange contesta "clave incorrecta", que manda a revisar la clave.
+
+    1. LOS PARÁMETROS SE ORDENAN ALFABÉTICAMENTE ANTES DE FIRMAR. Firmar en el
+       orden en que uno los escribió produce una firma válida sobre un texto
+       que el servidor arma distinto, y no coincide nunca.
+    2. UN POST MANDA LOS PARÁMETROS EN EL CUERPO, no en la URL, con
+       `application/x-www-form-urlencoded`. En la URL el servidor no los ve.
+    3. NO SE URL-ENCODEA lo que se firma. La firma va sobre el texto crudo
+       `clave=valor&clave=valor`; escapar las llaves de un `stopLoss` cambia el
+       texto y rompe la firma.
+
+    El secreto NO viaja a ningún lado: se usa para firmar y no sale de acá.
     """
     p = dict(params or {})
     headers = {"User-Agent": "botiquant"}
+
+    for k, v in p.items():
+        txt = _valor(v)
+        if any(c in txt for c in _PROHIBIDOS):
+            raise BingXError(
+                f"El parámetro {k} tiene un caracter que rompería la firma.")
+
     if api_key and secret:
         # `timestamp` es obligatorio en los endpoints firmados y tiene que ir
         # ADENTRO de lo que se firma, no agregado después.
         p.setdefault("timestamp", int(time.time() * 1000))
-        query = urllib.parse.urlencode(p)
+        query = "&".join(f"{k}={_valor(p[k])}" for k in sorted(p))
         firma = hmac.new(secret.encode(), query.encode(), hashlib.sha256).hexdigest()
         query = f"{query}&signature={firma}"
         headers["X-BX-APIKEY"] = api_key
     else:
-        query = urllib.parse.urlencode(p)
+        query = "&".join(f"{k}={_valor(p[k])}" for k in sorted(p))
 
-    url = f"{BASE}{ruta}?{query}" if query else f"{BASE}{ruta}"
-    req = urllib.request.Request(url, headers=headers)
+    cuerpo_pedido = None
+    if metodo == "POST":
+        url = f"{BASE}{ruta}"
+        cuerpo_pedido = query.encode()
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
+    else:
+        url = f"{BASE}{ruta}?{query}" if query else f"{BASE}{ruta}"
+
+    req = urllib.request.Request(url, data=cuerpo_pedido, headers=headers,
+                                 method=metodo)
     try:
         with urllib.request.urlopen(req, timeout=30) as r:
             cuerpo = json.load(r)
@@ -166,6 +212,22 @@ def funding_actual(simbolo: str) -> dict[str, Any]:
         "proximo_cobro": int(d.get("nextFundingTime") or 0),
         "cada_horas": int(d.get("fundingIntervalHours") or 8),
     }
+
+
+def modo_cobertura(api_key: str, secret: str) -> bool:
+    """¿La cuenta está en modo cobertura (hedge) o en modo simple (one-way)?
+
+    Decide el valor de `positionSide` en cada orden: LONG/SHORT en cobertura,
+    BOTH en modo simple. Mandar el equivocado hace que el exchange rechace la
+    orden, y el mensaje no dice que el problema sea éste.
+
+    Se PREGUNTA en vez de asumir. Es una preferencia de la cuenta que el
+    usuario pudo cambiar desde la aplicación del exchange hace seis meses, y
+    asumir una de las dos deja a la mitad de la gente sin poder operar.
+    """
+    d = _pedir("/openApi/swap/v1/positionSide/dual",
+               api_key=api_key, secret=secret) or {}
+    return str(d.get("dualSidePosition", "")).lower() == "true"
 
 
 def saldo(api_key: str, secret: str) -> dict[str, Any]:

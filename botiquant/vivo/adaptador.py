@@ -13,16 +13,22 @@ TRES ADAPTADORES Y NO UNO, porque son tres niveles de riesgo distintos:
                Es el mismo código: lo único que cambia es a dónde apunta.
   * cualquiera que escriba estos cinco métodos.
 
-LO QUE ESTÁ VERIFICADO Y LO QUE NO. Los datos de mercado se probaron contra la
-API real: velas, contrato y funding responden y el formato es el que dice este
-archivo. **El envío de órdenes NO está verificado.** BingX valida la clave
-ANTES que los parámetros —lo comprobé mandando órdenes con credenciales falsas
-y siempre contesta 100413, nunca un error de parámetros— así que la forma
-exacta del pedido no se puede confirmar sin una clave de práctica.
+LO QUE ESTÁ VERIFICADO Y LO QUE NO.
 
-Está escrito con la forma documentada y aislado en un solo método justamente
-para que, cuando se pruebe con una clave demo y algo no cuadre, se corrija en
-un lugar y no en diez.
+  * Los datos de mercado, contra la API real: velas, contrato y funding
+    responden y el formato es el que dice este archivo.
+  * La forma del pedido de orden, contra la referencia oficial de BingX. De
+    ese contraste salieron TRES errores que no avisaban —los parámetros se
+    firman ordenados, un POST manda el cuerpo y no la query, y el
+    `positionSide` depende del modo de la cuenta— y los tres devolvían "clave
+    incorrecta", que manda a revisar la clave.
+  * Lo que NO se probó todavía es una orden REAL contra una cuenta de
+    práctica. BingX valida la clave antes que los parámetros —comprobado
+    mandando pedidos con credenciales falsas: siempre 100413— así que el
+    último tramo sólo se confirma con una clave demo.
+
+El envío está aislado en dos métodos justamente para que, cuando se pruebe y
+algo no cuadre, se corrija en un lugar y no en diez.
 """
 
 from __future__ import annotations
@@ -81,6 +87,10 @@ class BingX:
         self.secret = secret
         self.base = base
         self._contratos: dict[str, dict[str, Any]] = {}
+        #: Se consulta una vez y se recuerda: es una preferencia de la cuenta
+        #: que no cambia sola, y preguntarla en cada orden agrega una llamada
+        #: a la red en el momento en que menos conviene demorarse.
+        self._cobertura: bool | None = None
 
     @property
     def es_real(self) -> bool:
@@ -115,6 +125,23 @@ class BingX:
             lado = -1 if p["lado"].startswith("short") else 1
             return Posicion(lado, cant, float(p["precio_entrada"]))
         return Posicion()
+
+    def cobertura(self) -> bool:
+        """Si la cuenta opera en modo cobertura. Ver `bingx.modo_cobertura`."""
+        if self._cobertura is None:
+            self._cobertura = self._con_base(
+                bingx.modo_cobertura, self.api_key, self.secret)
+        return self._cobertura
+
+    def _lado_posicion(self, lado: int) -> str:
+        """LONG/SHORT en cobertura, BOTH en modo simple.
+
+        Mandar el equivocado hace que el exchange rechace la orden con un
+        mensaje que no menciona el modo de posición por ningún lado.
+        """
+        if not self.cobertura():
+            return "BOTH"
+        return "LONG" if lado > 0 else "SHORT"
 
     def contrato(self, simbolo: str) -> dict[str, Any]:
         if simbolo not in self._contratos:
@@ -156,7 +183,7 @@ class BingX:
         params: dict[str, Any] = {
             "symbol": simbolo,
             "side": "BUY" if lado > 0 else "SELL",
-            "positionSide": "LONG" if lado > 0 else "SHORT",
+            "positionSide": self._lado_posicion(lado),
             "type": "MARKET",
             "quantity": cant,
         }
@@ -170,7 +197,8 @@ class BingX:
                 "workingType": "MARK_PRICE"})
 
         return self._con_base(bingx._pedir, "/openApi/swap/v2/trade/order",
-                              params, self.api_key, self.secret) or {}
+                              params, self.api_key, self.secret,
+                              metodo="POST") or {}
 
     def cerrar(self, simbolo: str, posicion: Posicion) -> dict[str, Any]:
         """Cierra con una orden del lado contrario, por la cantidad que HAY.
@@ -184,12 +212,19 @@ class BingX:
         params = {
             "symbol": simbolo,
             "side": "SELL" if posicion.lado > 0 else "BUY",
-            "positionSide": "LONG" if posicion.lado > 0 else "SHORT",
+            "positionSide": self._lado_posicion(posicion.lado),
             "type": "MARKET",
             "quantity": self.redondear(simbolo, posicion.cantidad),
         }
+        # En modo simple hace falta `reduceOnly` para que la orden contraria
+        # CIERRE en vez de abrir del otro lado. En cobertura no se manda: ahí
+        # el `positionSide` ya dice cuál posición se está tocando, y BingX
+        # rechaza el parámetro.
+        if not self.cobertura():
+            params["reduceOnly"] = True
         return self._con_base(bingx._pedir, "/openApi/swap/v2/trade/order",
-                              params, self.api_key, self.secret) or {}
+                              params, self.api_key, self.secret,
+                              metodo="POST") or {}
 
 
 # --------------------------------------------------------------------- papel

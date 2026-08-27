@@ -47,7 +47,8 @@ def falso(monkeypatch):
         def read(self): return self.texto.encode()
 
     def _urlopen(req, timeout=None):
-        llamadas.append({"url": req.full_url, "headers": dict(req.headers)})
+        llamadas.append({"url": req.full_url, "headers": dict(req.headers),
+                         "cuerpo": req.data or b"", "metodo": req.get_method()})
         return _Resp(cuerpo["valor"])
 
     monkeypatch.setattr(bingx.urllib.request, "urlopen", _urlopen)
@@ -217,3 +218,165 @@ def test_un_contrato_que_no_existe_lo_dice(falso):
     cuerpo["valor"] = _respuesta([{"symbol": "ETH-USDT"}])
     with pytest.raises(bingx.BingXError, match="no lista"):
         bingx.contrato("DOGE-USDT")
+
+
+# ------------------------------------------------- la firma, contrastada con BingX
+#
+# Las tres cosas de esta sección estaban MAL y ninguna avisaba: el exchange
+# contesta "clave incorrecta" (100413), que manda a revisar la clave y no la
+# firma. Salieron de contrastar el cliente contra la referencia oficial.
+
+def test_los_parametros_se_ordenan_alfabeticamente_antes_de_firmar(falso):
+    """Firmar en el orden en que uno los escribió no coincide nunca.
+
+    El servidor arma la cadena a firmar ordenada; una firma válida sobre un
+    texto distinto es una firma inválida. Se descubre recién con una clave de
+    verdad, y el mensaje culpa a la clave.
+    """
+    llamadas, cuerpo = falso
+    cuerpo["valor"] = _respuesta({"balance": {"asset": "USDT", "balance": "1"}})
+    bingx._pedir("/x", {"zeta": 1, "alfa": 2, "medio": 3},
+                 api_key="k", secret="s")
+    query = llamadas[-1]["url"].split("?", 1)[1]
+    firmado = query.rpartition("&signature=")[0]
+    claves = [t.split("=")[0] for t in firmado.split("&")]
+    assert claves == sorted(claves), f"sin ordenar: {claves}"
+
+
+def test_un_post_manda_los_parametros_en_el_cuerpo(falso):
+    """En la URL, el servidor no los ve.
+
+    Una orden mandada por query string a un endpoint POST llega sin symbol,
+    sin side y sin quantity. El exchange contesta que faltan parámetros y
+    nadie sospecha del método.
+    """
+    llamadas, cuerpo = falso
+    cuerpo["valor"] = _respuesta({"orderId": 1})
+    bingx._pedir("/openApi/swap/v2/trade/order",
+                 {"symbol": "BTC-USDT", "quantity": 0.01},
+                 api_key="k", secret="s", metodo="POST")
+    ultima = llamadas[-1]
+    assert "?" not in ultima["url"], "un POST no lleva la query en la URL"
+    assert b"symbol=BTC-USDT" in ultima["cuerpo"]
+    assert b"signature=" in ultima["cuerpo"]
+    assert ultima["headers"].get("Content-type") == \
+        "application/x-www-form-urlencoded"
+
+
+def test_un_diccionario_viaja_como_json_y_no_como_repr_de_python(falso):
+    """`str({"a": 1})` da `{'a': 1}` con comillas simples, que no es JSON.
+
+    Es la forma más fácil de romper el `stopLoss` sin darse cuenta: el
+    parámetro viaja, la firma cierra, y el exchange rechaza el objeto.
+    """
+    llamadas, cuerpo = falso
+    cuerpo["valor"] = _respuesta({"orderId": 1})
+    bingx._pedir("/x", {"stopLoss": {"type": "STOP_MARKET", "stopPrice": 76000.0}},
+                 api_key="k", secret="s", metodo="POST")
+    enviado = llamadas[-1]["cuerpo"].decode()
+    assert '{"type":"STOP_MARKET","stopPrice":76000.0}' in enviado
+    assert "'" not in enviado, "comillas simples: eso es repr de Python, no JSON"
+
+
+def test_el_precio_del_stop_viaja_como_numero_y_no_como_texto(falso):
+    """BingX valida el tipo: `{"stopPrice":"76000"}` lo rechaza."""
+    llamadas, cuerpo = falso
+    cuerpo["valor"] = _respuesta({"orderId": 1})
+    bingx._pedir("/x", {"stopLoss": {"type": "STOP_MARKET", "stopPrice": 76000.0}},
+                 api_key="k", secret="s", metodo="POST")
+    assert '"stopPrice":76000.0' in llamadas[-1]["cuerpo"].decode()
+
+
+@pytest.mark.parametrize("malo", ["a&b", "a=b", "a?b", "a#b", "a\nb"])
+def test_un_caracter_que_romperia_la_firma_se_rechaza_antes_de_salir(falso, malo):
+    """Un `&` en un valor parte la query en dos y la firma deja de cerrar."""
+    llamadas, _ = falso
+    with pytest.raises(bingx.BingXError, match="firma"):
+        bingx._pedir("/x", {"clientOrderId": malo}, api_key="k", secret="s")
+    assert not llamadas, "no tendría que haber salido a la red"
+
+
+def test_la_firma_se_calcula_sobre_exactamente_lo_que_se_manda(falso):
+    """La comprobación de fondo: se rehace la firma y tiene que coincidir."""
+    import hashlib
+    import hmac
+    llamadas, cuerpo = falso
+    cuerpo["valor"] = _respuesta({"orderId": 1})
+    bingx._pedir("/x", {"symbol": "BTC-USDT", "quantity": 0.01},
+                 api_key="k", secret="elsecreto", metodo="POST")
+    enviado = llamadas[-1]["cuerpo"].decode()
+    firmado, _, firma = enviado.rpartition("&signature=")
+    esperada = hmac.new(b"elsecreto", firmado.encode(), hashlib.sha256).hexdigest()
+    assert firma == esperada
+
+
+# --------------------------------------------- el modo de posicion de la cuenta
+
+def _adaptador(falso, cobertura: bool):
+    from botiquant.vivo.adaptador import BingX
+    llamadas, cuerpo = falso
+    a = BingX("k", "s")
+    a._cobertura = cobertura
+    a._contratos["BTC-USDT"] = {"quantityPrecision": 4,
+                                "tradeMinQuantity": 0.0001}
+    cuerpo["valor"] = _respuesta({"orderId": 1})
+    return a, llamadas
+
+
+def test_en_modo_cobertura_la_orden_lleva_LONG_o_SHORT(falso):
+    a, llamadas = _adaptador(falso, cobertura=True)
+    a.abrir("BTC-USDT", 1, 0.01, 76_000.0, 82_000.0)
+    enviado = llamadas[-1]["cuerpo"].decode()
+    assert "positionSide=LONG" in enviado
+    a.abrir("BTC-USDT", -1, 0.01, 82_000.0, 76_000.0)
+    assert "positionSide=SHORT" in llamadas[-1]["cuerpo"].decode()
+
+
+def test_en_modo_simple_la_orden_lleva_BOTH(falso):
+    """Mandar LONG en una cuenta one-way hace que el exchange rechace la orden.
+
+    Y el mensaje no menciona el modo de posición por ningún lado, así que se
+    busca el problema en la clave, en el símbolo o en la cantidad.
+    """
+    a, llamadas = _adaptador(falso, cobertura=False)
+    a.abrir("BTC-USDT", 1, 0.01, 76_000.0, 82_000.0)
+    assert "positionSide=BOTH" in llamadas[-1]["cuerpo"].decode()
+
+
+def test_al_cerrar_en_modo_simple_va_reduceOnly(falso):
+    """Sin `reduceOnly`, la orden contraria ABRE del otro lado en vez de cerrar.
+
+    Es el peor resultado posible de un cierre: el bot cree que salió y en
+    realidad tiene el doble de exposición, del lado equivocado.
+    """
+    from botiquant.vivo.adaptador import Posicion
+    a, llamadas = _adaptador(falso, cobertura=False)
+    a.cerrar("BTC-USDT", Posicion(1, 0.01, 78_000.0))
+    enviado = llamadas[-1]["cuerpo"].decode()
+    assert "reduceOnly=true" in enviado
+    assert "side=SELL" in enviado
+
+
+def test_al_cerrar_en_cobertura_NO_va_reduceOnly(falso):
+    """En cobertura BingX rechaza el parámetro: ahí el positionSide ya dice
+    cuál posición se está tocando."""
+    from botiquant.vivo.adaptador import Posicion
+    a, llamadas = _adaptador(falso, cobertura=True)
+    a.cerrar("BTC-USDT", Posicion(1, 0.01, 78_000.0))
+    assert "reduceOnly" not in llamadas[-1]["cuerpo"].decode()
+
+
+def test_el_modo_se_pregunta_una_sola_vez(falso):
+    """Es una preferencia de la cuenta que no cambia sola.
+
+    Preguntarla en cada orden agrega una llamada a la red justo en el momento
+    en que menos conviene demorarse.
+    """
+    from botiquant.vivo.adaptador import BingX
+    llamadas, cuerpo = falso
+    cuerpo["valor"] = _respuesta({"dualSidePosition": "true"})
+    a = BingX("k", "s")
+    assert a.cobertura() is True
+    antes = len(llamadas)
+    assert a.cobertura() is True
+    assert len(llamadas) == antes, "preguntó dos veces"
