@@ -170,7 +170,8 @@ def magic_de(nombre: str) -> int:
 def export_mql5(spec: StrategySpec, *, ea_name: str = "BQ_Strategy",
                 symbol_hint: str = "", timeframe_hint: str = "",
                 metrics: dict[str, float] | None = None,
-                server_utc_offset: int = 0) -> str:
+                server_utc_offset: int = 0,
+                porcion: float = 100.0) -> str:
     """Render a full .mq5 Expert Advisor source for ``spec``.
 
     ``server_utc_offset`` son las horas que el servidor del bróker adelanta
@@ -262,7 +263,8 @@ def export_mql5(spec: StrategySpec, *, ea_name: str = "BQ_Strategy",
 #include <Trade\\Trade.mqh>
 
 input double InpLots        = {_fmt_num(risk.size_value) if risk.size_mode == 'fixed_units' else '0.10'};    // Lotes fijos{'' if risk.size_mode == 'fixed_units' else ' (sólo si InpRiskPct = 0)'}
-input double InpRiskPct     = {_fmt_num(risk.size_value) if risk.size_mode == 'risk_pct' else '0'};     // % del balance a arriesgar (0 = usar lotes fijos)
+input double InpRiskPct     = {_fmt_num(risk.size_value) if risk.size_mode == 'risk_pct' else '0'};     // % de SU PORCION a arriesgar (0 = usar lotes fijos)
+input double InpPorcionPct  = {_fmt_num(porcion)};   // % de la cuenta que maneja este bot (100 = toda)
 input double InpStopValue   = {_fmt_num(risk.stop_value)};  // Stop loss ({_UNIT_LABEL.get(risk.stop_type, 'desactivado')})
 input double InpTargetValue = {_fmt_num(risk.target_value)};  // Take profit ({_UNIT_LABEL.get(risk.target_type, 'desactivado')})
 input double InpTrailATR    = {_fmt_num(risk.trail_atr)};  // Trailing (multiplo de ATR, 0 = sin trailing)
@@ -487,7 +489,17 @@ double LotsFor(const bool isLong, const double entry, const double stopPrice)
       if(OrderCalcProfit(dir, _Symbol, 1.0, entry, stopPrice, lossPerLot))
         {
          lossPerLot = MathAbs(lossPerLot);
-         double riskMoney = AccountInfoDouble(ACCOUNT_BALANCE) * InpRiskPct / 100.0;
+         // SOBRE SU PORCION DE LA CUENTA, no sobre el balance entero.
+         //
+         // Con cinco EA al 1% cada uno midiendo contra el balance total, una
+         // operacion simultanea de los cinco arriesga 5% y no 1%. Con veinte,
+         // 20%. Y nadie se entera: cada EA respeta su propio numero.
+         //
+         // InpPorcionPct es cuanto de la cuenta le toca a ESTE bot. En 100
+         // (el valor por defecto) se comporta igual que antes, asi que un EA
+         // solo en su cuenta no cambia en nada.
+         double miParte = AccountInfoDouble(ACCOUNT_BALANCE) * InpPorcionPct / 100.0;
+         double riskMoney = miParte * InpRiskPct / 100.0;
          if(lossPerLot > 0.0) vol = riskMoney / lossPerLot;
         }
       else if(InpVerbose)
@@ -616,7 +628,10 @@ void ReportSize(const string side, const bool isLong, const double vol,
    double loss = 0.0;
    ENUM_ORDER_TYPE dir = isLong ? ORDER_TYPE_BUY : ORDER_TYPE_SELL;
    if(!OrderCalcProfit(dir, _Symbol, vol, entry, stopPrice, loss)) return;
-   double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+   // Se mide contra SU PORCION, que es contra lo que se dimensiono. Medirlo
+   // contra el balance entero haria que un bot con 20% de la cuenta reporte
+   // 0,2% cuando pidio 1%, y quien lo lea va a pensar que el calculo esta mal.
+   double balance = AccountInfoDouble(ACCOUNT_BALANCE) * InpPorcionPct / 100.0;
    double pct = (balance > 0.0) ? MathAbs(loss) / balance * 100.0 : 0.0;
    PrintFormat("[QF] %s vol=%.2f | si toca el stop pierde %.2f = %.2f%% del balance "
                "(pedido: %.2f%%)", side, vol, MathAbs(loss), pct, InpRiskPct);
