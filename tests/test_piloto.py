@@ -327,3 +327,46 @@ def test_se_niega_a_operar_una_estrategia_con_trailing():
 
     doc["estrategia"]["risk"]["trail_atr"] = 0
     Bot(doc=doc, adaptador=_Exchange(), modo=SIMULACRO)   # sin trailing, arranca
+
+
+def test_un_rechazo_del_exchange_se_lee_como_un_mensaje_y_no_como_un_traceback(piloto):
+    """Es el fallo MAS PROBABLE de todos y salia como tripas de Python.
+
+    La clave mal, vencida, o creada sin permiso de trading: las tres terminan
+    en un rechazo del exchange. Quien lo lea tiene que poder arreglarlo, y
+    para eso necesita el mensaje del exchange —que ademas trae el codigo con
+    el que se busca— y no el archivo y la linea donde reventó.
+
+    Encontrado mandando una orden de verdad a BingX con una clave inventada.
+    """
+    from botiquant.data.bingx import BingXError
+
+    ex = _Exchange()
+    ex.velas = lambda *a, **k: (_ for _ in ()).throw(
+        BingXError("BingX rechazó el pedido (100413): Incorrect apiKey",
+                   codigo=100413, mensaje="Incorrect apiKey"))
+    piloto.encender(_bot(ex, modo=PRACTICA))
+    for _ in range(50):
+        if not piloto.encendido:
+            break
+        time.sleep(0.05)
+
+    e = piloto.estado()
+    assert e["encendido"] is False
+    assert e["error"] == "[100413] Incorrect apiKey"
+    assert "Traceback" not in e["error"]
+    assert e["registro"][0]["accion"] == "apagado por el exchange"
+
+
+def test_un_error_que_no_previmos_si_guarda_el_traceback(piloto):
+    """La contracara: si llegó hasta ahí es algo que no anticipamos, y
+    recortarlo tira justo lo que hace falta para entenderlo."""
+    ex = _Exchange()
+    ex.velas = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("algo raro"))
+    piloto.encender(_bot(ex, modo=PRACTICA))
+    for _ in range(50):
+        if not piloto.encendido:
+            break
+        time.sleep(0.05)
+    assert "Traceback" in piloto.estado()["error"]
+    assert "algo raro" in piloto.estado()["error"]

@@ -33,6 +33,7 @@ from typing import Any
 
 import pandas as pd
 
+from botiquant.data.bingx import BingXError
 from botiquant.vivo.nucleo import DURACION
 from botiquant.vivo.runner import Bot
 
@@ -160,11 +161,25 @@ class Piloto:
         while not self._parar.is_set():
             try:
                 b.paso()
+            except BingXError as exc:
+                # El exchange rechazo algo y DIJO por que. Es el caso mas
+                # probable de todos —la clave mal, vencida, o sin permiso de
+                # trading— y merece el mensaje del exchange y no un traceback:
+                # quien lo lea tiene que poder arreglarlo, no adivinar.
+                self.error = exc.del_exchange
+                b.registro.append({
+                    "cuando": pd.Timestamp.now(tz="UTC").isoformat(),
+                    "accion": "apagado por el exchange", "motivo": self.error})
+                return
             except Exception:                                 # noqa: BLE001
                 # Un error inesperado APAGA el bot en vez de reintentar en
                 # bucle. Reintentar a ciegas contra un exchange que rechaza
                 # algo es la forma de mandar cien órdenes malas en un minuto.
-                self.error = traceback.format_exc(limit=3)
+                #
+                # Se guarda el traceback ENTERO y no un resumen: si llego
+                # hasta aca es algo que no previmos, y recortarlo tira justo
+                # lo que hace falta para entenderlo.
+                self.error = traceback.format_exc(limit=5)
                 b.registro.append({
                     "cuando": pd.Timestamp.now(tz="UTC").isoformat(),
                     "accion": "apagado por error", "motivo": self.error[-300:]})
