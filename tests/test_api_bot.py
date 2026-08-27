@@ -29,6 +29,18 @@ def _doc():
     }
 
 
+def _con_respaldo(**kw):
+    """Un bot con las metricas que la cantera mira."""
+    d = _doc()
+    d["respaldo"] = {"trades": kw.get("trades", 200),
+                     "profit_factor": kw.get("pf", 1.5),
+                     "expectancy_r": kw.get("expr", 0.3),
+                     "max_drawdown_pct": kw.get("dd", 10.0)}
+    d["fuera_de_muestra"] = {"trades": kw.get("oos_trades", 80),
+                             "profit_factor": kw.get("oos_pf", 1.2)}
+    return d
+
+
 @pytest.fixture()
 def client(tmp_path):
     from botiquant.vivo.piloto import PILOTO
@@ -78,13 +90,17 @@ def test_sin_archivo_del_bot_no_arranca(client):
 def test_practica_sin_clave_cargada_no_arranca(client):
     """Y lo dice claro. Antes de esto, arrancaba y fallaba en la primera vuelta
     con un error de red que no explicaba nada."""
-    r = client.post("/api/bot/encender", json={"bot": _doc(), "modo": "practica"})
+    # con respaldo suficiente, para que lo que falle sea la CLAVE y no la
+    # cantera: una prueba que pasa por el motivo equivocado no prueba nada
+    r = client.post("/api/bot/encender",
+                    json={"bot": _con_respaldo(), "modo": "practica"})
     assert r.status_code == 400
     assert "claves" in r.json()["detail"].lower()
 
 
 def test_real_sin_clave_cargada_tampoco(client):
-    r = client.post("/api/bot/encender", json={"bot": _doc(), "modo": "real"})
+    r = client.post("/api/bot/encender",
+                    json={"bot": _con_respaldo(), "modo": "real"})
     assert r.status_code == 400
 
 
@@ -177,3 +193,49 @@ def test_sin_tope_declarado_queda_en_cero(client):
     client.post("/api/bot/encender", json={"bot": _doc(), "modo": "simulacro"})
     assert PILOTO.bot.perdida_maxima_diaria == 0.0
     client.post("/api/bot/apagar")
+
+
+# ------------------------------------------------------------- la cantera
+
+
+def test_no_se_puede_encender_en_real_una_estrategia_sin_probar(client):
+    """La puerta que justifica toda la cantera.
+
+    Sin esto se puede encender con plata real una estrategia de nueve
+    operaciones — la aplicacion no tenia NADA que lo impidiera.
+    """
+    r = client.post("/api/bot/encender", json={
+        "bot": _con_respaldo(trades=9, oos_trades=4), "modo": "real"})
+    assert r.status_code == 422
+    assert "todavía no puede operar" in str(r.json())
+
+
+def test_sin_fuera_de_muestra_no_se_llega_a_real(client):
+    d = _con_respaldo()
+    d["fuera_de_muestra"] = {}
+    r = client.post("/api/bot/encender", json={"bot": d, "modo": "real"})
+    assert r.status_code == 422
+
+
+def test_el_simulacro_no_pide_nada(client):
+    """Mirar que haria el bot es gratis y tiene que seguir siendolo."""
+    r = client.post("/api/bot/encender", json={
+        "bot": _con_respaldo(trades=3, pf=0.2, dd=90.0), "modo": "simulacro"})
+    assert r.status_code == 200, r.text
+    client.post("/api/bot/apagar")
+
+
+def test_la_puerta_vive_en_el_SERVIDOR_y_no_en_la_pantalla(client):
+    """Una comprobacion que vive solo en el navegador la saltea cualquiera que
+    llame al endpoint — y este es el unico endpoint que puede mover plata."""
+    r = client.post("/api/bot/encender", json={
+        "bot": _con_respaldo(trades=5), "modo": "real"})
+    assert r.status_code == 422
+
+
+def test_el_rechazo_dice_que_falta(client):
+    r = client.post("/api/bot/encender", json={
+        "bot": _con_respaldo(oos_trades=3), "modo": "real"})
+    detalle = r.json()["detail"]
+    assert "puertas" in detalle
+    assert any(not p["pasa"] for p in detalle["puertas"])

@@ -2025,6 +2025,13 @@ PAGES.exchanges = async (main) => {
         dataset_id: (fila.meta || {}).dataset_id,
         timeframe: (fila.meta || {}).timeframe,
         settings: { commission_pct: (fila.meta || {}).commission },
+        /* Las metricas del backtest y las del tramo fuera de muestra viajan
+           con el bot: son lo que la cantera mira para decidir si esto puede
+           operar y con que plata. Sin mandarlas, TODO queda bloqueado —lo que
+           no se midio no pasa— y el bloqueo parece un bug del filtro cuando
+           en realidad es un campo que nadie envio. */
+        metrics: (fila.meta || {}).metrics,
+        oos: (fila.meta || {}).oos,
       });
       const tope = parseFloat(($("#bot-tope", main) || {}).value) || 0;
       await api.post("/api/bot/encender",

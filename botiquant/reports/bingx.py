@@ -65,7 +65,8 @@ def export_bingx(spec: StrategySpec, *, name: str = "BQ Bot",
                  symbol_source: str = "", timeframe: str = "1h",
                  metrics: dict[str, Any] | None = None,
                  costs: dict[str, Any] | None = None,
-                 measured_from: str = "", measured_to: str = "") -> str:
+                 measured_from: str = "", measured_to: str = "",
+                 oos: dict[str, Any] | None = None) -> str:
     """El archivo de enlace, como JSON con sangría.
 
     Con sangría a propósito: es un archivo que alguien va a abrir para
@@ -110,6 +111,13 @@ def export_bingx(spec: StrategySpec, *, name: str = "BQ Bot",
         # QUÉ DIO EN EL BACKTEST. Viaja para que quien arranque el bot vea
         # sobre qué se está parando sin tener que abrir la aplicación.
         "respaldo": dict(metrics or {}),
+
+        # Y QUÉ DIO EN EL TRAMO QUE LA BÚSQUEDA NO VIO. Es lo que separa
+        # "encontré algo" de "aguantó donde no miré", y es la puerta que la
+        # cantera exige para dejar operar con plata real. Va aparte del
+        # respaldo justamente para que no se confunda con él: un número de
+        # todo el período y uno de fuera de muestra dicen cosas distintas.
+        "fuera_de_muestra": dict(oos or {}),
     }
     return json.dumps(doc, indent=2, ensure_ascii=False) + "\n"
 

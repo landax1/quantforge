@@ -1839,7 +1839,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 symbol_source=simbolo, timeframe=tf,
                 metrics=metricas, costs=costos,
                 measured_from=str((ds or {}).get("start") or ""),
-                measured_to=str((ds or {}).get("end") or ""))
+                measured_to=str((ds or {}).get("end") or ""),
+                oos=payload.get("oos"))
             return code, f"{name}.bqbot"
         if formato == "pine":
             # el nombre VISIBLE dentro del script puede llevar espacios; el del
@@ -2167,6 +2168,21 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             doc = validar_bot(payload.get("bot"))
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+
+        # LA CANTERA. Nada llega a un destino con riesgo sin pasar sus puertas.
+        # Se revisa ACA y no en la pantalla: una comprobacion que vive solo en
+        # el navegador la saltea cualquiera que llame al endpoint, y este es el
+        # unico endpoint de la aplicacion que puede mover plata.
+        from botiquant import cantera
+        respaldo = doc.get("respaldo") or {}
+        veredicto = cantera.revisar(
+            {"metrics": respaldo, "oos": doc.get("fuera_de_muestra")}, modo)
+        if not veredicto.pasa:
+            raise HTTPException(422, {
+                "mensaje": f"Esta estrategia todavía no puede operar en "
+                           f"{modo}: {cantera.por_que_no(veredicto)}",
+                "puertas": veredicto.puertas,
+            })
 
         if modo == SIMULACRO:
             # Sin credenciales: los datos de mercado son publicos y este modo
