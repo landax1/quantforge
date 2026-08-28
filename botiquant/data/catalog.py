@@ -151,6 +151,68 @@ CATALOG: list[dict[str, Any]] = [
         "aliases": ["BTCUSD", "Bitcoin CFD"],
         "direction": "long",
     },
+    # ── Los que agregan una apuesta y no un nombre ───────────────────────
+    #
+    # MEDIDO sobre retornos diarios 2021-2025, correlacion media contra los
+    # cuatro de arriba. Los dos primeros son los que menos se parecen a lo que
+    # ya habia; los que quedaron afuera estan al final y dicen por que.
+    #
+    #     Bund      0,092      <- renta fija: el sector que faltaba entero
+    #     WTI       0,110
+    #     ...
+    #     plata     0,391      (0,751 contra el oro: es la misma apuesta)
+    #     Nasdaq    0,426      (0,948 contra el S&P)
+    #     Dow       0,444      (0,913 contra el S&P)
+    #
+    # El `spread` de los dos sale de medir BID contra ASK en Dukascopy con
+    # botiquant/data/spread.py, no de estimarlo. NO esta calibrado a un broker
+    # retail y no se puede: sobre los cuatro instrumentos donde conocemos las
+    # dos puntas, la razon fue 4,0x / 0,7x / 0,7x / 0,2x, o sea que no hay
+    # recargo estable. En los tres que no son divisas Dukascopy resulto MAS
+    # ANCHO que lo que el catalogo asumia, asi que usarlo directo peca de caro
+    # y no de barato — que es el lado en el que conviene equivocarse.
+    {
+        "key": "bund",
+        "label": "BUND",
+        "full_name": "Euro Bund (bono aleman a 10 anios)",
+        "dukascopy": "bundtreur",
+        "dukascopy_api": "BUND.TR-EUR",
+        "category": "bonos",
+        "from": "2016-05-02",
+        "spread": 0.053,          # medido: 0,0398% del precio, 2.315 minutos
+        "slippage": 0.02,
+        "stop_points": 0.67,
+        "target_points": 1.34,
+        "contract_size": 1000,
+        "min_lot": 0.1,
+        "min_cagr": 1.0,
+        "aliases": ["BUND", "FGBL", "EUROBUND", "GERMANY10Y", "DE10YB"],
+        # Un bono no tiene la deriva al alza de un indice: sube cuando bajan
+        # las tasas y baja cuando suben, y estos anios hizo las dos cosas. Sin
+        # deriva, permitir cortos es lo que da la mitad del espacio de busqueda
+        # — el mismo motivo por el que EURUSD esta en "both".
+        "direction": "both",
+    },
+    {
+        "key": "wti",
+        "label": "WTI",
+        "full_name": "Petroleo WTI (Light Sweet Crude)",
+        "dukascopy": "lightcmdusd",
+        "dukascopy_api": "LIGHT.CMD-USD",
+        "category": "energia",
+        "from": "2011-09-23",
+        "spread": 0.05,           # medido: 0,0571% del precio, 4.059 minutos
+        "slippage": 0.02,
+        "stop_points": 0.44,
+        "target_points": 0.88,
+        "contract_size": 1000,
+        "min_lot": 0.01,
+        "min_cagr": 1.0,
+        "aliases": ["WTI", "USOIL", "CL", "CRUDE", "OIL", "USOUSD", "XTIUSD"],
+        # El petroleo tampoco tiene deriva: 2020 lo dejo en negativo y 2022 lo
+        # llevo a 120. Cortos permitidos por el mismo motivo que el Bund.
+        "direction": "both",
+    },
     # ── Perpetuos de exchange ────────────────────────────────────────────
     # Se bajan de Binance y no del exchange donde se opera. Medido: BTCUSDT en
     # Binance y en BingX correlacionan 0,99974 en sus movimientos, con 0,0019%

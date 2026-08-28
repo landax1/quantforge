@@ -1170,6 +1170,10 @@ const STR = {
     "La misma franja, tres horas más tarde en el reloj del servidor."],
 
   "nav.exchanges": ["Exchanges", "Exchanges"],
+  // El menú se está renombrando a "Operar" en otra sesión. Este texto va acá
+  // para que la sección no se dibuje en crudo mientras tanto; la vieja se
+  // deja hasta que ese cambio esté terminado y se pueda sacar de una.
+  "nav.operar": ["Trade", "Operar"],
   "ex.sub": ["Connect an exchange so a strategy can trade on its own",
              "Conectá un exchange para que una estrategia opere sola"],
   "ex.regla1_t": ["Your keys stay on this computer",
@@ -1313,6 +1317,8 @@ const STR = {
   "cat.forex": ["Forex", "Forex"],
   "cat.metals": ["Metals", "Metales"],
   "cat.crypto": ["Crypto CFD", "Cripto CFD"],
+  "cat.bonos": ["Bonds", "Bonos"],
+  "cat.energia": ["Energy", "Energía"],
 
   /* El distintivo del instrumento que más estrategias produce. El texto tiene
      que ser cierto: sale de medir los cuatro con la misma vara sobre los datos

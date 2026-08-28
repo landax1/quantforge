@@ -29,8 +29,12 @@ const S = {
   mt5: { terminales: [], elegido: localStorage.getItem("qf.mt5") },
   // el banco: corridas archivadas, qué se está mirando y qué está tildado
   banco: { corridas: [], total: 0, tope: 0, filas: [], corrida: "", sel: new Set() },
-  // qué mitad de Minado se está viendo: "buscar" o "resultados"
-  vista: "buscar",
+  /* Qué vista se está mirando en cada sección que tiene dos. Una memoria
+     por sección y no una sola compartida: son listas de vistas distintas
+     —"buscar" no existe en Operar— y con una variable única entrar a una
+     sección devolvía la otra a su primera vista. */
+  vista: "buscar",          // Minado: "buscar" | "resultados"
+  vistaOperar: "bot",       // Operar: "bot" | "claves"
   // arranca en la vista de todas, y ahí el puesto no ordena nada — ver ORDEN_NATURAL
   bancoSort: { key: "score", dir: -1 },
   // estrategias guardadas: viven en el servidor y sobreviven a cada corrida
@@ -217,6 +221,13 @@ const INST_FAMILIA = {
     '<circle cx="12" cy="12" r="8.5"/>' +
     '<path d="M9.6 8.4h4a1.9 1.9 0 0 1 0 3.8H9.6h4.6a1.9 1.9 0 0 1 0 3.8H9.6"/>' +
     '<path d="M11.2 6.6v1.8M11.2 16v1.8"/>' },
+  bonos: { icono:
+    // un cupon: rectangulo con el borde dentado de un titulo
+    '<rect x="3.5" y="6.5" width="17" height="11" rx="1.5"/>' +
+    '<path d="M7 10.5h10M7 13.5h6"/>' },
+  energia: { icono:
+    // una gota, que sirve para el crudo y para el gas
+    '<path d="M12 3.5c3.4 4 5.2 6.6 5.2 9.1a5.2 5.2 0 0 1-10.4 0c0-2.5 1.8-5.1 5.2-9.1Z"/>' },
   perpetuos: { icono:
     '<circle cx="12" cy="12" r="8.5"/>' +
     '<path d="M9.6 8.4h4a1.9 1.9 0 0 1 0 3.8H9.6h4.6a1.9 1.9 0 0 1 0 3.8H9.6"/>' +
@@ -1217,7 +1228,8 @@ async function refreshDatasets() {
 
 async function navigate(page, vista) {
   S.page = page;
-  if (vista) S.vista = vista;
+  // la vista pedida va a la memoria de SU sección, ver S.vista / S.vistaOperar
+  if (vista) { if (page === "operar") S.vistaOperar = vista; else S.vista = vista; }
   $$("#nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
   const main = $("#main");
   main.innerHTML = "";
@@ -1247,7 +1259,7 @@ async function navigate(page, vista) {
 const TITULOS = () => ({
   bienvenida: t("wel.title"), data: t("nav.data"), mining: t("nav.mining"),
   saved: t("nav.saved"), consejos: t("nav.tips"),
-  exchanges: t("nav.exchanges"),
+  operar: t("nav.operar"),
 });
 
 /* Todo lo que vive fuera del <main> y por lo tanto no se repinta al navegar:
@@ -1755,29 +1767,132 @@ const CONSEJOS = () => [
   { id: "zona",     ico: "info", clave: "tip.zona" },
 ];
 
-/* ---------------------------------------------------------------- exchanges
+/* ============================================================ LA ESCALERA ===
+   Simulacro -> practica -> real. Los tres destinos de una estrategia, en el
+   orden en que se suben, y que le falta para subir al siguiente.
 
-   La pantalla donde alguien pega la clave de su exchange. Es el momento de
-   mas confianza que le pedimos a nadie en toda la aplicacion, asi que la
-   pantalla tiene que decir tres cosas antes que nada: que la clave se queda
-   en su computadora, que hay que crearla SIN RETIRO, y que se empieza en
-   practica. No al final y en gris: arriba, donde se lee.
+   EL CALCULO NO ESTA ACA. Lo hace `botiquant/cantera.py` y viaja con cada fila
+   de /api/strategies bajo la clave `cantera`. Repetir los umbrales en la
+   pantalla haria que lo que se ve y lo que el servidor permite puedan
+   divergir, que es exactamente el agujero que la cantera vino a tapar.
 
-   PRACTICA Y REAL SON DOS TARJETAS SEPARADAS y no un interruptor. Con un
-   interruptor, un clic de mas opera con plata de verdad. Asi hay que cargar
-   otra clave a proposito. */
-/* ---- el bot: encenderlo, mirarlo y apagarlo ----
+   POR QUE SE DIBUJA. Hasta ahora la escalera existia unicamente como opciones
+   deshabilitadas en un desplegable: habia que elegir una estrategia, abrir el
+   menu de modos y leer un renglon en gris para enterarse de que ese destino
+   estaba cerrado. Un escalon que solo se ve cuando uno intenta pisarlo no es
+   una guia, es un tropiezo — y ademas obliga a entrar a Operar para saber algo
+   que es de la estrategia y no del exchange.
 
-   Vive abajo de las claves porque ese es el orden real: primero conectás el
-   exchange, despues encendés algo. Al reves, el boton de encender esta ahi
-   pidiendo que lo aprieten antes de que exista con que.
+   Los rotulos se piden ENTEROS y no armando la clave con el nombre del
+   destino: armados asi, el examen de textos ve el prefijo suelto y una clave
+   que falte se dibuja en crudo en la pantalla sin que nada avise. */
+const PELDANIOS = ["simulacro", "practica", "real"];
 
-   EL MODO SE ELIGE CADA VEZ y no se recuerda. Recordar "real" y que alcance
-   con apretar encender es exactamente el clic de mas que este proyecto viene
-   evitando en todas las pantallas. */
-/* Las claves se escriben ENTERAS. Armadas pegando el prefijo con el modo, el
-   examen de textos ve el prefijo suelto y una que falte se dibuja en crudo en
-   la pantalla sin que nada avise. */
+function rotuloDestino(d) {
+  if (d === "real") return t("esc.real");
+  if (d === "practica") return t("esc.practica");
+  return t("esc.simulacro");
+}
+
+/* Hasta donde llega una estrategia, y cual es el escalon siguiente.
+
+   El tope es el ultimo peldanio CONSECUTIVO que pasa y no el mas alto que
+   pasa. Las varas de real son mas duras que las de practica en todas las
+   metricas, asi que en la practica no puede haber huecos; pero si alguna vez
+   los umbrales se tocan y aparece uno, decir "llega a real" con practica
+   cerrada seria contar una escalera a la que le falta un escalon en el medio.
+
+   Simulacro no pide nada —ver el encabezado de cantera.py— asi que lo normal
+   es que siempre haya al menos uno. */
+function escaleraDe(fila) {
+  const c = (fila || {}).cantera || {};
+  const pasos = PELDANIOS.map(d => ({
+    destino: d,
+    /* Sin veredicto —una estrategia guardada por una version anterior, o un
+       servidor que no lo manda— NO se da por pasado. Es la misma regla que la
+       cantera le aplica a una metrica que nadie midio: la ausencia de
+       evidencia no es evidencia. */
+    pasa: (c[d] || {}).pasa === true,
+    /* `por_que_no` lo escribe el motor y es una frase libre en espaniol,
+       igual que los `motivo` del registro del bot. Se muestra igual: es lo
+       unico que explica el rechazo, y una frase en el idioma equivocado sigue
+       siendo mejor que ninguna. */
+    por_que_no: (c[d] || {}).por_que_no || "",
+  }));
+  let tope = -1;
+  for (let i = 0; i < pasos.length && pasos[i].pasa; i++) tope = i;
+  return { pasos, tope, siguiente: pasos[tope + 1] || null };
+}
+
+/* La escalera en una celda de la tabla: tres barritas y el nombre del ultimo
+   escalon alcanzado.
+
+   Las barritas son para barrer la columna con la vista —"cuales de mis
+   estrategias podrian ir a real" es una pregunta que se hace mirando la lista
+   entera, no una ficha— y el nombre esta al lado para no obligar a nadie a
+   descifrar las barritas. Debajo, en chico, lo que falta para el escalon
+   siguiente: sin eso la columna dice que no y no dice que hacer. */
+function escaleraChip(fila) {
+  const e = escaleraDe(fila);
+  const nivel = e.tope < 0 ? "none" : PELDANIOS[e.tope];
+  return `<div class="esc esc-${nivel}">
+    <div class="esc-linea">
+      <span class="esc-barras" aria-hidden="true">${
+        PELDANIOS.map((d, i) => `<i class="${i <= e.tope ? "on" : ""}"></i>`).join("")}</span>
+      <span class="esc-rot">${esc(e.tope < 0 ? t("esc.ninguno")
+                                             : rotuloDestino(PELDANIOS[e.tope]))}</span>
+    </div>
+    ${e.siguiente ? `<div class="esc-falta">${esc(t("esc.falta", {
+        destino: rotuloDestino(e.siguiente.destino),
+        motivo: e.siguiente.por_que_no || t("esc.falta_sin_motivo"),
+      }))}</div>` : ""}
+  </div>`;
+}
+
+/* La escalera entera, adentro de una estrategia.
+
+   Aca van los TRES escalones con su veredicto y no solo el que falta, porque
+   la ficha es donde alguien viene a entender por que su estrategia no puede
+   operar todavia. Ver los tres juntos ensenia que las varas suben: lo que
+   practica pide con 30 operaciones, real lo pide con 100 y ademas afuera de
+   la muestra que la busqueda miro. */
+function panelEscalera(ctx) {
+  // una fila del banco no tiene destino: todavia no es una estrategia guardada
+  if (!ctx || !ctx.strategy_id) return "";
+  const e = escaleraDe(ctx);
+  const nivel = e.tope < 0 ? "none" : PELDANIOS[e.tope];
+  return `<section class="escalera esc-${nivel}">
+    <div class="esc-cabeza">
+      <div>
+        <b>${esc(t("esc.title"))}</b>
+        <p class="help-note">${esc(t("esc.sub"))}</p>
+      </div>
+      <span class="esc-tope">${esc(e.tope < 0 ? t("esc.ninguno")
+        : t("esc.hasta", { destino: rotuloDestino(PELDANIOS[e.tope]) }))}</span>
+    </div>
+    <ol class="esc-pasos">
+      ${e.pasos.map((p, i) => `
+        <li class="esc-paso ${p.pasa ? "ok" : "mal"}${i === e.tope ? " aqui" : ""}">
+          <span class="esc-ic">${icono(p.pasa ? "tilde" : "candado")}</span>
+          <b>${esc(rotuloDestino(p.destino))}</b>
+          <span>${esc(p.pasa
+            ? (p.destino === "simulacro" ? t("esc.libre") : t("esc.habilitada"))
+            : (p.por_que_no || t("esc.falta_sin_motivo")))}</span>
+        </li>`).join("")}
+    </ol>
+    <p class="esc-pie">${esc(t("esc.pie"))}</p>
+  </section>`;
+}
+
+
+/* ------------------------------------------------------- las piezas de OPERAR
+
+   Los rotulos y la tarjeta del bot. La seccion que los usa esta mas abajo,
+   partida en sus dos vistas.
+
+   Las claves de texto se escriben ENTERAS. Armadas pegando el prefijo con el
+   modo, el examen de textos ve el prefijo suelto y una que falte se dibuja en
+   crudo en la pantalla sin que nada avise. */
 /* Las acciones son un conjunto CERRADO —cuatro— y se traducen. Los `motivo`
    no: los escribe el motor y son frases libres en español. Se muestran igual
    porque son lo único que explica por qué el bot hizo lo que hizo, y una
@@ -1870,6 +1985,11 @@ function panelBot(e, hayClave) {
         </select></label>
     </div>
     <p class="bot-porque" id="bot-porque" hidden></p>
+    <!-- Lo esconde y lo muestra revisarDestinos: sale SOLO cuando lo que
+         falta es la clave. El motivo de arriba puede venir de la cantera, y
+         para eso el atajo no sirve de nada. -->
+    <button class="linkbtn" id="bot-ir-claves" hidden>${
+      esc(t("op.ir_claves"))}</button>
     <div class="controls mt">
       <button class="btn" id="bot-encender">${esc(t("bot.encender"))}</button>
     </div>`}`}
@@ -1887,19 +2007,201 @@ function panelBot(e, hayClave) {
 }
 
 
-PAGES.exchanges = async (main) => {
-  const [estado, bot] = await Promise.all([
-    api.get("/api/exchanges"), api.get("/api/bot"),
-  ]);
-  await refreshSavedCount();
-  // Hace falta para saber la FUENTE de cada dataset: sin esto, el filtro de
-  // estrategias operables no puede distinguir un perpetuo de un CFD.
-  if (!(S.datasets || []).length) await refreshDatasets();
+/* ------------------------------------------------------------------ OPERAR
+
+   El ultimo paso del flujo, y la seccion donde se hacen DOS cosas de
+   frecuencia muy distinta. Estaban una debajo de la otra en la misma pagina:
+
+     * cargar la clave de API se hace UNA vez, y ojala nunca mas;
+     * encender y apagar el bot se hace seguido, y es lo que alguien abre
+       cuando quiere saber si hay algo operando.
+
+   Poner lo de una sola vez arriba de lo de todos los dias obliga a pasar por
+   un formulario de claves —el momento de mas confianza de toda la aplicacion,
+   con dos campos de contrasenia— cada vez que uno quiere mirar el bot. Y al
+   reves tambien es cierto: quien viene a cargar una clave no tiene por que
+   pasar por un boton de encender.
+
+   Se separan en dos vistas de la MISMA seccion, igual que el databank adentro
+   de Minado. No es una entrada nueva del menu: son las dos mitades de la misma
+   tarea, y el menu no puede crecer cada vez que una pantalla tiene dos cosas
+   adentro.
+
+   El bot es la vista de arranque porque es la que se abre seguido. */
+PAGES.operar = async (main) => {
+  const vista = S.vistaOperar === "claves" ? "claves" : "bot";
+  const estado = await api.get("/api/exchanges");
   const por = {};
   estado.forEach(x => { por[x.entorno] = x; });
   const hayClave = { practica: !!(por.practica || {}).configurada,
                      real: !!(por.real || {}).configurada };
+  /* Un punto en la pestania cuando no hay NINGUNA clave cargada. Sin eso,
+     alguien que entra por primera vez cae en la vista del bot, no puede
+     encender nada mas alla del simulacro y no tiene por que adivinar que lo
+     que le falta vive en la otra pestania. */
+  const sinClaves = !hayClave.practica && !hayClave.real;
 
+  main.innerHTML = `<div class="vistas" role="tablist">
+      <button role="tab" data-vista="bot" aria-selected="${vista === "bot"}"
+        class="${vista === "bot" ? "on" : ""}">${esc(t("op.tab_bot"))}</button>
+      <button role="tab" data-vista="claves" aria-selected="${vista === "claves"}"
+        class="${vista === "claves" ? "on" : ""}">${esc(t("op.tab_claves"))}${
+        sinClaves ? `<span class="vista-punto" role="img"
+          aria-label="${esc(t("op.sin_claves"))}"
+          title="${esc(t("op.sin_claves"))}"></span>` : ""}</button>
+    </div>
+    <div id="vista-host"></div>`;
+
+  $$("[data-vista]", main).forEach(b => b.onclick = () => {
+    S.vistaOperar = b.dataset.vista;
+    navigate("operar");
+  });
+
+  const host = $("#vista-host", main);
+  await (vista === "claves" ? vistaClaves(host, por) : vistaBot(host, hayClave));
+  acomodarVistas(main, host);
+};
+
+
+/* ---- vista 1: el bot. Encenderlo, mirarlo y apagarlo ----
+
+   EL MODO SE ELIGE CADA VEZ y no se recuerda. Recordar "real" y que alcance
+   con apretar encender es exactamente el clic de mas que este proyecto viene
+   evitando en todas las pantallas. */
+const vistaBot = async (main, hayClave) => {
+  const bot = await api.get("/api/bot");
+  await refreshSavedCount();
+  // Hace falta para saber la FUENTE de cada dataset: sin esto, el filtro de
+  // estrategias operables no puede distinguir un perpetuo de un CFD.
+  if (!(S.datasets || []).length) await refreshDatasets();
+
+  main.innerHTML = pageHead(t("nav.operar"), esc(t("op.sub_bot")))
+    + panelBot(bot, hayClave);
+
+  /* Que destinos puede tomar la estrategia elegida, y por que no los otros.
+
+     Se recalcula al cambiar cualquiera de los dos desplegables porque un
+     destino puede estar cerrado por DOS motivos distintos —la cantera o la
+     clave que falta— y decir el equivocado manda a alguien a crear una clave
+     que no le va a servir. */
+  const revisarDestinos = () => {
+    const selCual = $("#bot-cual", main);
+    const selModo = $("#bot-modo", main);
+    const nota = $("#bot-porque", main);
+    const irClaves = $("#bot-ir-claves", main);
+    if (!selCual || !selModo || !nota) return;
+
+    const fila = (S.saved || []).find(x => x.id === selCual.value);
+    const puertas = (fila || {}).cantera || {};
+
+    let motivo = "", esClave = false;
+    [...selModo.options].forEach(o => {
+      if (!o.value) return;
+      const p = puertas[o.value] || {};
+      const faltaClave = o.value !== "simulacro" && !hayClave[o.value];
+      // Sin estrategia elegida no se bloquea nada: sería decir que no antes
+      // de que haya algo sobre lo que decidir.
+      o.disabled = !!fila && (faltaClave || (p.pasa === false));
+      o.textContent = rotuloModo(o.value)
+        + (faltaClave ? " — " + t("bot.sin_clave")
+           : (fila && p.pasa === false ? " — " + t("bot.no_habilitado") : ""));
+      if (o.value === selModo.value && o.disabled) {
+        esClave = faltaClave;
+        motivo = faltaClave ? t("bot.falta_clave_larga")
+                            : (p.por_que_no || t("bot.no_habilitado"));
+      }
+    });
+    if (selModo.selectedOptions[0] && selModo.selectedOptions[0].disabled) {
+      selModo.value = "";
+    }
+    nota.hidden = !motivo;
+    nota.textContent = motivo;
+    /* El atajo a la otra vista aparece SOLO cuando lo que falta es la clave.
+       Con las vistas separadas el texto ya no puede decir "cargala arriba":
+       arriba no hay nada. Y para lo que no es una clave el atajo sobra —
+       ninguna cantidad de claves habilita una estrategia de nueve operaciones. */
+    if (irClaves) irClaves.hidden = !esClave;
+  };
+
+  const selCual = $("#bot-cual", main);
+  const selModo = $("#bot-modo", main);
+  if (selCual) selCual.onchange = revisarDestinos;
+  if (selModo) selModo.onchange = revisarDestinos;
+  revisarDestinos();
+
+  const irClaves = $("#bot-ir-claves", main);
+  if (irClaves) irClaves.onclick = () => navigate("operar", "claves");
+
+  const btnEncender = $("#bot-encender", main);
+  if (btnEncender) btnEncender.onclick = async () => {
+    const id = $("#bot-cual", main).value;
+    const modo = $("#bot-modo", main).value;
+    if (!id || !modo) return toast(t("bot.falta_elegir"), "err");
+    /* La confirmacion es SOLO para plata real. Pedirla en simulacro y en
+       practica entrena a la gente a apretar "si" sin leer, y despues el
+       cartel que si importaba se lee igual de rapido que los otros dos. */
+    if (modo === "real" && !confirm(t("bot.real_seguro"))) return;
+    const fila = (S.saved || []).find(x => x.id === id);
+    if (!fila) return toast(t("bot.no_esta"), "err");
+    btnEncender.disabled = true;
+    try {
+      const archivo = await api.post("/api/export/bingx/objeto", {
+        spec: fila.spec, name: fila.name,
+        dataset_id: (fila.meta || {}).dataset_id,
+        timeframe: (fila.meta || {}).timeframe,
+        settings: { commission_pct: (fila.meta || {}).commission },
+        /* Las metricas del backtest y las del tramo fuera de muestra viajan
+           con el bot: son lo que la cantera mira para decidir si esto puede
+           operar y con que plata. Sin mandarlas, TODO queda bloqueado —lo que
+           no se midio no pasa— y el bloqueo parece un bug del filtro cuando
+           en realidad es un campo que nadie envio. */
+        metrics: (fila.meta || {}).metrics,
+        oos: (fila.meta || {}).oos,
+      });
+      const tope = parseFloat(($("#bot-tope", main) || {}).value) || 0;
+      await api.post("/api/bot/encender",
+                     { bot: archivo, modo, perdida_maxima: tope });
+      toast(t("bot.encendido"), "ok");
+      await navigate("operar");
+    } catch (e) { toast(e.message, "err"); }
+    btnEncender.disabled = false;
+  };
+
+  const btnApagar = $("#bot-apagar", main);
+  if (btnApagar) btnApagar.onclick = async () => {
+    btnApagar.disabled = true;
+    try {
+      await api.post("/api/bot/apagar", {});
+      toast(t("bot.apagado"), "ok");
+      await navigate("operar");
+    } catch (e) { toast(e.message, "err"); }
+    btnApagar.disabled = false;
+  };
+
+  const btnPanico = $("#bot-panico", main);
+  if (btnPanico) btnPanico.onclick = async () => {
+    if (!confirm(t("bot.panico_seguro"))) return;
+    btnPanico.disabled = true;
+    try {
+      const r = await api.post("/api/bot/panico", {});
+      toast(t("bot.panico_hecho"), "ok");
+      await navigate("operar");
+      if (r && r.cerrado) console.info("[bot] pánico:", r.cerrado);
+    } catch (e) { toast(e.message, "err"); }
+    btnPanico.disabled = false;
+  };
+};
+
+
+/* ---- vista 2: las claves ----
+
+   Se hace una vez y se vuelve a mirar cuando algo falla, asi que vive en una
+   pestania y no arriba del bot. Lo que NO cambia por mudarse: las tres reglas
+   siguen yendo ARRIBA de los campos —es el momento de mas confianza que le
+   pedimos a nadie en toda la aplicacion— y practica y real siguen siendo dos
+   tarjetas separadas y no un interruptor, para que operar con plata de verdad
+   pida cargar otra clave a proposito. */
+const vistaClaves = async (main, por) => {
   const tarjeta = (entorno) => {
     const e = por[entorno] || { configurada: false };
     const real = entorno === "real";
@@ -1936,7 +2238,7 @@ PAGES.exchanges = async (main) => {
     </div>`;
   };
 
-  main.innerHTML = pageHead(t("nav.exchanges"), esc(t("ex.sub"))) + `
+  main.innerHTML = pageHead(t("op.tab_claves"), esc(t("ex.sub"))) + `
     <div class="card ex-aviso">
       <ul class="ex-reglas">
         <li><b>${esc(t("ex.regla1_t"))}</b><span>${esc(t("ex.regla1"))}</span></li>
@@ -1945,8 +2247,7 @@ PAGES.exchanges = async (main) => {
       </ul>
     </div>
     ${tarjeta("practica")}
-    ${tarjeta("real")}
-    ${panelBot(bot, hayClave)}`;
+    ${tarjeta("real")}`;
 
   const campo = (entorno, cual) =>
     $(`[data-ex="${cual}"][data-entorno="${entorno}"]`, main);
@@ -1992,7 +2293,7 @@ PAGES.exchanges = async (main) => {
         campo(entorno, "key").value = "";
         campo(entorno, "secret").value = "";
         toast(t("ex.guardada"), "ok");
-        await navigate("exchanges");
+        await navigate("operar");
       } catch (e) { toast(e.message, "err"); }
       b.disabled = false;
     };
@@ -2010,110 +2311,6 @@ PAGES.exchanges = async (main) => {
     };
   });
 
-  /* ---- el bot ---- */
-  /* Qué destinos puede tomar la estrategia elegida, y por qué no los otros.
-
-     Se recalcula al cambiar cualquiera de los dos desplegables porque un
-     destino puede estar cerrado por DOS motivos distintos —la cantera o la
-     clave que falta— y decir el equivocado manda a alguien a crear una clave
-     que no le va a servir. */
-  const revisarDestinos = () => {
-    const selCual = $("#bot-cual", main);
-    const selModo = $("#bot-modo", main);
-    const nota = $("#bot-porque", main);
-    if (!selCual || !selModo || !nota) return;
-
-    const fila = (S.saved || []).find(x => x.id === selCual.value);
-    const puertas = (fila || {}).cantera || {};
-
-    let motivo = "";
-    [...selModo.options].forEach(o => {
-      if (!o.value) return;
-      const p = puertas[o.value] || {};
-      const faltaClave = o.value !== "simulacro" && !hayClave[o.value];
-      // Sin estrategia elegida no se bloquea nada: sería decir que no antes
-      // de que haya algo sobre lo que decidir.
-      o.disabled = !!fila && (faltaClave || (p.pasa === false));
-      o.textContent = rotuloModo(o.value)
-        + (faltaClave ? " — " + t("bot.sin_clave")
-           : (fila && p.pasa === false ? " — " + t("bot.no_habilitado") : ""));
-      if (o.value === selModo.value && o.disabled) {
-        motivo = faltaClave ? t("bot.falta_clave_larga")
-                            : (p.por_que_no || t("bot.no_habilitado"));
-      }
-    });
-    if (selModo.selectedOptions[0] && selModo.selectedOptions[0].disabled) {
-      selModo.value = "";
-    }
-    nota.hidden = !motivo;
-    nota.textContent = motivo;
-  };
-
-  const selCual = $("#bot-cual", main);
-  const selModo = $("#bot-modo", main);
-  if (selCual) selCual.onchange = revisarDestinos;
-  if (selModo) selModo.onchange = revisarDestinos;
-  revisarDestinos();
-
-  const btnEncender = $("#bot-encender", main);
-  if (btnEncender) btnEncender.onclick = async () => {
-    const id = $("#bot-cual", main).value;
-    const modo = $("#bot-modo", main).value;
-    if (!id || !modo) return toast(t("bot.falta_elegir"), "err");
-    /* La confirmacion es SOLO para plata real. Pedirla en simulacro y en
-       practica entrena a la gente a apretar "si" sin leer, y despues el
-       cartel que si importaba se lee igual de rapido que los otros dos. */
-    if (modo === "real" && !confirm(t("bot.real_seguro"))) return;
-    const fila = (S.saved || []).find(x => x.id === id);
-    if (!fila) return toast(t("bot.no_esta"), "err");
-    btnEncender.disabled = true;
-    try {
-      const archivo = await api.post("/api/export/bingx/objeto", {
-        spec: fila.spec, name: fila.name,
-        dataset_id: (fila.meta || {}).dataset_id,
-        timeframe: (fila.meta || {}).timeframe,
-        settings: { commission_pct: (fila.meta || {}).commission },
-        /* Las metricas del backtest y las del tramo fuera de muestra viajan
-           con el bot: son lo que la cantera mira para decidir si esto puede
-           operar y con que plata. Sin mandarlas, TODO queda bloqueado —lo que
-           no se midio no pasa— y el bloqueo parece un bug del filtro cuando
-           en realidad es un campo que nadie envio. */
-        metrics: (fila.meta || {}).metrics,
-        oos: (fila.meta || {}).oos,
-      });
-      const tope = parseFloat(($("#bot-tope", main) || {}).value) || 0;
-      await api.post("/api/bot/encender",
-                     { bot: archivo, modo, perdida_maxima: tope });
-      toast(t("bot.encendido"), "ok");
-      await navigate("exchanges");
-    } catch (e) { toast(e.message, "err"); }
-    btnEncender.disabled = false;
-  };
-
-  const btnApagar = $("#bot-apagar", main);
-  if (btnApagar) btnApagar.onclick = async () => {
-    btnApagar.disabled = true;
-    try {
-      await api.post("/api/bot/apagar", {});
-      toast(t("bot.apagado"), "ok");
-      await navigate("exchanges");
-    } catch (e) { toast(e.message, "err"); }
-    btnApagar.disabled = false;
-  };
-
-  const btnPanico = $("#bot-panico", main);
-  if (btnPanico) btnPanico.onclick = async () => {
-    if (!confirm(t("bot.panico_seguro"))) return;
-    btnPanico.disabled = true;
-    try {
-      const r = await api.post("/api/bot/panico", {});
-      toast(t("bot.panico_hecho"), "ok");
-      await navigate("exchanges");
-      if (r && r.cerrado) console.info("[bot] pánico:", r.cerrado);
-    } catch (e) { toast(e.message, "err"); }
-    btnPanico.disabled = false;
-  };
-
   $$("[data-ex-borrar]", main).forEach(b => {
     b.onclick = async () => {
       const entorno = b.dataset.exBorrar;
@@ -2121,7 +2318,7 @@ PAGES.exchanges = async (main) => {
       try {
         await api.del(`/api/exchanges/bingx/${entorno}`);
         toast(t("ex.borrada"), "ok");
-        await navigate("exchanges");
+        await navigate("operar");
       } catch (e) { toast(e.message, "err"); }
     };
   });
