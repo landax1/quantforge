@@ -163,3 +163,29 @@ def test_la_API_coincide_con_lo_verificado_a_mano(monkeypatch, simbolo, codigo):
     # se pregunta con otro nombre para saltear la tabla y forzar la consulta
     consultada = dk.escala_de(f"{simbolo}_prueba", codigo)
     assert consultada == pytest.approx(dk.ESCALA[simbolo])
+
+
+# --------------------------------------- cuanto insiste, y por que asi
+
+def test_insiste_mas_con_la_escala_que_con_un_dia_de_velas(monkeypatch):
+    """La asimetria es la decision.
+
+    Un dia es uno de miles: si insistiera mucho, bajar quince anios pasaria de
+    minutos a horas. La escala se pregunta UNA vez por instrumento en toda la
+    vida del programa, y sin ella el instrumento entero no se baja.
+
+    MEDIDO: probando doce instrumentos seguidos con la espera corta, SEIS
+    fallaron por limite de pedidos de Dukascopy.
+    """
+    assert dk.REINTENTOS_ESCALA > dk.REINTENTOS
+    assert dk.ESPERA_ESCALA >= 2.0
+
+
+def test_aguanta_una_tanda_larga_de_429(monkeypatch):
+    """Cuatro seguidos y al quinto contesta: es lo que pasa agregando varios
+    instrumentos de una sentada."""
+    pedidos = _cliente_falso(monkeypatch, [_Resp(429), _Resp(429), _Resp(429),
+                                           _Resp(429),
+                                           _Resp(200, {"multiplier": 0.001})])
+    assert dk.escala_de("lightcmdusd", "LIGHT.CMD-USD") == 1000.0
+    assert len(pedidos) == 5

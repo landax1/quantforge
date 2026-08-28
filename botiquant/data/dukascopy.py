@@ -79,6 +79,19 @@ _ESCALAS_VISTAS: dict[str, float] = {}
 CONCURRENCIA = 12
 REINTENTOS = 3
 
+#: La escala se reintenta MAS veces y esperando MAS que un dia de velas, y la
+#: asimetria es a proposito.
+#:
+#: Un dia es uno de miles: si insiste demasiado, bajar quince anios pasa de
+#: minutos a horas. La escala se pregunta UNA vez por instrumento en toda la
+#: vida del programa, asi que esperar medio minuto no le cuesta nada a nadie
+#: — y si no la consigue, el instrumento entero no se puede bajar.
+#:
+#: MEDIDO: probando doce instrumentos seguidos con la espera corta, SEIS
+#: fallaron por limite de pedidos. Con esta espera el limite se atraviesa.
+REINTENTOS_ESCALA = 5
+ESPERA_ESCALA = 2.0
+
 
 class DukascopyError(Exception):
     """No se pudo traer o interpretar el histórico."""
@@ -101,8 +114,8 @@ def consultar_escala(codigo: str) -> float | None:
     # Un día cualquiera de mercado abierto. Sólo interesa el multiplicador, que
     # es del instrumento y no del día.
     url = f"{API_VELAS}/{codigo}/BID/2024/6/3"
-    espera = 1.0
-    for intento in range(REINTENTOS):
+    espera = ESPERA_ESCALA
+    for intento in range(REINTENTOS_ESCALA):
         try:
             with httpx.Client(timeout=15.0) as c:
                 r = c.get(url)
@@ -112,13 +125,13 @@ def consultar_escala(codigo: str) -> float | None:
             # 429 es lo habitual pidiendo varios seguidos, y es el caso que
             # importa: sin reintentar, agregar cinco instrumentos de una vez
             # dejaba a la mitad sin escala.
-            if r.status_code in (429, 503) and intento < REINTENTOS - 1:
+            if r.status_code in (429, 503) and intento < REINTENTOS_ESCALA - 1:
                 time.sleep(espera)
                 espera *= 2
                 continue
             return None
         except (httpx.HTTPError, ValueError, KeyError, TypeError):
-            if intento < REINTENTOS - 1:
+            if intento < REINTENTOS_ESCALA - 1:
                 time.sleep(espera)
                 espera *= 2
                 continue
