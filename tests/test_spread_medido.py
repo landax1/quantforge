@@ -141,3 +141,97 @@ def test_las_fechas_son_de_anios_distintos():
     anios = {f.split("/")[0] for f in sp.DIAS}
     assert len(sp.DIAS) >= 3
     assert len(anios) >= 3
+
+
+# =========================================================================
+# El segundo camino: los archivos por dia
+# =========================================================================
+#
+# Existe por un caso concreto: GAS.CMD-USD publica BID y no ASK en la API de
+# minutos —diez fechas probadas, diez veces igual—, y el datafeed de archivos,
+# que es de la misma casa y otro servidor, si tiene los dos lados.
+
+import datetime as dt
+import lzma
+
+from botiquant.data import dukascopy as dk
+
+
+def _bi5(velas):
+    """Un .bi5 como el que sirve Dukascopy: (minuto, apertura, cierre, min, max, vol)."""
+    return lzma.compress(b"".join(dk._REGISTRO.pack(*v) for v in velas),
+                         format=lzma.FORMAT_ALONE)
+
+
+def _red_archivos(monkeypatch, por_lado):
+    pedidos = []
+
+    class _C:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def get(self, url):
+            pedidos.append(url)
+            lado = "ASK" if "ASK_candles" in url else "BID"
+            r = por_lado.get(lado)
+            return r if r is not None else _Resp(429)
+
+    monkeypatch.setattr(sp.httpx, "Client", _C)
+    monkeypatch.setattr(sp.time, "sleep", lambda *_: None)
+    return pedidos
+
+
+class _RespBin:
+    def __init__(self, code, contenido=b""):
+        self.status_code = code
+        self.content = contenido
+
+
+def test_desde_archivos_mide_ask_menos_bid(monkeypatch):
+    _red_archivos(monkeypatch, {
+        "BID": _RespBin(200, _bi5([(0, 27000, 27000, 27000, 27000, 1.0),
+                                   (60, 27100, 27100, 27100, 27100, 1.0)])),
+        "ASK": _RespBin(200, _bi5([(0, 27020, 27020, 27020, 27020, 1.0),
+                                   (60, 27120, 27120, 27120, 27120, 1.0)])),
+    })
+    m = sp.medir_desde_archivos("gascmdusd", 1e4)
+    assert m.spread == pytest.approx(0.002)
+    assert m.fuente == "archivos"
+
+
+def test_los_minutos_sin_cotizacion_no_cuentan(monkeypatch):
+    """Vienen en cero. Contarlos mete un spread de cero en la mediana y
+    abarata el instrumento entero."""
+    _red_archivos(monkeypatch, {
+        "BID": _RespBin(200, _bi5([(0, 27000, 27000, 27000, 27000, 1.0),
+                                   (60, 0, 0, 0, 0, 0.0)])),
+        "ASK": _RespBin(200, _bi5([(0, 27020, 27020, 27020, 27020, 1.0),
+                                   (60, 0, 0, 0, 0, 0.0)])),
+    })
+    m = sp.medir_desde_archivos("gascmdusd", 1e4)
+    assert m.minutos == 3, "tres días con un minuto útil cada uno"
+    assert m.spread == pytest.approx(0.002)
+
+
+def test_desde_archivos_tambien_levanta_si_no_puede(monkeypatch):
+    _red_archivos(monkeypatch, {"BID": None, "ASK": None})
+    with pytest.raises(sp.SpreadDesconocido):
+        sp.medir_desde_archivos("gascmdusd", 1e4)
+
+
+def test_la_medicion_dice_de_donde_salio(monkeypatch):
+    """Son dos servidores distintos de la misma casa y no siempre tienen lo
+    mismo. Al leer un spread hay que poder saber por cuál se midió."""
+    _red_archivos(monkeypatch, {
+        "BID": _RespBin(200, _bi5([(0, 100, 100, 100, 100, 1.0)])),
+        "ASK": _RespBin(200, _bi5([(0, 110, 110, 110, 110, 1.0)])),
+    })
+    assert sp.medir_desde_archivos("x", 1e2).fuente == "archivos"
+
+    _red(monkeypatch, {"BID": _Resp(200, _dia(0.001, 100.0, [0])),
+                       "ASK": _Resp(200, _dia(0.001, 100.02, [0]))})
+    assert sp.medir("X-USD").fuente == "api"
+
+
+def test_las_fechas_de_archivo_son_de_anios_distintos():
+    assert len({d.year for d in sp.DIAS_ARCHIVO}) >= 3

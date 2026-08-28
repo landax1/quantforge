@@ -153,11 +153,22 @@ class Piloto:
     def panico(self) -> dict[str, Any]:
         """Apaga Y cierra lo que haya abierto. El botón para cuando algo pasa.
 
-        Se apaga PRIMERO y se cierra después: al revés, el bucle podría
-        despertarse entre las dos cosas, ver la posición cerrada y abrir otra.
+        EL ORDEN ES LO ÚNICO QUE IMPORTA ACÁ, y la primera versión lo tenía a
+        medias. Decía —con razón— que hay que apagar antes de cerrar, porque al
+        revés el bucle podría ver la posición cerrada y abrir otra. Pero apagar
+        espera al hilo con un tope de diez segundos, y una vuelta trabada en
+        una llamada de red le sobrevive: seguía viva, cerrábamos la posición, y
+        esa vuelta abría otra encima.
+
+        Por eso ahora primero se FRENA el bot —una marca que `paso` mira otra
+        vez justo antes de mandar la orden— y después se apaga y se cierra.
+        Frenar es instantáneo y no depende de que ningún hilo conteste.
         """
-        self.apagar()
         b = self.bot
+        if b is not None:
+            b.detenido = True
+            b.motivo_detencion = "pánico"
+        self.apagar()
         cerrado: Any = "no había bot"
         if b is not None:
             try:

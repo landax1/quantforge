@@ -166,6 +166,20 @@ class Bot:
         if not v.permitido:
             return self._anotar(d, {"bloqueado": v.motivo, "detenido": v.detener})
 
+        # SE VUELVE A MIRAR `detenido` JUSTO ANTES DE MANDAR.
+        #
+        # Arriba ya se miro, pero entre aquella linea y esta pasaron varias
+        # llamadas de red —velas, posicion, saldo— y cada una puede tardar. En
+        # ese rato alguien pudo apretar el boton de panico: el panico cierra la
+        # posicion, y esta vuelta, que venia en camino, abriria otra encima.
+        #
+        # Es la carrera que el propio comentario de `Piloto.panico` dice
+        # evitar, y no la evitaba: `apagar` espera al hilo con un tope de diez
+        # segundos, asi que un `paso` trabado en la red le sobrevive.
+        if self.detenido:
+            return self._anotar(d, {"bloqueado": f"detenido: {self.motivo_detencion}",
+                                    "detenido": True})
+
         try:
             if d.accion == CERRAR:
                 r = self.adaptador.cerrar(self.simbolo, pos)
