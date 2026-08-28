@@ -187,12 +187,17 @@ def test_insiste_POCO_con_la_escala_y_espera_mucho(monkeypatch):
     assert dk.ESPERA_ESCALA >= 30.0
 
 
-def test_no_machaca_a_dukascopy_cuando_no_hay_caso(monkeypatch):
-    """Con 429 en las dos, para. Cada pedido de mas empeora el bloqueo."""
+def test_los_pedidos_estan_acotados(monkeypatch):
+    """Cuando de verdad no se puede, para en un numero conocido de pedidos.
+
+    El tope es fechas x intentos. Importa que sea chico y que este escrito:
+    lo que salio mal las dos veces anteriores fue insistir sin saber cuanto.
+    """
     pedidos = _cliente_falso(monkeypatch, [_Resp(429)])
     with pytest.raises(dk.DukascopyError):
         dk.escala_de("lightcmdusd", "LIGHT.CMD-USD")
-    assert len(pedidos) == 2
+    assert len(pedidos) == len(dk.FECHAS_ESCALA) * dk.REINTENTOS_ESCALA
+    assert len(pedidos) <= 8
 
 
 def test_el_mensaje_no_invita_a_insistir(monkeypatch):
@@ -250,3 +255,66 @@ def test_las_dos_escalas_raras_siguen_siendo_raras():
     assert dk.ESCALA["gascmdusd"] == 1e4
     assert dk.ESCALA["audusd"] == 1e5
     assert dk.ESCALA["btcusd"] == 1e1
+
+
+# ------------------------------- el 429 que no es un limite de pedidos
+
+def _cliente_por_url(monkeypatch, respuestas):
+    """Reemplaza la red mirando la URL: `respuestas` mapea trozo -> _Resp."""
+    pedidos = []
+
+    class _C:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def get(self, url):
+            pedidos.append(url)
+            for trozo, r in respuestas.items():
+                if trozo in url:
+                    return r
+            return _Resp(429)
+
+    monkeypatch.setattr(dk.httpx, "Client", _C)
+    monkeypatch.setattr(dk.time, "sleep", lambda *_: None)
+    return pedidos
+
+
+def test_si_una_fecha_da_429_prueba_OTRA_fecha(monkeypatch):
+    """Lo que arregla de verdad el caso que parecia un limite de pedidos.
+
+    MEDIDO: ciertas combinaciones de instrumento y dia contestan 429 SIEMPRE.
+    Mismo instrumento, anios contiguos: GAS.CMD-USD/2022 da 200 y
+    GAS.CMD-USD/2023 da 429, las dos de forma estable. Y los cuatro
+    instrumentos que "no se podian consultar" contestaron al primer intento
+    cambiando la fecha:
+
+        Dow, WTI, Brent  3/6/2024 -> 429   12/9/2023 -> 200 (1e3)
+        USD-CHF          3/6/2024 -> 429   12/9/2023 -> 200 (1e5)
+
+    Con una sola fecha esos instrumentos eran inconsultables para siempre, y
+    ningun reintento los arreglaba: se reintentaba la misma fecha.
+    """
+    pedidos = _cliente_por_url(monkeypatch, {
+        "2024/6/3": _Resp(429),
+        "2023/9/12": _Resp(200, {"multiplier": 0.001}),
+    })
+    assert dk.escala_de("usa30idxusd", "USA30.IDX-USD") == 1000.0
+    assert len(pedidos) == 2, "tendria que haber cambiado de fecha, no insistido"
+    assert "2023/9/12" in pedidos[-1]
+
+
+def test_las_fechas_son_de_anios_distintos():
+    """Tres fechas del mismo anio no protegen de nada si lo que falla es una
+    temporada entera del instrumento."""
+    anios = {f.split("/")[0] for f in dk.FECHAS_ESCALA}
+    assert len(dk.FECHAS_ESCALA) >= 3
+    assert len(anios) >= 3
+
+
+def test_un_error_que_no_es_429_no_prueba_las_otras_fechas(monkeypatch):
+    """Un 404 es "ese codigo no existe" y va a dar 404 en las tres. Probarlas
+    igual son dos pedidos de mas por cada codigo mal escrito."""
+    pedidos = _cliente_por_url(monkeypatch, {"2024/6/3": _Resp(404)})
+    with pytest.raises(dk.DukascopyError):
+        dk.escala_de("inventado", "NO-EXISTE")
+    assert len(pedidos) == 1

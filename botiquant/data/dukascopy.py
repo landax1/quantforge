@@ -111,26 +111,35 @@ _ESCALAS_VISTAS: dict[str, float] = {}
 CONCURRENCIA = 12
 REINTENTOS = 3
 
-#: La escala insiste POCO y espera MUCHO, que es al reves de lo que parece.
+#: EL 429 DE ESTA API NO SIEMPRE ES UN LIMITE DE PEDIDOS, y confundirlo costo
+#: dos vueltas de razonamiento equivocado.
 #:
-#: La primera version insistia cinco veces con espera corta, con la idea de
-#: atravesar el limite de Dukascopy. MEDIDO despues, y es lo contrario:
+#: Ciertas combinaciones de instrumento y fecha contestan 429 SIEMPRE, sin
+#: importar cuanto se espere. Medido, mismo instrumento y anios contiguos:
+#: GAS.CMD-USD/2022 contesta 200 y GAS.CMD-USD/2023 contesta 429, las dos cosas
+#: de forma estable. Y los cuatro instrumentos que "nunca se podian consultar"
+#: —Dow, WTI, Brent, USD-CHF— contestaron al primer intento cambiando la fecha:
 #:
-#:   * diez codigos que no se habian pedido nunca, un pedido cada uno:
-#:     OCHO contestaron 200 a la primera.
-#:   * un codigo al que se le habian hecho unos quince pedidos con reintentos:
-#:     TRECE rechazos seguidos, con un pedido cada veinte segundos, mientras
-#:     los frescos seguian contestando en el mismo minuto.
+#:     Dow      3/6/2024 -> 429      12/9/2023 -> 200 (1e3)
+#:     WTI      3/6/2024 -> 429      12/9/2023 -> 200 (1e3)
+#:     Brent    3/6/2024 -> 429      12/9/2023 -> 200 (1e3)
+#:     USD-CHF  3/6/2024 -> 429      12/9/2023 -> 200 (1e5)
 #:
-#: O sea que insistir no atraviesa el limite: lo causa, y deja ese instrumento
-#: inutilizable un buen rato. Como ocho de cada diez salen a la primera, lo que
-#: conviene es pedir una vez, y si sale mal esperar de verdad antes del unico
-#: reintento.
+#: Con una sola fecha, un instrumento que caiga en una de esas combinaciones es
+#: inconsultable para siempre y ningun reintento lo arregla. Por eso se prueban
+#: varias fechas ANTES de reintentar: cambiar de dia es lo que funciona.
 #:
-#: (Un dia de velas es otra cosa y sigue con `REINTENTOS`: son miles de
-#: pedidos y ahi esperar medio minuto por cada uno son horas.)
+#: (Antes decia aca que insistir "causaba" el bloqueo, apoyado en que un codigo
+#: rechazaba trece veces seguidas. Rechazaba por la fecha. No hay evidencia de
+#: que insistir bloquee nada; el numero bajo de reintentos queda porque con
+#: varias fechas ya no hace falta insistir, no por el motivo que decia.)
 REINTENTOS_ESCALA = 2
 ESPERA_ESCALA = 30.0
+
+#: Dias con los que se prueba, en orden. Tres y de anios distintos: si una
+#: fecha resulta ser de las que contestan 429 para ese instrumento, las otras
+#: dos lo salvan.
+FECHAS_ESCALA = ("2024/6/3", "2023/9/12", "2022/2/8")
 
 
 class DukascopyError(Exception):
@@ -151,20 +160,23 @@ def consultar_escala(codigo: str) -> float | None:
     """
     if not codigo:
         return None
-    # Un día cualquiera de mercado abierto. Sólo interesa el multiplicador, que
-    # es del instrumento y no del día.
-    url = f"{API_VELAS}/{codigo}/BID/2024/6/3"
+    # Se prueban VARIAS fechas antes de reintentar ninguna. Ver el bloque de
+    # FECHAS_ESCALA: hay combinaciones de instrumento y dia que contestan 429
+    # de forma permanente, y ahi cambiar de dia es lo unico que funciona.
     espera = ESPERA_ESCALA
     for intento in range(REINTENTOS_ESCALA):
         try:
-            with httpx.Client(timeout=15.0) as c:
-                r = c.get(url)
-            if r.status_code == 200:
-                m = float(r.json().get("multiplier") or 0.0)
-                return 1.0 / m if 0.0 < m <= 1.0 else None
-            # 429 es lo habitual pidiendo varios seguidos, y es el caso que
-            # importa: sin reintentar, agregar cinco instrumentos de una vez
-            # dejaba a la mitad sin escala.
+            for fecha in FECHAS_ESCALA:
+                with httpx.Client(timeout=15.0) as c:
+                    r = c.get(f"{API_VELAS}/{codigo}/BID/{fecha}")
+                if r.status_code == 200:
+                    m = float(r.json().get("multiplier") or 0.0)
+                    return 1.0 / m if 0.0 < m <= 1.0 else None
+                if r.status_code not in (429, 503):
+                    break
+            # Si las TRES fechas dieron 429, ahi si puede ser un limite real
+            # y vale esperar una vez. Si fuera la combinacion permanente, las
+            # otras dos fechas ya lo habrian salvado.
             if r.status_code in (429, 503) and intento < REINTENTOS_ESCALA - 1:
                 time.sleep(espera)
                 espera *= 2
