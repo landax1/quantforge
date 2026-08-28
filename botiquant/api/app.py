@@ -1979,20 +1979,37 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={"Content-Disposition": f'attachment; filename="report_{rid}.xlsx"'})
 
-    def _offset_broker(payload: dict[str, Any]) -> int:
+    def _offset_broker(payload: dict[str, Any],
+                       dueno: str | None = None) -> int:
         """Horas que adelanta el servidor del bróker respecto de UTC.
 
-        Viaja en cada exportación en vez de guardarse del lado del servidor:
-        es una preferencia de la máquina del usuario, igual que el spread por
-        instrumento, y el servidor no tiene forma de saberla.
+        MANDA EL RELOJ DEL HISTORICO, y sólo si no lo hay manda el que eligió
+        el usuario en la pantalla. El orden importa: el EA tiene que operar en
+        la MISMA franja horaria en la que se minó la estrategia, y quien sabe
+        en qué reloj están esas velas es el histórico, no un desplegable.
 
-        Se acota a ±14 porque no existe ninguna zona fuera de ese rango, y un
-        número absurdo movería la franja horaria a cualquier lado sin que nada
-        avise.
+        Los datos de MetaTrader traen el reloj medido de su servidor —el de
+        MetaQuotes-Demo va en UTC+3—; los de Dukascopy no traen ninguno, y ahí
+        la elección del usuario es lo único que hay.
+
+        Un desfase equivocado no falla en ningún lado: la estrategia se minó
+        entre las 7 y las 16 de un reloj y el robot opera entre las 7 y las 16
+        de otro. Los números no se parecen y nadie sabe por qué.
+
+        Se acota a ±14 porque no existe ninguna zona fuera de ese rango.
         """
-        crudo = payload.get("server_utc_offset")
+        del_historico = None
+        ds_id = payload.get("dataset_id")
+        if ds_id:
+            try:
+                ds = store.db.get_dataset(str(ds_id), dueno)
+                del_historico = ds.get("utc_offset")
+            except (KeyError, AttributeError):
+                del_historico = None
+
+        crudo = del_historico if del_historico is not None else             payload.get("server_utc_offset")
         try:
-            return max(-14, min(14, int(crudo)))
+            return max(-14, min(14, int(round(float(crudo)))))
         except (TypeError, ValueError):
             return 0
 
@@ -2110,7 +2127,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         name = _nombre_de_archivo(payload.get("name"), "BQ_Strategy")
         code = export_mql5(spec, ea_name=name, symbol_hint=ds_name,
                            timeframe_hint=tf, metrics=metricas,
-                              server_utc_offset=_offset_broker(payload))
+                              server_utc_offset=_offset_broker(payload,
+                                                                duenio(request)))
         return code, f"{name}.mq5"
 
     @app.post("/api/export/mql5")
@@ -2244,7 +2262,12 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 symbol_hint=meta.get("dataset_name") or "",
                 timeframe_hint=meta.get("timeframe") or "",
                 metrics=meta.get("metrics"),
-                server_utc_offset=_offset_broker(payload),
+                # CADA EA LEE EL RELOJ DE SU PROPIO HISTORICO. Un portafolio
+                # puede mezclar instrumentos bajados de fuentes distintas, y un
+                # solo desfase para todos dejaría a algunos operando en otra
+                # franja que la que se minó.
+                server_utc_offset=_offset_broker(
+                    {**payload, "dataset_id": meta.get("dataset_id")}, dueno),
                 porcion=reparto.porciones[str(f["id"])])
             destino = carpeta / f"{nombre}.mq5"
             destino.write_text(codigo, encoding="utf-8")

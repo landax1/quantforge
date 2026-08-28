@@ -41,13 +41,21 @@ class DataStore:
 
     # ------------------------------------------------------------------ CRUD
     def add(self, name: str, df: pd.DataFrame, source: str = "upload",
-            user_id: str | None = None) -> dict[str, Any]:
+            user_id: str | None = None,
+            utc_offset: float | None = None) -> dict[str, Any]:
+        """`utc_offset`: en qué reloj están las fechas de `df`.
+
+        Son las horas que ese reloj adelanta respecto de UTC. None es "no se
+        sabe" y NO es cero: un histórico corrido tres horas no falla en ningún
+        lado, sólo hace que la estrategia se mine en una franja y el EA opere
+        en otra.
+        """
         ds_id = self.db.insert_dataset(
             name=name, source=source, rows=len(df),
             start=str(df.index[0]), end=str(df.index[-1]),
             timeframe=infer_timeframe(df.index),
             last_close=float(df["close"].iloc[-1]) if len(df) else None,
-            user_id=user_id,
+            user_id=user_id, utc_offset=utc_offset,
         )
         path = self._path(ds_id)
         df.to_csv(path, index_label="time", float_format="%.6f")

@@ -159,6 +159,23 @@ class Database:
         have = {r["name"] for r in self._conn.execute("PRAGMA table_info(datasets)")}
         if "last_close" not in have:
             self._conn.execute("ALTER TABLE datasets ADD COLUMN last_close REAL")
+        # EN QUE RELOJ ESTAN LAS FECHAS DE ESTE HISTORICO.
+        #
+        # Hasta acá el reloj vivía en dos lugares que no se hablaban: una
+        # constante para los datos de Dukascopy y un desplegable global que el
+        # usuario elegía a mano para el EA. Si no coincidían, la estrategia se
+        # minaba en una franja horaria y el robot operaba en otra — y eso no
+        # falla en ningún lado, sólo hace que los números no se parezcan.
+        #
+        # Con dos fuentes deja de ser sostenible: las velas de MetaTrader
+        # vienen en la hora del servidor de donde salieron (medido,
+        # MetaQuotes-Demo va en UTC+3) y las de Dukascopy en UTC. El reloj es
+        # una propiedad DEL HISTORICO, así que viaja con él.
+        #
+        # NULL significa "no se sabe", que no es lo mismo que 0. Los datasets
+        # viejos quedan en NULL a propósito: nadie midió su reloj.
+        if "utc_offset" not in have:
+            self._conn.execute("ALTER TABLE datasets ADD COLUMN utc_offset REAL")
         # Una estrategia guardada sin su contexto no sirve para nada: el spec
         # dice qué reglas usa, pero no sobre qué instrumento se encontró, con
         # qué timeframe, qué costos ni qué rindió. Sin eso no se puede volver a
@@ -242,13 +259,17 @@ class Database:
     def insert_dataset(self, name: str, source: str, rows: int,
                        start: str, end: str, timeframe: str,
                        last_close: float | None = None,
-                       user_id: str | None = None) -> str:
+                       user_id: str | None = None,
+                       utc_offset: float | None = None) -> str:
+        """`utc_offset` son las horas que el reloj de estas fechas adelanta
+        respecto de UTC. None es "no se sabe", y no es lo mismo que 0."""
         ds_id = _new_id()
         self._exec(
             "INSERT INTO datasets (id, name, source, rows, start, end, timeframe,"
-            " created, last_close, user_id) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            " created, last_close, user_id, utc_offset)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (ds_id, name, source, rows, start, end, timeframe, _now(), last_close,
-             user_id or ""),
+             user_id or "", utc_offset),
         )
         return ds_id
 

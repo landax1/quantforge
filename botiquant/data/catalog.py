@@ -31,6 +31,21 @@ S&P 14,95%, oro 20,20%, Bitcoin 21,84% y EURUSD 4,05%. Pedirle 3% a los
 cuatro trata como iguales a mercados que no lo son: en EURUSD eso equivale a
 exigir casi el maximo posible, y la busqueda se va a decenas de minutos.
 
+``mt5`` es como se llama ese instrumento en MetaTrader, cuando existe alli.
+Es una SEGUNDA fuente y no un reemplazo: medido sobre MetaQuotes-Demo —el
+servidor que trae cualquier MetaTrader 5— hay 126 pares de forex, 26 indices y
+10 metales, y NO hay energia, ni bonos, ni CFD de cripto. Asi que el gas, el
+petroleo, el Bund y el CFD de bitcoin siguen viniendo de Dukascopy.
+
+Cuando un instrumento esta en las dos, se prefiere MetaTrader por tres motivos
+medidos: no tiene limite de pedidos —Dukascopy rechazo entre el 3% y el 6% de
+los dias bajando los tres instrumentos nuevos, y las tres descargas terminaron
+sin dejar nada—, entrega precios decimales en vez de enteros escalados, y trae
+su reloj, que se guarda con el dataset en vez de adivinarse.
+
+Y una sola tarjeta por instrumento, no una por fuente: mostrar el mismo mercado
+dos veces es la confusion de los dos bitcoins con otro nombre.
+
 ``fuente`` dice de donde se baja el historico. Existe porque hay dos tipos de
 instrumento con costos que funcionan distinto:
 
@@ -81,6 +96,7 @@ SERVER_TZ_OFFSET_HOURS = 7
 CATALOG: list[dict[str, Any]] = [
     {
         "key": "sp500",
+        "mt5": "US500",
         "label": "SP500",
         "full_name": "S&P 500 index CFD",
         "dukascopy": "usa500idxusd",
@@ -99,6 +115,7 @@ CATALOG: list[dict[str, Any]] = [
     },
     {
         "key": "eurusd",
+        "mt5": "EURUSD",
         "label": "EURUSD",
         "full_name": "Euro / US Dollar",
         "dukascopy": "eurusd",
@@ -116,6 +133,7 @@ CATALOG: list[dict[str, Any]] = [
     },
     {
         "key": "xauusd",
+        "mt5": "XAUUSD",
         "label": "XAUUSD",
         "full_name": "Oro / US Dollar",
         "dukascopy": "xauusd",
@@ -423,6 +441,59 @@ def download(key: str, workdir: Path, date_from: str | None = None,
     if progress:
         progress(0.95, "Convirtiendo a hora del servidor…")
     return to_server_time(df)
+
+
+def bajar(key: str, workdir: Path, *, timeframe: str = "1h",
+          date_from: str | None = None, date_to: str | None = None,
+          progress=None) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """El histórico Y de dónde salió, incluido su reloj.
+
+    DEVUELVE EL RELOJ EN VEZ DE APLICARLO. Quien guarda el dataset lo anota
+    junto a las velas, y el exportador de EA lo lee de ahí. Cuando el reloj
+    vivía en una constante y en un desplegable global, nada impedía que la
+    estrategia se minara en una franja horaria y el robot operara en otra —y
+    eso no falla en ningún lado.
+
+    `None` en el reloj significa "no se sabe", que no es cero: hay servidores
+    en UTC, así que cero es un valor y no puede ser también la ignorancia.
+
+    Se prefiere MetaTrader cuando el instrumento está ahí y el programa está
+    abierto: no tiene límite de pedidos —Dukascopy rechazó entre el 3% y el 6%
+    de los días bajando los tres instrumentos nuevos y las tres descargas
+    terminaron sin nada—, da precios decimales en vez de enteros escalados, y
+    trae su reloj medido. Si no se puede, se cae a Dukascopy sin molestar a
+    nadie: el usuario pidió un instrumento, no una fuente.
+    """
+    entry = BY_KEY.get(key)
+    if entry is None:
+        raise ValueError(f"Instrumento desconocido: {key}")
+
+    simbolo_mt5 = entry.get("mt5")
+    if simbolo_mt5:
+        from botiquant.data import mt5 as fuente_mt5
+        try:
+            con = fuente_mt5.conectar()
+            if progress:
+                progress(0.02, f"{entry['label']} · MetaTrader ({con.servidor})")
+            df = fuente_mt5.descargar(
+                simbolo_mt5, timeframe,
+                progreso=lambda f, m: progress(0.02 + f * 0.9, m) if progress else None)
+            return df, {"fuente": "metatrader", "simbolo": simbolo_mt5,
+                        "servidor": con.servidor, "utc_offset": con.desfase_utc,
+                        "timeframe": timeframe}
+        except fuente_mt5.MT5Error as exc:
+            if progress:
+                progress(0.02, f"MetaTrader no está disponible ({exc}); "
+                               f"se baja de Dukascopy")
+
+    df = download(key, workdir, date_from, date_to, progress)
+    # Dukascopy viene en UTC y `to_server_time` lo corre pasando por Nueva
+    # York, así que el desfase NO es constante: medido, +2 en invierno y +3 en
+    # verano. Por eso acá va None y manda lo que elija el usuario: un solo
+    # número no describe ese reloj.
+    return df, {"fuente": entry.get("fuente", "dukascopy"),
+                "simbolo": simbolo_fuente(entry), "servidor": "",
+                "utc_offset": None, "timeframe": "1m"}
 
 
 def _today() -> str:
