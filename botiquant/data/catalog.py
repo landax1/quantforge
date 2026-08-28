@@ -169,6 +169,18 @@ CATALOG: list[dict[str, Any]] = [
         "aliases": ["BTCUSD", "Bitcoin CFD"],
         "direction": "long",
     },
+    # ── Los que hoy no se pueden bajar ───────────────────────────────────
+    #
+    # `oculto` mientras Dukascopy no nos deje bajarlos. MEDIDO: rechazó 174 de
+    # 2.695 días del Bund, 197 de 3.896 del WTI y 127 de 3.650 del gas, y las
+    # tres descargas terminaron sin dejar nada. Y no están en MetaTrader: ese
+    # servidor tiene forex, índices y metales, pero ni energía ni bonos.
+    #
+    # Se ocultan y no se borran porque la medición que los eligió sigue siendo
+    # válida —son los tres que menos se parecen a lo que ya hay: 0,048, 0,092 y
+    # 0,110 de correlación media— y porque un botón "Descargar" que siempre
+    # falla es peor que no ofrecer el instrumento. Cuando se destrabe la
+    # descarga, se sacan estas tres líneas.
     # ── Los que agregan una apuesta y no un nombre ───────────────────────
     #
     # MEDIDO sobre retornos diarios 2021-2025, correlacion media contra los
@@ -191,6 +203,7 @@ CATALOG: list[dict[str, Any]] = [
     # y no de barato — que es el lado en el que conviene equivocarse.
     {
         "key": "bund",
+        "oculto": True,
         "label": "BUND",
         "full_name": "Euro Bund (bono aleman a 10 anios)",
         "dukascopy": "bundtreur",
@@ -213,6 +226,7 @@ CATALOG: list[dict[str, Any]] = [
     },
     {
         "key": "gas",
+        "oculto": True,
         "label": "GAS",
         "full_name": "Gas natural (Henry Hub)",
         "dukascopy": "gascmdusd",
@@ -248,6 +262,7 @@ CATALOG: list[dict[str, Any]] = [
     },
     {
         "key": "wti",
+        "oculto": True,
         "label": "WTI",
         "full_name": "Petroleo WTI (Light Sweet Crude)",
         "dukascopy": "lightcmdusd",

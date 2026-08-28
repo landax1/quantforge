@@ -1185,6 +1185,12 @@ const STR = {
   "pf.export_ok": ["{n} robots saved in {carpeta}",
                    "{n} robots guardados en {carpeta}"],
 
+  /* En qué reloj están las velas. La FUENTE no se muestra a propósito: de
+     dónde las bajamos es asunto nuestro y el usuario pidió un instrumento, no
+     un proveedor. El reloj sí, porque es lo que tiene que coincidir con el
+     horario de su bróker. */
+  "data.en_reloj": ["clock {reloj}", "reloj {reloj}"],
+
   "nav.operar": ["Trade", "Operar"],
 
   /* LA ESCALERA: hasta dónde puede llegar una estrategia.

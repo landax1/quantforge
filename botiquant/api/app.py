@@ -521,7 +521,17 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                         # qué temporalidades se pueden minar con eso.
                         "timeframe": have["timeframe"] if have else None,
                         "start": have["start"] if have else None,
-                        "end": have["end"] if have else None})
+                        "end": have["end"] if have else None,
+                        # DE DONDE SALIO Y EN QUE RELOJ QUEDO.
+                        #
+                        # Desde que hay dos fuentes, el mismo instrumento puede
+                        # tener catorce años o ninguno según de dónde se bajó,
+                        # y las velas pueden estar en un reloj o en otro. Sin
+                        # decirlo, el usuario no tiene forma de entender por
+                        # qué su S&P tiene 62.722 velas de una hora y el de
+                        # otro tiene millones de un minuto.
+                        "bajado_de": have["source"] if have else None,
+                        "utc_offset": have.get("utc_offset") if have else None})
         return out
 
     @app.post("/api/datasets/download")
@@ -542,10 +552,24 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         entry = BY_KEY[key]
 
         def work(progress):
-            df = catalog_download(key, workdir, progress=progress)
+            from botiquant.data.catalog import bajar as bajar_instrumento
+
+            df, origen = bajar_instrumento(key, workdir, progress=progress)
             progress(0.96, "Guardando…")
-            fuente = entry.get("fuente", "dukascopy")
-            ds = store.add(f"{entry['label']} M1", df, source=fuente)
+            fuente = origen["fuente"]
+
+            # EL NOMBRE DICE LA TEMPORALIDAD REAL, y eso no es cosmético: antes
+            # todos los datasets se llamaban "M1" porque todos venían de
+            # Dukascopy. Un histórico de una hora llamado "M1" hace creer que
+            # se puede minar en quince minutos, y la respuesta —correcta— llega
+            # recién al intentarlo.
+            etiqueta = {"1m": "M1", "5m": "M5", "15m": "M15", "30m": "M30",
+                        "1h": "H1", "4h": "H4", "1d": "D1"}.get(
+                            origen.get("timeframe", "1m"), "M1")
+            comoSeLlama = {"metatrader": "MetaTrader",
+                           "binance": "Binance"}.get(fuente, "Dukascopy")
+            ds = store.add(f"{entry['label']} {etiqueta} ({comoSeLlama})", df,
+                           source=fuente, utc_offset=origen.get("utc_offset"))
 
             # EL FUNDING SE BAJA CON LAS VELAS, no después ni aparte.
             #

@@ -2416,7 +2416,18 @@ PAGES.data = async (main) => {
         ? `<div class="inst-meta">${icono("tilde")} ${esc(t("data.bars_of", {
              n: c.rows.toLocaleString(localeNum()),
              tf: t("tf." + (c.timeframe || "1h")) }))}<br>
-             ${esc(String(c.start).slice(0, 10))} → ${esc(String(c.end).slice(0, 10))}</div>
+             ${esc(String(c.start).slice(0, 10))} → ${esc(String(c.end).slice(0, 10))}
+             ${/* EL RELOJ SI, LA FUENTE NO.
+                   De dónde bajamos las velas es asunto nuestro: el usuario
+                   pidió un instrumento, no un proveedor, y ver "de Dukascopy"
+                   o "de MetaTrader" en la tarjeta sólo abre una pregunta que
+                   no tiene que hacerse.
+                   El reloj es lo contrario: le dice en qué horario están las
+                   velas, que es lo que tiene que coincidir con su bróker. */
+               c.utc_offset != null
+                 ? `<br><span class="inst-fuente">${esc(t("data.en_reloj", {
+                     reloj: "UTC" + (c.utc_offset >= 0 ? "+" : "") + c.utc_offset }))
+                   }</span>` : ""}</div>
            <button class="btn ghost" data-mine="${c.dataset_id}" data-key="${c.key}">${esc(t("data.search_this"))}</button>`
         : `<div class="inst-meta">${esc(t("data.history_since", { fecha: c.from }))}</div>
            ${S.meta?.multiuser

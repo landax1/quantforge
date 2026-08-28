@@ -180,13 +180,24 @@ def test_los_perpetuos_estan_ocultos_pero_NO_borrados():
         assert BY_KEY[k]["binance"]
 
 
-def test_ningun_instrumento_de_metatrader_quedo_oculto():
-    """Son los que el producto ofrece hoy: si alguno se marca por error,
-    desaparece de la pantalla y nadie lo puede bajar."""
-    from botiquant.data.catalog import CATALOG
-    ocultos = [c["key"] for c in CATALOG
-               if c.get("oculto") and c.get("fuente", "dukascopy") == "dukascopy"]
-    assert not ocultos, f"instrumentos de MetaTrader ocultos: {ocultos}"
+def test_los_que_se_pueden_bajar_de_verdad_estan_a_la_vista():
+    """Y los que no, escondidos. Un botón «Descargar» que siempre falla es
+    peor que no ofrecer el instrumento.
+
+    Gas, WTI y Bund están ocultos porque hoy no hay de dónde bajarlos:
+    Dukascopy nos rechaza —174 días de 2.695 del Bund, 197 de 3.896 del WTI,
+    127 de 3.650 del gas, y las tres descargas terminaron sin nada— y
+    MetaTrader no tiene ni energía ni bonos.
+
+    Los cuatro que sí se pueden bajar tienen que seguir visibles: si alguno se
+    marca por error, desaparece de la pantalla sin que nada avise.
+    """
+    from botiquant.data.catalog import BY_KEY
+    for k in ("sp500", "eurusd", "xauusd", "btcusd"):
+        assert not BY_KEY[k].get("oculto"), f"{k} desapareció de la pantalla"
+    for k in ("gas", "wti", "bund"):
+        assert BY_KEY[k].get("oculto") is True, (
+            f"{k} se ofrece y hoy no se puede bajar")
 
 
 def test_la_pantalla_muestra_igual_lo_que_ya_esta_bajado():
