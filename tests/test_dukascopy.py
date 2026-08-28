@@ -57,7 +57,19 @@ def test_each_instrument_has_its_own_scale():
     assert dk.escala_de("usa500idxusd") == 1e3
     assert dk.escala_de("xauusd") == 1e3
     assert dk.escala_de("btcusd") == 1e1
-    assert dk.escala_de("gbpchf") == dk.ESCALA_POR_DEFECTO
+
+
+def test_uno_que_no_esta_en_la_tabla_ya_no_cae_a_un_default():
+    """Antes gbpchf devolvia 1e5 «por las dudas». Medido despues: de siete
+    instrumentos probados fuera de la tabla, SEIS necesitaban 1e3 y solo
+    GBPUSD 1e5 — el default acertaba una de cada siete veces, y las otras seis
+    bajaban con los precios divididos por cien sin que nada fallara.
+
+    Ahora se consulta, y si no se puede saber se levanta. Ver
+    tests/test_escala_dukascopy.py.
+    """
+    with pytest.raises(dk.DukascopyError):
+        dk.escala_de("gbpchf")
 
 
 def test_the_minute_offset_becomes_a_timestamp():

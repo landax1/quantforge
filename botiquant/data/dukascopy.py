@@ -39,16 +39,39 @@ _REGISTRO = struct.Struct(">5i1f")
 _TAM = _REGISTRO.size          # 24 bytes
 
 #: Cuántos decimales usa cada instrumento. No se puede adivinar del dato: 107896
-#: es 1,07896 en EURUSD y 107.896 en un índice. Verificado contra precios reales.
+#: es 1,07896 en EURUSD y 107.896 en un índice.
+#:
+#: Los cuatro de acá se verificaron a mano contra precios reales. Sirven de
+#: red: si la consulta a Dukascopy falla, estos siguen andando sin internet
+#: extra. Y de prueba: las cuatro coinciden con lo que devuelve la API, que es
+#: como se comprobó que la API dice la verdad.
 ESCALA: dict[str, float] = {
     "eurusd": 1e5,
     "usa500idxusd": 1e3,
     "xauusd": 1e3,
     "btcusd": 1e1,
 }
-#: Para lo que no está en la tabla. Los pares de divisas son la mayoría del
-#: catálogo de Dukascopy y casi todos usan cinco decimales.
-ESCALA_POR_DEFECTO = 1e5
+
+#: NO HAY VALOR POR DEFECTO, y esa ausencia es la decisión importante de este
+#: módulo.
+#:
+#: Tener uno es cómodo y silencioso: un instrumento que caiga ahí y no sea un
+#: par de divisas se baja con los precios divididos por cien —el Dow a 387 en
+#: vez de 38.700— y NO falla nada. El backtest corre, las métricas salen, y son
+#: de un mercado que no existe. Medido: de siete instrumentos probados fuera de
+#: la tabla, SEIS necesitaban 1e3 y sólo GBPUSD 1e5, así que adivinar acierta
+#: una de cada siete veces.
+#:
+#: Sin datos se puede vivir. Con datos equivocados que parecen buenos, no.
+
+#: De dónde se consulta el multiplicador de un instrumento. Dukascopy lo
+#: publica junto con las velas de su API JSON, así que no hay que mantener una
+#: tabla de mil quinientas filas que se desactualiza sola.
+API_VELAS = "https://jetta.dukascopy.com/v1/candles/minute"
+
+#: Lo consultado en esta sesión. Un instrumento se pregunta una vez y no en
+#: cada uno de los miles de días que se bajan.
+_ESCALAS_VISTAS: dict[str, float] = {}
 
 #: Bajar quince años son miles de pedidos. Con uno a la vez tarda horas; con
 #: demasiados a la vez Dukascopy empieza a cortar conexiones. Doce anda bien y
@@ -61,8 +84,76 @@ class DukascopyError(Exception):
     """No se pudo traer o interpretar el histórico."""
 
 
-def escala_de(simbolo: str) -> float:
-    return ESCALA.get(simbolo.lower(), ESCALA_POR_DEFECTO)
+def consultar_escala(codigo: str) -> float | None:
+    """El multiplicador que Dukascopy declara para ese instrumento.
+
+    `codigo` es el nombre de su API —"USA30.IDX-USD"— y no el de la ruta del
+    datafeed. Devuelve None si no se pudo averiguar; quien llama decide qué
+    hacer con eso, porque acá no se puede saber si vale la pena arriesgarse.
+
+    Se pregunta en vez de mantener una tabla porque el catálogo de Dukascopy
+    tiene mil quinientos instrumentos y una tabla propia se desactualiza sola.
+    Verificado contra los cuatro que ya estaban medidos a mano: los cuatro
+    coinciden.
+    """
+    if not codigo:
+        return None
+    # Un día cualquiera de mercado abierto. Sólo interesa el multiplicador, que
+    # es del instrumento y no del día.
+    url = f"{API_VELAS}/{codigo}/BID/2024/6/3"
+    espera = 1.0
+    for intento in range(REINTENTOS):
+        try:
+            with httpx.Client(timeout=15.0) as c:
+                r = c.get(url)
+            if r.status_code == 200:
+                m = float(r.json().get("multiplier") or 0.0)
+                return 1.0 / m if 0.0 < m <= 1.0 else None
+            # 429 es lo habitual pidiendo varios seguidos, y es el caso que
+            # importa: sin reintentar, agregar cinco instrumentos de una vez
+            # dejaba a la mitad sin escala.
+            if r.status_code in (429, 503) and intento < REINTENTOS - 1:
+                time.sleep(espera)
+                espera *= 2
+                continue
+            return None
+        except (httpx.HTTPError, ValueError, KeyError, TypeError):
+            if intento < REINTENTOS - 1:
+                time.sleep(espera)
+                espera *= 2
+                continue
+            return None
+    return None
+
+
+def escala_de(simbolo: str, codigo_api: str = "") -> float:
+    """La escala de este instrumento, o se niega a adivinarla.
+
+    El orden importa. La tabla primero porque esos cuatro están verificados a
+    mano y no queremos que una consulta que falla cambie el resultado de los
+    instrumentos que la aplicación viene bajando desde siempre.
+
+    Si no está en la tabla y no se pudo consultar, LEVANTA en vez de suponer.
+    Bajar con la escala equivocada produce un histórico que parece bueno y es
+    de otro mercado: el backtest corre, las métricas salen, y todo lo que se
+    decida encima está mal. Un error acá se lee y se arregla; ese silencio no.
+    """
+    clave = simbolo.lower()
+    if clave in ESCALA:
+        return ESCALA[clave]
+    if clave in _ESCALAS_VISTAS:
+        return _ESCALAS_VISTAS[clave]
+
+    consultada = consultar_escala(codigo_api)
+    if consultada is not None:
+        _ESCALAS_VISTAS[clave] = consultada
+        return consultada
+
+    raise DukascopyError(
+        f"No se pudo averiguar la escala de precios de {simbolo}. Sin ese dato "
+        f"los precios saldrían divididos o multiplicados por cien y el "
+        f"histórico parecería correcto igual, así que no se baja. "
+        f"Probá de nuevo en un minuto: Dukascopy limita las consultas seguidas.")
 
 
 def _url(simbolo: str, dia: dt.date) -> str:
@@ -132,8 +223,16 @@ def _filas(crudo: bytes, dia: dt.date, divisor: float) -> list[tuple]:
 
 
 def descargar(simbolo: str, desde: str | dt.date, hasta: str | dt.date | None = None,
-              progreso: Callable[[float, str], None] | None = None) -> pd.DataFrame:
-    """Trae velas M1 y las devuelve ordenadas por tiempo, en UTC."""
+              progreso: Callable[[float, str], None] | None = None,
+              codigo_api: str = "") -> pd.DataFrame:
+    """Trae velas M1 y las devuelve ordenadas por tiempo, en UTC.
+
+    `codigo_api` es el nombre del instrumento en la API de Dukascopy —
+    "USA30.IDX-USD"— y hace falta para averiguar la escala de precios de todo
+    lo que no esté en la tabla verificada a mano. Sin él, un instrumento nuevo
+    NO se baja, porque bajarlo con la escala equivocada da un histórico que
+    parece bueno y es de otro mercado.
+    """
     d0 = pd.Timestamp(desde).date() if isinstance(desde, str) else desde
     d1 = (pd.Timestamp(hasta).date() if isinstance(hasta, str)
           else hasta or dt.date.today())
@@ -143,7 +242,9 @@ def descargar(simbolo: str, desde: str | dt.date, hasta: str | dt.date | None = 
     dias = list(_dias(d0, d1))
     if not dias:
         raise DukascopyError("el rango no contiene ningún día hábil")
-    divisor = escala_de(simbolo)
+    # ANTES de bajar nada. Averiguarlo al final significaria descargar quince
+    # anios y recien ahi descubrir que no se puede interpretar el precio.
+    divisor = escala_de(simbolo, codigo_api)
     filas: list[tuple] = []
     hechos = 0
 
