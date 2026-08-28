@@ -136,8 +136,17 @@ def main() -> int:
     except Exception as exc:                                  # noqa: BLE001
         _linea(MAL, f"la clave o la firma no pasan: {exc}")
         _linea(INFO, "100413 es clave incorrecta; 100001 es firma incorrecta.")
-        _linea(INFO, "Ojo: una clave del entorno real no sirve en el de "
-                     "práctica, y al revés tampoco.")
+        # NO se afirma que haga falta una clave distinta para cada entorno.
+        # BingX no lo documenta en ningún lado que haya podido encontrar, y
+        # decirlo sin saberlo manda a alguien a crear una segunda clave que
+        # quizás no necesita. Lo que sí se sabe: el endpoint de práctica
+        # valida la clave —comprobado mandando una inventada, contesta
+        # 100413— así que si llegaste hasta acá el problema es la clave o la
+        # firma, no el entorno.
+        _linea(INFO, "La clave se crea en Perfil → API Management, con "
+                     "permiso de lectura y de futuros perpetuos.")
+        _linea(INFO, "Si acabás de crearla, esperá un minuto: BingX tarda un "
+                     "rato en activarla.")
         return 1
 
     try:
