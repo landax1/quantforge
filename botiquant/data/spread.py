@@ -60,7 +60,19 @@ class SpreadDesconocido(Exception):
 
 #: Dias con los que se mide por el datafeed. Van con fecha real porque ahi el
 #: archivo es por dia y no hay forma de pedir "un dia cualquiera".
-DIAS_ARCHIVO = (dt.date(2023, 9, 12), dt.date(2024, 3, 6), dt.date(2022, 11, 9))
+#:
+#: CINCO Y NO TRES. Midiendo el gas, uno de los tres no vino —el archivo BID de
+#: ese dia no estaba, el ASK si— y la mediana quedo apoyada en dos. Con cinco,
+#: perder uno no cambia nada.
+#:
+#: Y repartidos en anios, que resulto importar mas de lo que parecia. MEDIDO en
+#: GAS.CMD-USD sobre cuatro dias entre 2021 y 2025: el spread en unidades de
+#: precio es casi constante —0,0102 a 0,0105— y el porcentaje va de 0,17% a
+#: 0,53%, sólo porque el precio del gas fue de 1,94 a 6,12. Midiendo un dia
+#: solo se puede sacar cualquiera de esos dos numeros y creer que es el del
+#: instrumento.
+DIAS_ARCHIVO = (dt.date(2023, 9, 12), dt.date(2024, 3, 6), dt.date(2022, 11, 9),
+                dt.date(2021, 6, 15), dt.date(2025, 1, 14))
 
 
 @dataclass(frozen=True)

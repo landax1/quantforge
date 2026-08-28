@@ -209,7 +209,7 @@ def test_los_minutos_sin_cotizacion_no_cuentan(monkeypatch):
                                    (60, 0, 0, 0, 0, 0.0)])),
     })
     m = sp.medir_desde_archivos("gascmdusd", 1e4)
-    assert m.minutos == 3, "tres días con un minuto útil cada uno"
+    assert m.minutos == len(sp.DIAS_ARCHIVO), "un minuto útil por día"
     assert m.spread == pytest.approx(0.002)
 
 

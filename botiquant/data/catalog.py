@@ -194,6 +194,41 @@ CATALOG: list[dict[str, Any]] = [
         "direction": "both",
     },
     {
+        "key": "gas",
+        "label": "GAS",
+        "full_name": "Gas natural (Henry Hub)",
+        "dukascopy": "gascmdusd",
+        "dukascopy_api": "GAS.CMD-USD",
+        "category": "energia",
+        "from": "2012-09-02",
+        # MEDIDO sobre cuatro dias entre 2021 y 2025, leyendo BID y ASK del
+        # datafeed: 0,0102 / 0,0105 / 0,0103 / 0,0105. En unidades de precio es
+        # casi constante; el porcentaje NO, porque el gas fue de 1,94 a 6,12 y
+        # el mismo centavo cuesta 0,17% o 0,53% segun cuando.
+        #
+        # (Se mide por archivos y no por la API de minutos como los otros dos:
+        # este instrumento publica BID y no ASK ahi. Diez fechas probadas.)
+        "spread": 0.0104,
+        "slippage": 0.004,
+        "stop_points": 0.02,
+        "target_points": 0.04,
+        "contract_size": 1000,
+        "min_lot": 0.01,
+        "min_cagr": 1.0,
+        "aliases": ["GAS", "NATGAS", "NG", "XNGUSD", "NATURALGAS", "GASUSD"],
+        # El que menos se parece a todo lo demas: 0,048 de correlacion media
+        # contra los cuatro originales, y 0,14 contra el petroleo, que es la
+        # otra energia. La EIA fecha el desacople del crudo en junio de 2009,
+        # con el shale: al gas lo mueven el clima y el almacenamiento
+        # regional, que no mueven nada mas.
+        #
+        # OJO CON ESE 0,048: esta medido sobre 2022 y 2025 nada mas. Los otros
+        # tres anios los rechaza la API de velas diarias de forma permanente
+        # —mismo instrumento, anios contiguos, uno contesta y el otro no— asi
+        # que apoya en menos datos que el resto de la tabla.
+        "direction": "both",
+    },
+    {
         "key": "wti",
         "label": "WTI",
         "full_name": "Petroleo WTI (Light Sweet Crude)",
