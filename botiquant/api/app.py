@@ -1037,6 +1037,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 target_keep=target_keep,
                 keep_top=int(min(max(int(payload.get("keep_top", 100)), 10), 1000)),
                 oos_pct=float(min(max(float(payload.get("oos_pct") or 0.0), 0.0), 80.0)),
+                # Que las varas se cumplan TAMBIEN en el tramo reservado. Sin
+                # esto, el fuera de muestra reordena pero no rechaza: una
+                # estrategia que se derrumba afuera entra igual al databank,
+                # sólo que con el score castigado.
+                exigir_oos=bool(payload.get("exigir_oos")),
                 sessions=ses,
                 rr_choices=_rr_choices(payload),
                 method="evolution" if payload.get("method") == "evolution" else "random",

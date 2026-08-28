@@ -79,6 +79,7 @@ const DEFAULT_CFG = {
      que corre en UTC+2 o UTC+3. Se pregunta en Datos y viaja en cada robot
      exportado; sólo importa si la estrategia tiene franja horaria. */
   brokerUtc: 0,
+  exigirOos: false,
   minPf: 1.0, minSharpe: 0.30, maxDd: 25, minNet: 20, minWinRate: 50,
   maxFilters: 2, direction: "long", minTrades: 30,
   /* 3 y no 5, y prendido de fábrica. Medido sobre S&P y oro, doce años:
@@ -875,6 +876,13 @@ function pintarEstadoMinado(corriendo) {
 }
 
 function lockSetup(on) {
+  /* OJO: ESTA FUNCION ES DUENIA DE `disabled` EN TODO EL PANEL.
+     Con `on=false` habilita TODOS los controles, así que un control que quiera
+     estar apagado por su cuenta no puede usar la propiedad `disabled`: se la
+     borra este barrido, que corre al dibujar la página.
+     Se perdió un rato buscando por qué un botón no quedaba deshabilitado ni
+     poniéndolo en la plantilla ni asignándolo después. Para apagar UNO, usar
+     una clase y guardar el clic por la condición. Ver `pintarExigir`. */
   const setup = $(".setup");
   if (!setup) return;
   setup.classList.toggle("locked", on);
@@ -4260,6 +4268,28 @@ const vistaBuscar = async (main) => {
             <span class="chev">›</span></summary>
           <div class="sect-body">
             <p class="help-note">${esc(t("mine.accept_help"))}</p>
+
+            <!-- DONDE SE TIENEN QUE CUMPLIR ESTAS VARAS.
+                 Sin tramo reservado la segunda opción no existe: no hay
+                 "afuera" contra el cual medir, así que se muestra apagada y
+                 dice dónde prenderla en vez de dejar un botón muerto. -->
+            <div class="seg full mb" id="m-oos-exig">
+              <button data-exig="0" class="${c.exigirOos ? "" : "on"}"
+                >${esc(t("acc.solo_dentro"))}</button>
+              <!-- El estado deshabilitado lo pone el pintor y NO esta
+                   plantilla. Estaban los dos: la plantilla escribía el
+                   atributo al dibujar y el pintor lo recalculaba una línea
+                   después, con lo cual el botón quedaba en un estado que no
+                   correspondía a ninguno y no había forma de saber cuál
+                   mandaba. Una sola fuente.
+                   (Y ojo con las comillas invertidas en un comentario de
+                   adentro de una plantilla: cortan la plantilla y rompen el
+                   archivo entero. Pasó acá.) -->
+              <button data-exig="1" class="${c.exigirOos ? "on" : ""}"
+                >${esc(t("acc.tambien_fuera"))}</button>
+            </div>
+            <p class="help-note" id="m-exig-nota"></p>
+
             <p class="help-note" id="m-critaviso"></p>
             <div class="critlist mt">
               <div class="critrow on always">
@@ -4403,12 +4433,54 @@ const vistaBuscar = async (main) => {
     else S.cfg.oosPct = +S.cfg.oosUltimo || 30;
     saveCfg();
     pintarOos();
+    // apagar la reserva tiene que apagar también la exigencia de afuera: si
+    // no, queda pedida sobre un tramo que ya no existe
+    pintarExigir();
   });
   $$("#m-oos-pct button", main).forEach(b => b.onclick = () => {
     S.cfg.oosPct = +b.dataset.pct;
     saveCfg();
     pintarOos();
+    pintarExigir();
   });
+
+  /* Las varas también afuera. Se repinta junto con el tramo reservado porque
+     depende de él: apagar la reserva tiene que apagar esto, y no dejarlo
+     tildado pidiendo algo que ya no se puede medir. */
+  const pintarExigir = () => {
+    const hayReserva = +S.cfg.oosPct > 0;
+    if (!hayReserva) S.cfg.exigirOos = false;
+    $$("#m-oos-exig button", main).forEach(b => {
+      const es = b.dataset.exig === "1";
+      b.classList.toggle("on", es === !!S.cfg.exigirOos);
+      if (es) {
+        /* SE APAGA CON UNA CLASE Y NO CON `disabled`. `lockSetup` habilita
+           todos los controles del panel cada vez que dibuja, así que la
+           propiedad no sobrevive: el botón se veía disponible, se apretaba, y
+           no pasaba nada. Lo que impide el clic es la condición del
+           manejador; esto es lo que lo hace ver. */
+        b.classList.toggle("apagado", !hayReserva);
+        b.title = hayReserva ? "" : t("acc.necesita_reserva");
+      }
+    });
+    const n = $("#m-exig-nota", main);
+    if (n) {
+      n.textContent = !hayReserva ? t("acc.necesita_reserva")
+        : S.cfg.exigirOos ? t("acc.tambien_fuera_ayuda")
+                          : t("acc.solo_dentro_ayuda");
+    }
+    updateNotes();
+  };
+  $$("#m-oos-exig button", main).forEach(b => b.onclick = () => {
+    // SE GUARDA POR LA CONDICION Y NO POR EL ESTADO DEL BOTON. Si el atributo
+    // `disabled` no llegara a pegarse —pasó— el clic entraría igual y pediría
+    // que las varas se cumplan en un tramo que no existe.
+    if (b.dataset.exig === "1" && !(+S.cfg.oosPct > 0)) return;
+    S.cfg.exigirOos = b.dataset.exig === "1";
+    saveCfg();
+    pintarExigir();
+  });
+  pintarExigir();
   // y una vez al dibujar: la linea que explica el porcentaje se arma aca, asi
   // que sin esta llamada el paso abre en blanco justo debajo de los botones
   pintarOos();
@@ -4838,6 +4910,9 @@ const vistaBuscar = async (main) => {
         // el objetivo manda; max_candidates es solo el tope de seguridad
         target_keep: cfg.goal, keep_top: Math.max(cfg.goal, 100),
         oos_pct: +cfg.oosPct || 0,
+        // sin tramo reservado no hay nada afuera que exigir, y mandarlo en
+        // true igual haría que el servidor rechazara todo
+        exigir_oos: !!(cfg.exigirOos && +cfg.oosPct > 0),
         // sólo viaja si alguien lo pidió: sin la lista el servidor deja que
         // cada candidata use el R:B configurado, como siempre
         ...(cfg.rrBuscado?.length ? { rr_choices: cfg.rrBuscado } : {}),

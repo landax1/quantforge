@@ -150,6 +150,30 @@ def _failed_criteria(m: dict[str, float], accept: dict[str, float | None]) -> li
     return missed
 
 
+def _failed_criteria_oos(oos: dict[str, Any],
+                         accept: dict[str, float | None]) -> list[str]:
+    """Las mismas varas, contra el tramo reservado.
+
+    El tramo reservado NO trae todas las métricas del de búsqueda —no tiene
+    Sharpe ni operaciones por mes, por ejemplo—. Las que faltan se saltean en
+    vez de darlas por reprobadas: reprobar por un dato que no existe rechazaría
+    todo y el usuario vería cero resultados sin ningún motivo a la vista.
+    """
+    missed = []
+    for key, metric, kind, _label in _CRITERIA:
+        limit = accept.get(key)
+        if limit is None or metric not in oos:
+            continue
+        v = oos[metric]
+        if v is None:
+            continue
+        if kind == "min" and v < limit:
+            missed.append(key)
+        elif kind == "max" and v > limit:
+            missed.append(key)
+    return missed
+
+
 def _passes(m: dict[str, float], accept: dict[str, float | None]) -> bool:
     """Databank acceptance: None disables an individual criterion."""
     return not _failed_criteria(m, accept)
@@ -174,6 +198,20 @@ def mine(
     method: str = "random",
     population: int = 40,
     oos_pct: float = 0.0,
+    #: Si los filtros de aceptación tienen que cumplirse TAMBIEN en el tramo
+    #: reservado, y no sólo en el de búsqueda.
+    #:
+    #: "También" y no "en vez de": el tramo reservado sólo se corre para las
+    #: que ya pasaron adentro, así que exigirlo afuera es una segunda puerta,
+    #: no otra puerta.
+    #:
+    #: SIN ESTO, EL FUERA DE MUESTRA REORDENA PERO NO RECHAZA. Una estrategia
+    #: que se derrumba afuera entra igual al databank, sólo que con el score
+    #: castigado — y el usuario que mira los primeros puestos no se entera de
+    #: que las de abajo no sobrevivieron.
+    #:
+    #: No cuesta tiempo: ese backtest ya se corre para cada aceptada.
+    exigir_oos: bool = False,
     sessions: list[str] | None = None,
     #: Los R:B entre los que puede elegir cada candidata. Vacío o None deja el
     #: comportamiento de siempre: todas usan el configurado. Con una lista, la
@@ -545,13 +583,34 @@ def mine(
             if not missed:
                 passed += 1
                 row = _row(genome, spec, m, score, passed, res.equity)
+                entra = True
                 if cache_oos is not None:
                     row.update(_validate_oos(spec))
                     row["oos_ratio"] = _oos_ratio(row)
                     _ponderar_por_oos(row)
-                bank.append(row)
-                bank.sort(key=lambda r: r["fitness"], reverse=True)
-                del bank[keep_top:]
+
+                    # LA SEGUNDA PUERTA. Se comparan las MISMAS varas contra
+                    # las métricas del tramo reservado, con el mismo
+                    # comparador: un segundo camino de decisión acabaría
+                    # divergiendo del primero sin que nada avise.
+                    #
+                    # Con una bandera y no con un `continue`: esto vive dentro
+                    # de una función y no de un bucle, y lo que sigue —publicar
+                    # el avance— tiene que correr igual. Salir antes dejaba la
+                    # pantalla sin novedades durante toda la búsqueda.
+                    if exigir_oos:
+                        fuera = row.get("oos") or {}
+                        faltan = _failed_criteria_oos(fuera, accept)
+                        if faltan or not fuera.get("trades"):
+                            for k in (faltan or ["sin_operaciones_afuera"]):
+                                clave = f"oos:{k}"
+                                blocked_by[clave] = blocked_by.get(clave, 0) + 1
+                            passed -= 1
+                            entra = False
+                if entra:
+                    bank.append(row)
+                    bank.sort(key=lambda r: r["fitness"], reverse=True)
+                    del bank[keep_top:]
 
         if tested % 5 == 0 or tested >= max_candidates:
             best_history.append(bank[0]["fitness"] if bank else 0.0)

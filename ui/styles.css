@@ -730,6 +730,17 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
 .seg button:hover { color: var(--text); }
 .seg button.on { background: var(--card-hover); color: var(--text); }
 
+/* Una opción del segmentado que TODAVIA no se puede elegir.
+
+   Sin esto un botón deshabilitado se ve idéntico a uno disponible: se aprieta,
+   no pasa nada, y no hay forma de saber por qué. Va por clase además de por
+   `:disabled` porque el estado lo calcula el pintor y la clase es lo único que
+   se ve; el atributo sirve para el teclado. */
+.seg button.apagado,
+.seg button:disabled { opacity: .45; cursor: not-allowed; }
+.seg button.apagado:hover,
+.seg button:disabled:hover { color: var(--text-dim); }
+
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
   font: inherit; font-size: 12px; font-weight: 550;

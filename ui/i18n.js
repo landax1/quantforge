@@ -1191,6 +1191,24 @@ const STR = {
      horario de su bróker. */
   "data.en_reloj": ["clock {reloj}", "reloj {reloj}"],
 
+  /* Dónde se tienen que cumplir los filtros de aceptación.
+
+     "También afuera" y no "en vez de adentro": el tramo reservado sólo se
+     corre para las que ya pasaron adentro, así que es una segunda puerta y no
+     otra puerta. Decirlo mal haría esperar que aparezcan estrategias que
+     adentro no llegan. */
+  "acc.solo_dentro": ["In sample", "En muestra"],
+  "acc.tambien_fuera": ["Also out of sample", "También fuera de muestra"],
+  "acc.solo_dentro_ayuda": [
+    "The filters apply to the stretch the search looked at. The reserved stretch still lowers the score of whatever did not hold up there, but does not reject it.",
+    "Los filtros se aplican al tramo que miró la búsqueda. El tramo reservado igual le baja el score a lo que no aguantó ahí, pero no lo descarta."],
+  "acc.tambien_fuera_ayuda": [
+    "The same thresholds have to hold on the reserved stretch too, and one that never traded there does not pass: not measuring is not passing. Fewer strategies, and every one of them held up where the search never looked.",
+    "Los mismos umbrales tienen que cumplirse también en el tramo reservado, y una que no operó ahí no pasa: no medir no es aprobar. Van a salir menos, y cada una aguantó donde la búsqueda no miró."],
+  "acc.necesita_reserva": [
+    "Turn on the reserved stretch in step 1 to be able to demand it out of sample.",
+    "Prendé el tramo reservado en el paso 1 para poder exigirlo fuera de muestra."],
+
   "nav.operar": ["Trade", "Operar"],
 
   /* LA ESCALERA: hasta dónde puede llegar una estrategia.
