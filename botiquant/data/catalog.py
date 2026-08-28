@@ -46,6 +46,14 @@ veces mas. En Bitcoin la brecha se achica a 3,6x con taker y 1,4x con maker,
 porque su spread ya es alto. Por eso cripto es el mercado donde el exchange
 tiene sentido y los indices no.
 
+``dukascopy_api`` es el codigo con el que ese instrumento se identifica en la
+API de Dukascopy —``USD-JPY``, ``DEU.IDX-EUR``— y sirve para preguntarle la
+escala de precios. Es OBLIGATORIO en todo instrumento de Dukascopy que no sean
+los cuatro originales, y no es burocracia: sin el, el historico se baja con los
+precios divididos por cien y NO falla nada. El Dow a 387 en vez de 38.753, el
+backtest corre, las metricas salen, y son de un mercado que no existe. Hay una
+prueba que lo exige (tests/test_catalogo_escalas.py).
+
 ``contract_size`` y ``min_lot`` son REFERENCIAS, igual que el spread: cada
 broker define las suyas y la pantalla dice que hay que comprobarlas. Existen
 para poder contestar la unica pregunta que el capital inicial deberia contestar
@@ -296,7 +304,8 @@ def download(key: str, workdir: Path, date_from: str | None = None,
     df = descargar_dukascopy(entry["dukascopy"],
                              date_from or entry["from"],
                              date_to or _today(),
-                             progreso=avance)
+                             progreso=avance,
+                             codigo_api=entry.get("dukascopy_api", ""))
     if progress:
         progress(0.95, "Convirtiendo a hora del servidor…")
     return to_server_time(df)
