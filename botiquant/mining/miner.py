@@ -471,8 +471,37 @@ def mine(
                     # las franjas activas van con el diagnóstico para que la
                     # pantalla pueda nombrarlas en el idioma del usuario
                     "sessions": estrechas if len(estrechas) == len(sessions) else []}
-        worst = max(blocked_by.items(), key=lambda kv: kv[1], default=None)
+        # LAS QUE FRENO EL TRAMO RESERVADO SE CUENTAN APARTE.
+        #
+        # Sus claves van con prefijo `oos:` y NO están en la tabla de criterios,
+        # así que el camino de abajo las buscaba ahí y reventaba con KeyError —
+        # justo cuando el usuario más necesita entender por qué no salió nada.
+        #
+        # Y merecen otro mensaje: no es que la vara sea muy exigente, es que
+        # esas candidatas SI la cumplían con los datos de la búsqueda y se
+        # cayeron donde no miraron. Decir "aflojá el filtro" ahí sería el
+        # consejo exactamente al revés.
+        frenadas_afuera = sum(v for k, v in blocked_by.items()
+                              if k.startswith("oos:"))
+        adentro = {k: v for k, v in blocked_by.items() if not k.startswith("oos:")}
+
+        worst = max(adentro.items(), key=lambda kv: kv[1], default=None)
         if worst is None:
+            if frenadas_afuera:
+                return {
+                    "reason": "oos",
+                    "rejected": frenadas_afuera,
+                    "tested": tested,
+                    "text": (
+                        f"<b>{frenadas_afuera}</b> "
+                        f"{'candidata cumplía' if frenadas_afuera == 1 else 'candidatas cumplían'}"
+                        f" todos los filtros con los datos de la búsqueda y NO "
+                        f"los cumplieron en el tramo reservado. Eso es lo que ese "
+                        f"tramo viene a mostrar: aflojar los filtros no lo "
+                        f"arregla. Probá con otro instrumento, otra "
+                        f"temporalidad, o desactivá la exigencia de afuera para "
+                        f"ver qué encontraba antes."),
+                }
             return {}
 
         # Lo más accionable primero: si hubo candidatas que sólo tropezaron con
@@ -494,8 +523,15 @@ def mine(
                    f"a la vez. El que más descarta es <b>{label}</b> ({count} de "
                    f"{tested}); pediste {limit:g} y las que fallaron ahí no pasaron "
                    f"de <b>{reached:.2f}</b>.") if reached is not None else ""
+        if frenadas_afuera:
+            una = frenadas_afuera == 1
+            txt += (f" Además, <b>{frenadas_afuera}</b> "
+                    f"{'pasó' if una else 'pasaron'} los filtros con los datos "
+                    f"de la búsqueda y se "
+                    f"{'cayó' if una else 'cayeron'} en el tramo reservado.")
         out = {"reason": key, "criterion": label, "limit": limit,
                "best_reached": reached, "rejected": count, "text": txt,
+               "frenadas_afuera": frenadas_afuera,
                "near_miss": near_miss}
         # la sugerencia de riesgo proyecta desde el MEJOR rendimiento alcanzado
         # por cualquier candidata, no desde el mejor de las que fallaron

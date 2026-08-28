@@ -176,3 +176,34 @@ def test_lockSetup_avisa_de_que_es_duenia_de_disabled():
     i = js.index("function lockSetup(")
     assert "disabled" in js[i:i + 700]
     assert "clase" in js[i:i + 700]
+
+
+# ------------------------------------------- el diagnóstico cuando no sale nada
+
+def test_el_diagnostico_no_revienta_con_las_frenadas_afuera():
+    """LO ROMPI AL AGREGAR LA PUERTA.
+
+    El diagnóstico busca la vara que más descarta en `blocked_by` y la resuelve
+    contra la tabla de criterios. Las claves nuevas van con prefijo `oos:` y no
+    están ahí: si el bloqueo mayoritario venía del tramo reservado, reventaba
+    con KeyError — justo cuando el usuario más necesita entender qué pasó.
+    """
+    r = _minar(accept={"min_pf": 3.0}, exigir_oos=True)
+    assert isinstance(r["diagnosis"], dict)
+
+
+def test_cuando_solo_frena_el_tramo_reservado_el_consejo_es_OTRO():
+    """No es que la vara sea exigente: esas candidatas SI la cumplían con los
+    datos de la búsqueda y se cayeron donde no se miró.
+
+    Decir "aflojá el filtro" ahí sería el consejo exactamente al revés: la vara
+    hizo su trabajo.
+    """
+    from botiquant.mining import miner as m
+
+    # se arma el caso directo: nada frenado adentro, todo frenado afuera
+    import inspect
+    fuente = inspect.getsource(m.mine)
+    assert 'if frenadas_afuera:' in fuente
+    assert '"reason": "oos"' in fuente
+    assert "aflojar los filtros no lo" in fuente

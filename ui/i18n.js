@@ -764,6 +764,11 @@ const STR = {
   /* ------------------------------------------------------- mis estrategias */
   "saved.sub": ["{n} saved. They survive any new search.",
                 "{n} guardadas. Sobreviven a cualquier corrida nueva."],
+  /* La única pista de que el portafolio existe. Aparece recién con dos
+     guardadas: con una sería vender algo que todavía no se puede hacer. */
+  "saved.combinar": [
+    "Tick two or more to see how they behave together: whether they add up or they are the same bet twice.",
+    "Tildá dos o más para ver cómo se comportan juntas: si se suman o son la misma apuesta repetida."],
   "saved.title": ["Saved", "Guardadas"],
   "saved.hint": ["click a row to analyse it again", "clic en una fila para volver a analizarla"],
   "saved.when": ["Saved", "Guardada"],
@@ -1202,9 +1207,12 @@ const STR = {
   "acc.solo_dentro_ayuda": [
     "The filters apply to the stretch the search looked at. The reserved stretch still lowers the score of whatever did not hold up there, but does not reject it.",
     "Los filtros se aplican al tramo que miró la búsqueda. El tramo reservado igual le baja el score a lo que no aguantó ahí, pero no lo descarta."],
+  /* Dice que TARDA MAS además de que salen menos: medido sobre EURUSD, con
+     esto la tasa de aceptación cayó a 0,6% y juntar diez llevó unos diez
+     minutos. Sin avisarlo, alguien lo prende y cree que la búsqueda se colgó. */
   "acc.tambien_fuera_ayuda": [
-    "The same thresholds have to hold on the reserved stretch too, and one that never traded there does not pass: not measuring is not passing. Fewer strategies, and every one of them held up where the search never looked.",
-    "Los mismos umbrales tienen que cumplirse también en el tramo reservado, y una que no operó ahí no pasa: no medir no es aprobar. Van a salir menos, y cada una aguantó donde la búsqueda no miró."],
+    "The same thresholds have to hold on the reserved stretch too, and one that never traded there does not pass: not measuring is not passing. Fewer will come out and the search takes longer — but every one of them held up where the search never looked.",
+    "Los mismos umbrales tienen que cumplirse también en el tramo reservado, y una que no operó ahí no pasa: no medir no es aprobar. Van a salir menos y la búsqueda tarda más, pero cada una aguantó donde la búsqueda no miró."],
   "acc.necesita_reserva": [
     "Turn on the reserved stretch in step 1 to be able to demand it out of sample.",
     "Prendé el tramo reservado en el paso 1 para poder exigirlo fuera de muestra."],

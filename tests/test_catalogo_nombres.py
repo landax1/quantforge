@@ -226,3 +226,42 @@ def test_el_portafolio_no_esta_atado_al_modo_avanzado():
     # las casillas y la barra tienen que colgar de PORTAFOLIO, no de AVANZADO
     assert 'PORTAFOLIO ? `<td class="tick"><input type="checkbox" data-pf=' in app
     assert "barra.hidden = !PORTAFOLIO" in app
+
+
+def test_la_pista_del_portafolio_aparece_recien_con_DOS_guardadas():
+    """Con una sola sería vender algo que todavía no se puede hacer: el
+    conjunto necesita dos para existir.
+
+    Y no puede aparecer con el portafolio apagado, porque mandaría a tildar
+    casillas que no están.
+    """
+    app = (UI / "app.js").read_text(encoding="utf-8")
+    assert "PORTAFOLIO && items.length >= 2" in app, (
+        "la pista tiene que colgar del interruptor Y de que haya dos")
+
+
+# ------------------------------- las temporalidades que el histórico permite
+
+def test_no_se_ofrecen_temporalidades_mas_finas_que_el_historico():
+    """De velas de una hora no salen velas de quince minutos.
+
+    La lista era fija y ofrecía las seis siempre: con un histórico horario uno
+    elegía 15m y recién al iniciar la búsqueda le decían que no —correctamente,
+    pero después de configurar todo lo demás—.
+
+    Dejó de ser teórico al haber dos fuentes: Dukascopy trae velas de un minuto
+    y MetaTrader de una hora, y el mismo instrumento puede estar en las dos.
+    """
+    app = (UI / "app.js").read_text(encoding="utf-8")
+    i = app.index("const tfPosibles")
+    bloque = app[i:i + 400]
+    assert 'x === "native" || (MINUTOS_TF[x] || 0) >= minsDs' in bloque
+
+
+def test_si_la_elegida_deja_de_poder_se_cambia_sola():
+    """Al pasar de un histórico de minutos a uno de horas, la temporalidad
+    elegida puede quedar sin sostén. Dejarla puesta mostraría un valor que el
+    servidor va a rechazar, y el usuario no tocó nada."""
+    app = (UI / "app.js").read_text(encoding="utf-8")
+    i = app.index("const tfPosibles")
+    assert "if (!tfPosibles.includes(S.sel.timeframe))" in app[i:i + 600]

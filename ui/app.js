@@ -2788,9 +2788,26 @@ function pintarNavBanco(total) {
 const ORIGEN_SITIO = location.hostname === "127.0.0.1" || location.hostname === "localhost"
   ? "https://botiquant.com" : "";
 
-const AVANZADO = false;
+/* LAS PRUEBAS DE ROBUSTEZ: walk-forward y Monte Carlo.
 
-/* EL PORTAFOLIO VA APARTE DE `AVANZADO`, y la separación es la decisión.
+   Se llamaba `AVANZADO` y escondía tres cosas distintas. El portafolio ya
+   salió de acá —es un objetivo del producto, no una herramienta— y lo que
+   quedó es una sola función con un solo nombre: poner una estrategia a
+   prueba. Un interruptor que esconde una cosa se puede razonar; uno que
+   esconde tres se vuelve un cajón.
+
+   AHORA VA ENCENDIDO. El motivo de apagarlo era bueno —cada pantalla de más
+   es una razón de más para cerrar la aplicación y no volver— pero se cumplía
+   igual sin apagarlo, porque esto NO agrega una pantalla: vive adentro de una
+   estrategia ya guardada y respeta el orden que ya existe —encontrar, guardar,
+   PROBAR, operar—. Quien no guarda nada no lo ve nunca.
+
+   Y lo que muestra está escrito para que se entienda sin vocabulario: el
+   veredicto va primero y en palabras —"aguanta a medias"— y los números
+   quedan debajo. Ver `panelPrueba`. */
+const PRUEBAS = true;
+
+/* EL PORTAFOLIO VA APARTE DE LAS PRUEBAS, y la separación es la decisión.
 
    Estaba adentro, apagado junto con el walk-forward y la columna Estado. El
    motivo de aquello sigue siendo bueno —cada pantalla de más es una razón de
@@ -2826,7 +2843,7 @@ const PORTAFOLIO = true;
    Ocupaba nueve botones, más de un tercio del primer paso, para una perilla
    que en promedio empeora el resultado y que hay que entender para usar bien.
 
-   Se apaga y no se borra, igual que AVANZADO: el código queda entero, sus
+   Se apaga y no se borra, igual que se hacía con las pruebas: el código queda entero, sus
    tests siguen corriendo y las estrategias ya minadas con una franja la siguen
    mostrando —son un registro de lo que se hizo—. Poner esto en `true` la
    devuelve a la pantalla. */
@@ -2933,9 +2950,9 @@ PAGES.saved = async (main) => {
         m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
       <td class="num ${nivelDD(m.max_drawdown_pct, riesgoDeCtx(ctx))}">${
         m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
-      ${AVANZADO ? `<td>${estadoChip(s)}</td>` : ""}
+      ${PRUEBAS ? `<td>${estadoChip(s)}</td>` : ""}
       <td class="num" style="white-space:nowrap">
-        ${AVANZADO ? `<button class="btn ghost small" data-probar="${esc(s.id)}">${
+        ${PRUEBAS ? `<button class="btn ghost small" data-probar="${esc(s.id)}">${
           esc(t(estadoDe(s) === "sin_probar" ? "wf.test_it" : "wf.retest"))}</button>` : ""}
         <button class="btn ghost small" data-export="${esc(s.id)}">${icono("bajar")} MQL5</button>
         <button class="btn ghost small" data-del-strat="${esc(s.id)}"
@@ -2947,8 +2964,23 @@ PAGES.saved = async (main) => {
   const sinProbar = items.filter(x => estadoDe(x) === "sin_probar").length;
 
   main.innerHTML = pageHead(t("nav.saved"), esc(t("saved.sub", { n: items.length }))) +
-    `${AVANZADO && sinProbar ? `<div class="pista mb">${icono("idea", "ico-sm")}
+    `${PRUEBAS && sinProbar ? `<div class="pista mb">${icono("idea", "ico-sm")}
        <div>${esc(t("saved.pending", { n: sinProbar }))}</div></div>` : ""}
+    ${/* QUE EL PORTAFOLIO SE SEPA QUE EXISTE, sin ponerse en el camino.
+
+           El conjunto ya se arma tildando dos o más, y esa casilla no se ve
+           hasta que uno la busca. Quien viene por una estrategia sola no tiene
+           por qué enterarse de nada — por eso la línea aparece SOLO cuando ya
+           hay dos guardadas, que es cuando la pregunta "¿y si las combino?"
+           se puede contestar.
+
+           Con una sola guardada no dice nada: sería vender algo que todavía
+           no se puede hacer. */
+      PORTAFOLIO && items.length >= 2
+        ? `<div class="pista mb">${icono("idea", "ico-sm")}
+             <div>${esc(t("saved.combinar", { n: items.length }))}</div>
+           </div>`
+        : ""}
     <div class="card">
       <h2>${esc(t("saved.title"))} <span class="hint">${esc(t("saved.hint"))}</span></h2>
       <div class="scroll-x"><table class="guardadas">
@@ -2956,7 +2988,7 @@ PAGES.saved = async (main) => {
           <th>${esc(t("col.strategy"))}</th><th>${esc(t("mine.market"))}</th>
           <th class="num">${esc(t("col.annual"))}</th>
           <th class="num">${esc(t("col.maxdd"))}</th>
-          ${AVANZADO ? `<th title="${esc(t("est.help"))}">${esc(t("col.status"))}</th>` : ""}
+          ${PRUEBAS ? `<th title="${esc(t("est.help"))}">${esc(t("col.status"))}</th>` : ""}
           <th></th></tr></thead>
         <tbody>${items.map(fila).join("")}</tbody>
       </table></div>
@@ -3984,8 +4016,31 @@ const vistaBuscar = async (main) => {
        ${esc(d.name)} · ${esc(t("ui.n_bars", {
          n: d.rows.toLocaleString(localeNum()) }))}</option>`).join("");
   if (!S.sel.timeframe) S.sel.timeframe = "1h";
-  const tfOpts = (S.meta?.timeframes || ["1h"]).map(t =>
-    `<option ${t === S.sel.timeframe ? "selected" : ""}>${t}</option>`).join("");
+
+  /* SOLO LAS TEMPORALIDADES QUE ESTE HISTORICO PUEDE DAR.
+
+     De velas de una hora no salen velas de quince minutos: agrupar hacia
+     arriba se puede, hacia abajo no. La lista era fija y ofrecía las seis
+     siempre, así que con un histórico horario uno elegía 15m y recién al
+     iniciar la búsqueda le decían que no — correctamente, pero después de
+     configurar todo lo demás.
+
+     Desde que hay dos fuentes esto dejó de ser teórico: Dukascopy trae velas
+     de un minuto y MetaTrader de una hora, y el mismo instrumento puede estar
+     en cualquiera de las dos. */
+  const dsElegido = S.datasets.find(d => d.id === S.sel.dataset_id);
+  const MINUTOS_TF = { "1m": 1, "5m": 5, "15m": 15, "30m": 30,
+                       "1h": 60, "4h": 240, "1d": 1440 };
+  const minsDs = MINUTOS_TF[dsElegido?.timeframe] || 1;
+  const tfPosibles = (S.meta?.timeframes || ["1h"]).filter(
+    x => x === "native" || (MINUTOS_TF[x] || 0) >= minsDs);
+  // si la que estaba elegida ya no se puede, se pasa a la más chica que sí:
+  // dejarla elegida mostraría un valor que el servidor va a rechazar
+  if (!tfPosibles.includes(S.sel.timeframe)) {
+    S.sel.timeframe = tfPosibles.find(x => x !== "native") || "native";
+  }
+  const tfOpts = tfPosibles.map(x =>
+    `<option ${x === S.sel.timeframe ? "selected" : ""}>${x}</option>`).join("");
   // arranque curado: los bloques mas usados y entendibles, no todos
   const DEFAULT_ON = new Set(["ema_cross", "price_ema", "rsi_reversal", "macd_cross",
                               "bollinger_revert", "donchian_break",
@@ -4806,10 +4861,15 @@ const vistaBuscar = async (main) => {
        secas, que al lado de "30+ operaciones" se lee como una frase cortada —
        y encima es el único de los seis resúmenes que no mostraba su número. */
     const on = CRITERIA().filter(cr => S.cfg.critOn[cr.key]);
-    set("sum-crit", on.length
+    /* Y SI ADEMAS SE EXIGEN AFUERA. Es lo que más cambia el resultado de todo
+       este paso —midiendo una corrida, de 9 estrategias a 7— y sin esto queda
+       invisible con la sección plegada, que es como se ve casi siempre. */
+    const tambienFuera = S.cfg.exigirOos && +S.cfg.oosPct > 0
+      ? ` · ${t("acc.tambien_fuera").toLowerCase()}` : "";
+    set("sum-crit", (on.length
       ? `${S.cfg.minTrades}+ ${t("m.trades").toLowerCase()} · ${
           on.map(cr => `${cr.label} ${S.cfg[cr.key]}${cr.unit || ""}`).join(" · ")}`
-      : t("sum.only_trades", { n: S.cfg.minTrades }));
+      : t("sum.only_trades", { n: S.cfg.minTrades })) + tambienFuera);
 
     set("sum-adv", `${S.cfg.method === "evolution"
       ? t("sum.method_evo_short") : t("sum.method_rnd_short")} · ${
@@ -6025,7 +6085,7 @@ function cablearNota(box, ctx) {
    botón y una frase de por qué conviene. Es lo que convierte una lista de
    estrategias en algo que tiene un siguiente paso. */
 function panelPrueba(ctx) {
-  if (!AVANZADO) return "";
+  if (!PRUEBAS) return "";
   if (!ctx || !ctx.strategy_id) return "";       // una fila del banco no se prueba
   const v = ctx.validacion || {};
   if (!v.estado) {

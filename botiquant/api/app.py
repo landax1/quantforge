@@ -149,6 +149,12 @@ ERRORES_EN: dict[str, str] = {
     "Esas estrategias ya no est\u00e1n en el banco.":
         "Those strategies are no longer in the databank.",
     "Esa estrategia no existe.": "That strategy does not exist.",
+    "El histórico con el que se encontró esta estrategia ya no está: se "
+    "borró desde Datos. La estrategia sigue guardada; volvé a bajar ese "
+    "instrumento y se puede probar y exportar de nuevo.":
+        "The history this strategy was found on is gone: it was deleted from "
+        "Data. The strategy is still saved; download that instrument again and "
+        "it can be tested and exported.",
     "Hace falta el per\u00edodo sobre el que validar.":
         "A period to validate over is required.",
     "Eleg\u00ed al menos una estrategia.": "Pick at least one strategy.",
@@ -335,7 +341,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         try:
             df = store.load(ds_id, payload.get("timeframe") or None)
         except (FileNotFoundError, KeyError) as exc:
-            raise HTTPException(404, str(exc)) from exc
+            # UNA ESTRATEGIA GUARDADA PUEDE QUEDAR SIN SU HISTORICO, y no es un
+            # caso raro: alcanza con borrar el instrumento desde Datos. Pasó
+            # probando la aplicación.
+            #
+            # "Dataset 983be757d3d9 not found on disk" es cierto y no le sirve
+            # a nadie: no dice qué pasó, ni que la estrategia sigue guardada, ni
+            # qué hacer. El identificador no se puede buscar en ningún lado.
+            raise HTTPException(
+                404,
+                "El histórico con el que se encontró esta estrategia ya no "
+                "está: se borró desde Datos. La estrategia sigue guardada; "
+                "volvé a bajar ese instrumento y se puede probar y exportar "
+                "de nuevo.") from exc
         except ValueError as exc:
             # pedir un timeframe más fino que el del dataset: 400 y no 500,
             # porque es una elección corregible y el texto explica cómo
