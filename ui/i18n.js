@@ -1217,6 +1217,19 @@ const STR = {
     "Turn on the reserved stretch in step 1 to be able to demand it out of sample.",
     "Prendé el tramo reservado en el paso 1 para poder exigirlo fuera de muestra."],
 
+  /* Las dos secciones. El rótulo dice QUE se opera, no dónde: un trader sabe
+     si opera CFD o cripto, y de ahí se deduce todo lo demás —dónde se ejecuta,
+     cómo se paga y cómo se exporta—. */
+  "mundo.rotulo": ["What you trade", "Qué operás"],
+  "mundo.cfds": ["CFDs", "CFDs"],
+  "mundo.cfds_sub": [
+    "Indices, forex and metals through MetaTrader. You pay the spread and take them as Expert Advisors.",
+    "Índices, forex y metales por MetaTrader. Se paga el spread y se llevan como Expert Advisor."],
+  "mundo.cripto": ["Crypto", "Cripto"],
+  "mundo.cripto_sub": [
+    "Perpetual futures on an exchange. You pay commission and funding, and they connect to the exchange.",
+    "Futuros perpetuos en un exchange. Se paga comisión y funding, y se conectan al exchange."],
+
   "nav.operar": ["Trade", "Operar"],
 
   /* LA ESCALERA: hasta dónde puede llegar una estrategia.

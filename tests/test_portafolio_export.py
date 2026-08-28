@@ -326,3 +326,54 @@ def test_un_EA_solo_sigue_diciendo_del_balance(tmp_path, monkeypatch):
         # Con el 100% su parte ES el balance, así que la rama que se usa es la
         # que dice "del balance" — y ahí la frase es cierta.
         assert "InpPorcionPct >= 100.0" in texto
+
+
+# ------------------------------------- CFD y perpetuo no son un conjunto
+
+def test_un_CFD_y_un_PERPETUO_no_se_pueden_juntar(tmp_path, monkeypatch):
+    """MEDIDO ANTES DE ESTE FRENO: un portafolio con el S&P y BTCUSDT
+    exportaba 200 OK, con CERO avisos, y el perpetuo salía como Expert Advisor
+    de MetaTrader.
+
+    Esa estrategia se había minado con comisión del 0,04% por lado y funding
+    cada ocho horas; el EA iba a operar un CFD que paga spread, en un símbolo
+    que el bróker probablemente ni tiene. Se instalaba, compilaba y operaba
+    otra cosa.
+    """
+    with _cliente(tmp_path, monkeypatch) as c:
+        a = _guardar_nueva(c, "DelSP", "SP500 M1 (Dukascopy)")
+        b = _guardar_nueva(c, "DelPerp", "BTCUSDT M1")
+        r = c.post("/api/export/portafolio", json={"ids": [a, b]})
+        assert r.status_code == 400
+        d = r.json()["detail"]
+        assert "MetaTrader" in d and "exchange" in d
+        assert "DelSP" in d and "DelPerp" in d, "tiene que decir CUALES son"
+
+
+def test_los_dos_bitcoins_TAMPOCO_se_juntan(tmp_path, monkeypatch):
+    """El caso peor, porque los nombres se parecen: el CFD va por MetaTrader y
+    el perpetuo por un exchange."""
+    with _cliente(tmp_path, monkeypatch) as c:
+        a = _guardar_nueva(c, "CfdBtc", "BTCUSD M1 (Dukascopy)")
+        b = _guardar_nueva(c, "PerpBtc", "BTCUSDT M1")
+        assert c.post("/api/export/portafolio",
+                      json={"ids": [a, b]}).status_code == 400
+
+
+def test_todas_del_mismo_mundo_pasan(tmp_path, monkeypatch):
+    """La contracara: el freno no puede impedir un conjunto legítimo."""
+    with _cliente(tmp_path, monkeypatch) as c:
+        ids = [_guardar_nueva(c, f"M{i}", "SP500 M1 (Dukascopy)") for i in range(2)]
+        assert c.post("/api/export/portafolio",
+                      json={"ids": ids}).status_code == 200
+
+
+def test_un_historico_que_no_se_puede_clasificar_no_frena_nada(tmp_path,
+                                                               monkeypatch):
+    """Un CSV propio no se puede clasificar, y tratarlo como de MetaTrader
+    haría que un perpetuo importado a mano se exporte como EA. No se cuenta
+    para ningún lado, así que tampoco puede bloquear un conjunto."""
+    from botiquant.reports.portafolio import mundos_de
+
+    sueltas = [{"name": "X", "meta": {"dataset_name": "mi_csv_propio.csv"}}]
+    assert mundos_de(sueltas) == {}

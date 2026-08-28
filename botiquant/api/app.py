@@ -63,6 +63,7 @@ from botiquant.reports.mql5 import export_mql5
 from botiquant.reports.bingx import export_bingx
 from botiquant.reports.pine import export_pine
 from botiquant.reports.report import excel_report, html_report, metrics_csv, trades_csv
+from botiquant.data.catalog import mundo_de_entrada
 from botiquant.metatrader import experts_de, terminales
 from botiquant.rutas import (
     carpeta_de_estrategias, carpeta_de_trabajo, raiz_recursos,
@@ -549,7 +550,12 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                         # qué su S&P tiene 62.722 velas de una hora y el de
                         # otro tiene millones de un minuto.
                         "bajado_de": have["source"] if have else None,
-                        "utc_offset": have.get("utc_offset") if have else None})
+                        "utc_offset": have.get("utc_offset") if have else None,
+                        # En qué sección vive: CFD (MetaTrader) o cripto
+                        # (exchange). No es una preferencia sino una propiedad
+                        # del instrumento — determina cómo se paga, dónde se
+                        # opera y cómo se exporta. Ver catalog.mundo_de_entrada.
+                        "mundo": mundo_de_entrada(entry)})
         return out
 
     @app.post("/api/datasets/download")
@@ -2258,6 +2264,13 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 filas.append(db.get_strategy(sid, dueno))
             except KeyError:
                 raise HTTPException(404, f"La estrategia {sid} ya no está.")
+
+        # ANTES DE REPARTIR NADA: si el conjunto mezcla un CFD con un
+        # perpetuo, no es un conjunto. Ver `MundosMezclados`.
+        try:
+            port.exigir_un_solo_mundo(filas)
+        except port.MundosMezclados as exc:
+            raise HTTPException(400, str(exc)) from exc
 
         reparto = port.repartir(
             filas, usar_pct=float(payload.get("usar_pct") or 90.0))

@@ -730,6 +730,26 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
 .seg button:hover { color: var(--text); }
 .seg button.on { background: var(--card-hover); color: var(--text); }
 
+/* QUE SE OPERA: CFD o cripto. Va arriba del menú y con más peso visual que un
+   control cualquiera, porque no es una opción sino el contexto de todo lo que
+   sigue: cambiarlo cambia los instrumentos, los costos y a dónde se exporta. */
+.mundo-sw { padding: 14px 16px 10px; }
+.mundo-rot {
+  display: block; font-size: 10px; font-weight: 650; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px;
+}
+.mundo-btns {
+  display: flex; gap: 4px; background: var(--bg-soft);
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: 3px;
+}
+.mundo-btns button {
+  flex: 1; font: inherit; font-size: 12px; font-weight: 600;
+  color: var(--text-dim); background: none; border: none; border-radius: 4px;
+  padding: 6px 8px; cursor: pointer; transition: background .14s, color .14s;
+}
+.mundo-btns button:hover { color: var(--text); }
+.mundo-btns button.on { background: var(--card-hover); color: var(--text); }
+
 /* Una opción del segmentado que TODAVIA no se puede elegir.
 
    Sin esto un botón deshabilitado se ve idéntico a uno disponible: se aprieta,

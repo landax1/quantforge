@@ -13,6 +13,17 @@ const S = {
   licencia: null,       // {situacion, plan, email, alta, fundador} — ver refreshLicencia()
   datasets: [],
   catalog: [],
+  /* QUE SE ESTA OPERANDO: "metatrader" (CFD) o "exchange" (perpetuos).
+
+     No es un filtro ni una preferencia: es de qué producto se está hablando.
+     Un CFD paga spread, se opera por MetaTrader y se exporta como Expert
+     Advisor; un perpetuo paga comisión y funding, se opera en un exchange y se
+     exporta como enlace. No hay cuenta donde convivan.
+
+     Mezclados, la aplicación deja armar cosas que no se pueden operar: antes
+     de esto, un portafolio con el S&P y BTCUSDT exportaba los dos como EA de
+     MetaTrader sin un solo aviso. */
+  mundo: localStorage.getItem("qf.mundo") || "metatrader",
   page: "data",
   sel: JSON.parse(localStorage.getItem("qf.sel") || "{}"),   // {dataset_id, timeframe}
   cfg: JSON.parse(localStorage.getItem("qf.cfg") || "null"), // config de mining
@@ -1273,9 +1284,38 @@ const TITULOS = () => ({
 /* Todo lo que vive fuera del <main> y por lo tanto no se repinta al navegar:
    la barra lateral, el pie, el selector de idioma. Se llama al arrancar y cada
    vez que cambia el idioma. */
+/* Las dos secciones. No son dos filtros de lo mismo: son dos productos que
+   comparten el buscador y no comparten nada más. */
+const MUNDOS = () => [
+  { id: "metatrader", rotulo: t("mundo.cfds"), sub: t("mundo.cfds_sub") },
+  { id: "exchange", rotulo: t("mundo.cripto"), sub: t("mundo.cripto_sub") },
+];
+
+function pintarMundo() {
+  const caja = $("#mundo-sw");
+  if (!caja) return;
+  caja.innerHTML = `<span class="mundo-rot">${esc(t("mundo.rotulo"))}</span>
+    <div class="mundo-btns">${MUNDOS().map(m => `
+      <button data-mundo="${m.id}" class="${S.mundo === m.id ? "on" : ""}"
+        title="${esc(m.sub)}">${esc(m.rotulo)}</button>`).join("")}</div>`;
+  $$("[data-mundo]", caja).forEach(b => b.onclick = () => {
+    if (b.dataset.mundo === S.mundo) return;
+    S.mundo = b.dataset.mundo;
+    localStorage.setItem("qf.mundo", S.mundo);
+    /* CAMBIAR DE SECCION OLVIDA EL INSTRUMENTO ELEGIDO. Si no, se queda
+       apuntando a uno que en la sección nueva no existe, y la pantalla de
+       minado abre mostrando un instrumento que no está en su propia lista. */
+    S.sel.dataset_id = null;
+    saveCfg();
+    pintarMundo();
+    navigate(S.page);
+  });
+}
+
 function pintarChrome() {
   document.documentElement.setAttribute("lang", idioma());
   $$("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
+  pintarMundo();
   const rot = $("#nav-rotulo");
   if (rot) rot.textContent = t("nav.section");
   const rotIdioma = $("#lang-rotulo");
@@ -2460,7 +2500,12 @@ PAGES.data = async (main) => {
      al lado de un perpetuo de Bitcoin se lee como el mismo instrumento dos
      veces. Quien YA lo bajó lo sigue viendo: esconderle un instrumento que
      tiene cargado y con estrategias encima sería hacerlo desaparecer. */
-  const visible = (c) => !c.oculto || c.dataset_id;
+  /* SOLO LOS DE ESTA SECCION. No es un filtro con aviso: en la sección de CFD
+     un perpetuo no existe, igual que en la de cripto no existe el S&P. Eran
+     dos listas mezcladas que obligaban a entender la diferencia entre spread y
+     funding antes de poder elegir nada. */
+  const visible = (c) => (c.mundo || "metatrader") === S.mundo
+    && (!c.oculto || c.dataset_id);
   const catalogo = S.catalog.filter(visible);
 
   const familias = FAMILIAS()
@@ -4011,7 +4056,20 @@ const vistaBuscar = async (main) => {
   const fixed = fixInheritedScale();
 
   const c = S.cfg;
-  const dsOpts = S.datasets.map(d =>
+  /* EL SELECTOR LISTA DATASETS, NO CATALOGO, y por ahí se colaba el otro
+     mundo: los perpetuos seguían apareciendo acá aunque no estuvieran en la
+     vitrina de instrumentos. Se clasifica cada histórico por su nombre; los
+     que no se pueden clasificar —un CSV propio— se muestran siempre, porque
+     adivinarles un mundo sería peor que dejarlos a la vista. */
+  const mundoDeDataset = (nombre) => {
+    const token = String(nombre || "").trim().split(/\s+/)[0].toLowerCase();
+    const enCat = (S.catalog || []).find(c => c.label.toLowerCase() === token);
+    return enCat ? (enCat.mundo || "metatrader") : null;
+  };
+  const dsOpts = S.datasets.filter(d => {
+    const m = mundoDeDataset(d.name);
+    return m === null || m === S.mundo;
+  }).map(d =>
     `<option value="${d.id}" ${d.id === S.sel.dataset_id ? "selected" : ""}>
        ${esc(d.name)} · ${esc(t("ui.n_bars", {
          n: d.rows.toLocaleString(localeNum()) }))}</option>`).join("");

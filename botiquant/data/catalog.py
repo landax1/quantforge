@@ -283,20 +283,17 @@ CATALOG: list[dict[str, Any]] = [
     },
     # ── Perpetuos de exchange ────────────────────────────────────────────
     #
-    # `oculto` LOS SACA DE LA VITRINA, NO DEL PROGRAMA.
+    # ESTOS VIVEN EN OTRA SECCION, y por eso ya no necesitan esconderse.
     #
-    # El producto apunta hoy a un portafolio de EA para MetaTrader, y en esa
-    # vitrina un CFD de Bitcoin y un perpetuo de Bitcoin se leen como el mismo
-    # instrumento repetido: se llaman igual salvo una letra y son cosas
-    # distintas —uno paga spread y se opera por MetaTrader, el otro paga
-    # comisión y funding y se opera en un exchange—. Mostrar los dos obliga a
-    # entender esa diferencia antes de poder elegir nada.
+    # Un CFD de Bitcoin y un perpetuo de Bitcoin se leen como el mismo
+    # instrumento repetido —se llaman igual salvo una letra— y son cosas
+    # distintas: uno paga SPREAD y se opera por MetaTrader, el otro paga
+    # COMISION Y FUNDING y se opera en un exchange. Mezclados en una lista
+    # obligan a entender esa diferencia antes de poder elegir nada.
     #
-    # Se OCULTAN y no se borran, por dos motivos concretos:
-    #   · quien ya bajó el perpetuo tiene datos y estrategias sobre él, y
-    #     borrarlo de acá le dejaría el instrumento sin sus costos: minaría
-    #     con el spread de otro sin que nada fallara.
-    #   · el plan es volver a ellos, construyendo sobre Binance primero.
+    # Estuvieron marcados `oculto` justamente por eso. Con las dos secciones
+    # separadas el problema desaparece solo: en la de CFD no están porque no
+    # son CFD, no porque los estemos tapando. Ver `mundo_de_entrada`.
     # Se bajan de Binance y no del exchange donde se opera. Medido: BTCUSDT en
     # Binance y en BingX correlacionan 0,99974 en sus movimientos, con 0,0019%
     # de diferencia media de precio — cien veces menos que la comision de una
@@ -307,7 +304,6 @@ CATALOG: list[dict[str, Any]] = [
     # comision, y ponerlo tambien como spread seria cobrarlo dos veces.
     {
         "key": "btcusdt",
-        "oculto": True,
         "label": "BTCUSDT",
         "full_name": "Bitcoin perpetuo (para exchange)",
         "fuente": "binance",
@@ -332,7 +328,6 @@ CATALOG: list[dict[str, Any]] = [
     },
     {
         "key": "ethusdt",
-        "oculto": True,
         "label": "ETHUSDT",
         "full_name": "Ethereum perpetuo (para exchange)",
         "fuente": "binance",
@@ -397,6 +392,41 @@ MINIMOS_PERPETUO = {
     "BTCUSDT": 0.0001,
     "ETHUSDT": 0.01,
 }
+
+
+#: Los dos mundos en los que vive una estrategia, y de qué depende cada uno.
+#:
+#: NO ES UNA PREFERENCIA DEL USUARIO: es una propiedad del instrumento. Un CFD
+#: se opera por MetaTrader, paga SPREAD y se exporta como Expert Advisor. Un
+#: perpetuo se opera en un exchange, paga COMISION Y FUNDING y se exporta como
+#: enlace al exchange. Son dos ejecuciones distintas, no dos gustos.
+MUNDO_METATRADER = "metatrader"
+MUNDO_EXCHANGE = "exchange"
+
+
+def mundo_de_entrada(entry: dict[str, Any]) -> str:
+    """En qué mundo vive ese instrumento del catálogo."""
+    return (MUNDO_EXCHANGE if entry.get("fuente") == "binance"
+            else MUNDO_METATRADER)
+
+
+def mundo_de_nombre(nombre: str) -> str | None:
+    """El mundo de un histórico, por su nombre. `None` si no se puede saber.
+
+    NONE NO ES UN MUNDO POR DEFECTO. Los CSV que sube el usuario y las
+    guardadas viejas no se pueden clasificar, y meterlas a la fuerza en el
+    mundo de MetaTrader haría que un perpetuo importado a mano se exporte como
+    Expert Advisor — que es justo el error que esto viene a frenar.
+
+    Se compara el PRIMER TOKEN y no por subcadena: "BTCUSD" está adentro de
+    "BTCUSDT", y esa confusión ya hizo que el CFD de bitcoin se quedara con los
+    datos del perpetuo.
+    """
+    token = (str(nombre).strip().split() or [""])[0].lower()
+    for entry in CATALOG:
+        if token == entry["label"].lower():
+            return mundo_de_entrada(entry)
+    return None
 
 
 def simbolo_fuente(entry: dict) -> str:

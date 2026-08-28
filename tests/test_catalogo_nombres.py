@@ -161,43 +161,47 @@ def test_cada_bitcoin_se_queda_con_el_suyo(tmp_path, monkeypatch):
 
 # --------------------------------------- lo que la vitrina no ofrece
 
-def test_los_perpetuos_estan_ocultos_pero_NO_borrados():
-    """El producto apunta hoy a un portafolio de EA para MetaTrader, y en esa
-    vitrina un CFD de Bitcoin al lado de un perpetuo de Bitcoin se lee como el
-    mismo instrumento repetido.
+def test_cada_instrumento_vive_en_UNA_seccion():
+    """CFD y perpetuo son dos productos, no dos gustos.
 
-    Ocultos y no borrados, y la diferencia es la que importa: de la entrada del
-    catálogo salen los COSTOS del instrumento. Quien ya bajó el perpetuo tiene
-    datos y estrategias encima; sin su entrada, minaría con el spread de otro
-    sin que nada fallara.
+    Un CFD paga SPREAD, se opera por MetaTrader y se lleva como Expert
+    Advisor. Un perpetuo paga COMISION Y FUNDING, se opera en un exchange y se
+    conecta por enlace. No hay cuenta donde convivan.
+
+    Los perpetuos estuvieron marcados `oculto` porque ensuciaban la lista de
+    CFD —BTCUSD y BTCUSDT a una letra de distancia—. Con las secciones
+    separadas el problema desaparece solo: en la de CFD no están porque no son
+    CFD, no porque los estemos tapando.
     """
-    from botiquant.data.catalog import BY_KEY
-    assert BY_KEY["btcusdt"].get("oculto") is True
-    assert BY_KEY["ethusdt"].get("oculto") is True
-    # siguen enteros: símbolo, costos y todo lo que hace falta para operarlos
+    from botiquant.data.catalog import (BY_KEY, MUNDO_EXCHANGE,
+                                        MUNDO_METATRADER, mundo_de_entrada)
+    assert mundo_de_entrada(BY_KEY["btcusdt"]) == MUNDO_EXCHANGE
+    assert mundo_de_entrada(BY_KEY["ethusdt"]) == MUNDO_EXCHANGE
+    # el CFD de bitcoin es del otro mundo aunque el nombre se parezca
+    assert mundo_de_entrada(BY_KEY["btcusd"]) == MUNDO_METATRADER
+    assert mundo_de_entrada(BY_KEY["sp500"]) == MUNDO_METATRADER
+
+    # y siguen enteros: sin sus costos, quien ya los bajó minaría con el
+    # spread de otro sin que nada fallara
     for k in ("btcusdt", "ethusdt"):
         assert BY_KEY[k]["commission_pct"] > 0
         assert BY_KEY[k]["binance"]
+        assert not BY_KEY[k].get("oculto"), (
+            "ya no hace falta esconderlos: viven en su propia sección")
 
 
-def test_los_que_se_pueden_bajar_de_verdad_estan_a_la_vista():
-    """Y los que no, escondidos. Un botón «Descargar» que siempre falla es
-    peor que no ofrecer el instrumento.
+def test_las_dos_secciones_tienen_instrumentos():
+    """Una sección vacía sería un botón que lleva a ninguna parte."""
+    from collections import defaultdict
 
-    Gas, WTI y Bund están ocultos porque hoy no hay de dónde bajarlos:
-    Dukascopy nos rechaza —174 días de 2.695 del Bund, 197 de 3.896 del WTI,
-    127 de 3.650 del gas, y las tres descargas terminaron sin nada— y
-    MetaTrader no tiene ni energía ni bonos.
-
-    Los cuatro que sí se pueden bajar tienen que seguir visibles: si alguno se
-    marca por error, desaparece de la pantalla sin que nada avise.
-    """
-    from botiquant.data.catalog import BY_KEY
-    for k in ("sp500", "eurusd", "xauusd", "btcusd"):
-        assert not BY_KEY[k].get("oculto"), f"{k} desapareció de la pantalla"
-    for k in ("gas", "wti", "bund"):
-        assert BY_KEY[k].get("oculto") is True, (
-            f"{k} se ofrece y hoy no se puede bajar")
+    from botiquant.data.catalog import CATALOG, mundo_de_entrada
+    por_mundo = defaultdict(list)
+    for c in CATALOG:
+        if not c.get("oculto"):
+            por_mundo[mundo_de_entrada(c)].append(c["key"])
+    assert len(por_mundo) == 2, f"quedó una sola sección poblada: {dict(por_mundo)}"
+    for mundo, cuales in por_mundo.items():
+        assert cuales, f"la sección {mundo} quedó vacía"
 
 
 def test_la_pantalla_muestra_igual_lo_que_ya_esta_bajado():

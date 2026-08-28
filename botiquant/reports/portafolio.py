@@ -59,6 +59,62 @@ class Reparto:
         return round(sum(self.porciones.values()), 4)
 
 
+class MundosMezclados(Exception):
+    """El conjunto junta un CFD con un perpetuo, y eso no se puede operar.
+
+    NO ES UN AVISO, ES UN FRENO, y la diferencia importa. Los avisos de este
+    archivo son cosas que conviene saber y el usuario decide igual —tres del
+    mismo instrumento, la cuenta sin colchón—. Esto es otra cosa: el conjunto
+    no existe como conjunto.
+
+    Un CFD se opera por MetaTrader y un perpetuo en un exchange. No hay cuenta
+    donde convivan, así que no hay capital que repartir entre los dos.
+
+    MEDIDO ANTES DE ESTE FRENO: un portafolio con el S&P y BTCUSDT exportaba
+    200 OK, con CERO avisos, y el perpetuo salía como Expert Advisor de
+    MetaTrader. Esa estrategia se había minado con comisión del 0,04% por lado
+    y funding cada ocho horas, y el EA iba a operar un CFD que paga spread, en
+    un símbolo que el broker probablemente ni tiene. Se instalaba, compilaba y
+    operaba otra cosa.
+    """
+
+
+def mundos_de(estrategias: list[dict[str, Any]]) -> dict[str, list[str]]:
+    """Qué instrumentos de cada mundo hay en el conjunto.
+
+    Los que no se pueden clasificar —CSV propios, guardadas viejas— NO se
+    cuentan para ningún lado. Meterlos a la fuerza en el de MetaTrader haría
+    que un perpetuo importado a mano se exporte como EA, que es el error que
+    esto frena.
+    """
+    from botiquant.data.catalog import mundo_de_nombre
+
+    fuera: dict[str, list[str]] = {}
+    for e in estrategias:
+        meta = e.get("meta") or {}
+        nombre = str(meta.get("dataset_name") or "")
+        mundo = mundo_de_nombre(nombre) if nombre else None
+        if mundo:
+            fuera.setdefault(mundo, []).append(str(e.get("name") or e.get("id")))
+    return fuera
+
+
+def exigir_un_solo_mundo(estrategias: list[dict[str, Any]]) -> None:
+    """Levanta si el conjunto mezcla CFD con perpetuos."""
+    m = mundos_de(estrategias)
+    if len(m) < 2:
+        return
+    from botiquant.data.catalog import MUNDO_EXCHANGE, MUNDO_METATRADER
+
+    mt = ", ".join(m.get(MUNDO_METATRADER, []))
+    ex = ", ".join(m.get(MUNDO_EXCHANGE, []))
+    raise MundosMezclados(
+        f"Este conjunto junta estrategias que se operan en lugares distintos: "
+        f"{mt} van por MetaTrader y {ex} por un exchange. No hay una cuenta "
+        f"donde convivan, así que no hay capital que repartir entre las dos. "
+        f"Armá un conjunto con unas o con otras.")
+
+
 def repartir(estrategias: list[dict[str, Any]], *,
              usar_pct: float = 100.0) -> Reparto:
     """Reparte la cuenta entre las estrategias y avisa lo que haga falta.
