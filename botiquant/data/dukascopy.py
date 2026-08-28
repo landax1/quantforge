@@ -111,6 +111,10 @@ _ESCALAS_VISTAS: dict[str, float] = {}
 CONCURRENCIA = 12
 REINTENTOS = 3
 
+#: Entre los reintentos de la segunda pasada. Van de a uno y espaciados: si lo
+#: que sobra son pedidos, repetirlos rápido choca contra el mismo límite.
+ESPERA_SEGUNDA_PASADA = 1.5
+
 #: EL 429 DE ESTA API NO SIEMPRE ES UN LIMITE DE PEDIDOS, y confundirlo costo
 #: dos vueltas de razonamiento equivocado.
 #:
@@ -334,16 +338,44 @@ def descargar(simbolo: str, desde: str | dt.date, hasta: str | dt.date | None = 
                              f"{hechos:,} de {len(dias):,} días · "
                              f"{len(filas):,} velas")
 
+    # SEGUNDA PASADA SOBRE LOS RECHAZADOS, DE A UNO Y DESPACIO.
+    #
+    # La primera versión abortaba acá, y eso convertía un tropiezo del 5% en
+    # perder el 95% que ya estaba bajado. MEDIDO bajando los tres instrumentos
+    # nuevos: Bund 174 rechazados de 2.695, WTI 197 de 3.896, gas 127 de 3.650
+    # — entre 3% y 6%, y las tres descargas terminaron sin dejar nada después
+    # de diez minutos cada una. Con eso, agregar un instrumento no funcionaba.
+    #
+    # Va de a uno y no en paralelo a propósito: si lo que sobra son pedidos,
+    # repetirlos a la misma velocidad los vuelve a chocar contra el mismo
+    # límite. Los que quedan son pocos, así que ir despacio cuesta segundos.
+    if fallados and progreso:
+        progreso(0.98, f"Reintentando {len(fallados)} días que Dukascopy "
+                       f"rechazó…")
+    if fallados:
+        quedan: list[dt.date] = []
+        with httpx.Client(timeout=60.0,
+                          headers={"User-Agent": "Botiquant"}) as cliente:
+            for i, dia in enumerate(fallados):
+                if i:
+                    time.sleep(ESPERA_SEGUNDA_PASADA)
+                estado, crudo = _traer_dia(cliente, simbolo, dia)
+                if estado == "fallo":
+                    quedan.append(dia)
+                else:
+                    filas.extend(_filas(crudo, dia, divisor))
+        fallados = quedan
+
     # Se aborta en vez de entregar un histórico incompleto. Un dataset con
     # semanas faltantes no da error en ningún lado: da un backtest con menos
     # operaciones y otras métricas, y nadie se entera nunca.
     if fallados:
         muestra = ", ".join(str(d) for d in fallados[:3])
         raise DukascopyError(
-            f"Dukascopy rechazó {len(fallados)} de {len(dias)} días "
-            f"(por ejemplo {muestra}). Suele ser un límite temporal por "
-            f"cantidad de pedidos: esperá unos minutos y probá de nuevo. "
-            f"No se guarda nada a medias.")
+            f"Dukascopy siguió rechazando {len(fallados)} de {len(dias)} días "
+            f"después de reintentarlos de a uno (por ejemplo {muestra}). "
+            f"Esperá unos minutos y probá de nuevo; no se guarda nada a "
+            f"medias, así que no vas a quedarte con un histórico con agujeros.")
 
     if not filas:
         raise DukascopyError(

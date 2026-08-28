@@ -1403,12 +1403,42 @@ async function abrirPortafolio(elegidas) {
       estrategias: elegidas.map(x => ({ origen: "guardada", id: x.id })),
       initial_capital: S.cfg.capital,
     });
-    body.innerHTML = resultadoPF(r);
+    body.innerHTML = resultadoPF(r) + `
+      <div class="pf-bajar">
+        <div>
+          <b>${esc(t("pf.export_title"))}</b>
+          <p class="help-note">${esc(t("pf.export_sub", { n: elegidas.length }))}</p>
+        </div>
+        <button class="btn" id="pf-mql5">${icono("bajar")} ${esc(t("pf.export_btn"))}</button>
+      </div>`;
     const caja = $("#pf-eq", body);
     if (caja) Charts.equity(caja, {
       values: r.combined_equity, labels: r.timestamps,
       initial: r.combined_equity[0], height: 300,
     });
+
+    /* EL BOTÓN QUE FALTABA, y era el único eslabón que no estaba.
+       El panel medía el conjunto —correlación, curva combinada, reparto del
+       riesgo— y después no había forma de bajarlo: sólo un botón de cerrar.
+       Quien quería el portafolio tenía que exportar de a uno desde la tabla,
+       y ahí CADA EA se cree dueño del 100% de la cuenta: tres exportados por
+       separado arriesgan tres veces lo pedido, y el aviso de riesgo de cada
+       uno dice que está bien porque contra su propio número lo está. */
+    const bajar = $("#pf-mql5", body);
+    if (bajar) bajar.onclick = async () => {
+      bajar.disabled = true;
+      try {
+        const d = await api.post("/api/export/portafolio", {
+          ids: elegidas.map(x => x.id),
+          usar_pct: 90,
+          server_utc_offset: S.cfg.brokerUtc,
+        });
+        (d.avisos || []).forEach(a => toast(a.texto, "warn"));
+        toast(t("pf.export_ok", { n: (d.archivos || []).length,
+                                  carpeta: d.carpeta }), "ok");
+      } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
+      bajar.disabled = false;
+    };
   } catch (e) {
     body.innerHTML = `<div class="empty-state neg">${esc(e.message)}</div>`;
   }
@@ -2354,6 +2384,12 @@ const FAMILIAS = () => [
   { cat: "forex", rotulo: t("cat.forex"), sub: t("famsub.forex") },
   { cat: "metals", rotulo: t("cat.metals"), sub: t("famsub.metals") },
   { cat: "crypto", rotulo: t("cat.crypto"), sub: t("famsub.crypto") },
+  /* Energía y bonos van DESPUÉS de lo conocido y ANTES de los perpetuos,
+     siguiendo el mismo criterio del resto: de lo que la mayoría reconoce a lo
+     más raro. Son los que hacen que un portafolio diversifique, pero nadie
+     empieza por el gas natural. */
+  { cat: "energia", rotulo: t("cat.energia"), sub: t("famsub.energia") },
+  { cat: "bonos", rotulo: t("cat.bonos"), sub: t("famsub.bonos") },
   { cat: "perpetuos", rotulo: t("cat.perpetuos"), sub: t("famsub.perpetuos") },
 ];
 
@@ -2399,12 +2435,21 @@ PAGES.data = async (main) => {
 
      El orden NO es alfabético: va de lo que la mayoría ya conoce a lo más
      nuevo. Alfabético pondría los perpetuos primero por casualidad. */
+  /* LOS OCULTOS NO SE MUESTRAN, SALVO QUE YA TENGAS SUS DATOS.
+     El catálogo los sigue trayendo —de ahí salen sus costos— pero la vitrina
+     no los ofrece: hoy el producto apunta a MetaTrader, y un CFD de Bitcoin
+     al lado de un perpetuo de Bitcoin se lee como el mismo instrumento dos
+     veces. Quien YA lo bajó lo sigue viendo: esconderle un instrumento que
+     tiene cargado y con estrategias encima sería hacerlo desaparecer. */
+  const visible = (c) => !c.oculto || c.dataset_id;
+  const catalogo = S.catalog.filter(visible);
+
   const familias = FAMILIAS()
-    .map(f => ({ ...f, xs: S.catalog.filter(c => c.category === f.cat) }))
+    .map(f => ({ ...f, xs: catalogo.filter(c => c.category === f.cat) }))
     .filter(f => f.xs.length);
   // por si algún día se agrega una categoría y nadie se acuerda de esa lista
   const conocidas = new Set(FAMILIAS().map(f => f.cat));
-  const sueltas = S.catalog.filter(c => !conocidas.has(c.category));
+  const sueltas = catalogo.filter(c => !conocidas.has(c.category));
   if (sueltas.length) {
     familias.push({ cat: "_otro", rotulo: t("cat.otros"), sub: "", xs: sueltas });
   }
@@ -2726,6 +2771,27 @@ const ORIGEN_SITIO = location.hostname === "127.0.0.1" || location.hostname === 
 
 const AVANZADO = false;
 
+/* EL PORTAFOLIO VA APARTE DE `AVANZADO`, y la separación es la decisión.
+
+   Estaba adentro, apagado junto con el walk-forward y la columna Estado. El
+   motivo de aquello sigue siendo bueno —cada pantalla de más es una razón de
+   más para cerrar la aplicación y no volver— pero metía en la misma bolsa dos
+   cosas distintas:
+
+     · el walk-forward es una HERRAMIENTA para el que ya sabe qué mirar;
+     · el portafolio es uno de los dos OBJETIVOS del producto. Alguien puede
+       venir a buscar una estrategia sola, o a armar un conjunto de EA para
+       una cuenta. Los dos caminos son igual de válidos y el segundo no es
+       una versión avanzada del primero.
+
+   Escondido, el conjunto sólo se podía armar exportando de a uno — y ahí cada
+   EA se cree dueño del 100% de la cuenta, así que tres exportados por separado
+   arriesgan tres veces lo pedido.
+
+   Se enciende solo: aparece al tildar dos o más, y quien no tilde nada no ve
+   nada de esto. */
+const PORTAFOLIO = true;
+
 /* LAS FRANJAS HORARIAS, APAGADAS.
 
    Medido: restringir la búsqueda a una franja sube mucho UNA estrategia fija
@@ -2832,7 +2898,7 @@ PAGES.saved = async (main) => {
   const fila = (s) => {
     const ctx = s.meta || {}, m = ctx.metrics || {};
     return `<tr class="clickable ${SEL_PF.has(s.id) ? "elegida" : ""}" data-sid="${esc(s.id)}">
-      ${AVANZADO ? `<td class="tick"><input type="checkbox" data-pf="${esc(s.id)}"
+      ${PORTAFOLIO ? `<td class="tick"><input type="checkbox" data-pf="${esc(s.id)}"
             ${SEL_PF.has(s.id) ? "checked" : ""}
             aria-label="${esc(t("pf.pick_one", { nombre: s.name }))}"></td>` : ""}
       <td><span class="strat-name">${esc(s.name)}</span>${sesionTag(s.spec?.time_filter
@@ -2867,7 +2933,7 @@ PAGES.saved = async (main) => {
     <div class="card">
       <h2>${esc(t("saved.title"))} <span class="hint">${esc(t("saved.hint"))}</span></h2>
       <div class="scroll-x"><table class="guardadas">
-        <thead><tr>${AVANZADO ? '<th class="tick"></th>' : ""}
+        <thead><tr>${PORTAFOLIO ? '<th class="tick"></th>' : ""}
           <th>${esc(t("col.strategy"))}</th><th>${esc(t("mine.market"))}</th>
           <th class="num">${esc(t("col.annual"))}</th>
           <th class="num">${esc(t("col.maxdd"))}</th>
@@ -2881,7 +2947,7 @@ PAGES.saved = async (main) => {
   const pintarBarra = () => {
     const barra = $("#barra-pf", main);
     const n = SEL_PF.size;
-    barra.hidden = !AVANZADO || n < 2;
+    barra.hidden = !PORTAFOLIO || n < 2;
     if (n >= 2) {
       barra.innerHTML = `<span>${esc(t("ui.selected", { n }))}</span>
         <button class="linkbtn" id="pf-nada">${esc(t("ui.clear"))}</button>

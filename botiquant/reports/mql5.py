@@ -631,10 +631,23 @@ void ReportSize(const string side, const bool isLong, const double vol,
    // Se mide contra SU PORCION, que es contra lo que se dimensiono. Medirlo
    // contra el balance entero haria que un bot con 20% de la cuenta reporte
    // 0,2% cuando pidio 1%, y quien lo lea va a pensar que el calculo esta mal.
-   double balance = AccountInfoDouble(ACCOUNT_BALANCE) * InpPorcionPct / 100.0;
-   double pct = (balance > 0.0) ? MathAbs(loss) / balance * 100.0 : 0.0;
-   PrintFormat("[QF] %s vol=%.2f | si toca el stop pierde %.2f = %.2f%% del balance "
-               "(pedido: %.2f%%)", side, vol, MathAbs(loss), pct, InpRiskPct);
+   //
+   // Y EL TEXTO TIENE QUE DECIR CONTRA QUE. Antes decia "del balance" con la
+   // porcion adentro: visto en el tester, un EA con 30% de la cuenta imprimio
+   // "pierde 30.64 = 0.98% del balance" sobre un balance de 10.410, donde
+   // 30,64 es el 0,3%. El calculo estaba bien y la frase producia justo la
+   // duda que este bloque venia a evitar.
+   double miParte = AccountInfoDouble(ACCOUNT_BALANCE) * InpPorcionPct / 100.0;
+   double pct = (miParte > 0.0) ? MathAbs(loss) / miParte * 100.0 : 0.0;
+   if(InpPorcionPct >= 100.0)
+      PrintFormat("[QF] %s vol=%.2f | si toca el stop pierde %.2f = %.2f%% del "
+                  "balance (pedido: %.2f%%)",
+                  side, vol, MathAbs(loss), pct, InpRiskPct);
+   else
+      PrintFormat("[QF] %s vol=%.2f | si toca el stop pierde %.2f = %.2f%% de su "
+                  "parte (%.0f%% de la cuenta = %.2f) (pedido: %.2f%%)",
+                  side, vol, MathAbs(loss), pct, InpPorcionPct, miParte,
+                  InpRiskPct);
   }
 //+------------------------------------------------------------------+
 //| Franja horaria: los datos con los que se mino estan en UTC, y el  |

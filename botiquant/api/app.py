@@ -480,11 +480,36 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         # only real market data counts as "ready" — a synthetic sample named
         # EURUSD must never be mistaken for downloaded history
         owned = [d for d in store.list(duenio(request)) if d["source"] != "sample"]
+
+        # EL EMPAREJAMIENTO MIRA EL PRIMER TOKEN Y NO LA SUBCADENA.
+        #
+        # Buscar por subcadena parece inofensivo y no lo es: "btcusd" está
+        # adentro de "btcusdt", así que el CFD de Bitcoin se quedaba con el
+        # dataset del PERPETUO —otro instrumento, otra historia, otros costos—
+        # y la pantalla mostraba las velas del perpetuo en la tarjeta del CFD.
+        # Apretar «buscar en éste» minaba sobre los datos equivocados sin que
+        # fallara nada.
+        #
+        # Los datasets se llaman "BTCUSD M1 (Dukascopy)" o "BTCUSDT M1": el
+        # instrumento es la primera palabra. Se compara ESA, entera.
+        def _token(nombre: str) -> str:
+            return (nombre.strip().split() or [""])[0].lower()
+
+        # La subcadena sigue existiendo como último recurso, para los CSV que
+        # trae el usuario con nombres libres. Pero no puede robarle el dataset
+        # a otro instrumento del catálogo: los que son de alguien por nombre
+        # exacto quedan reservados.
+        reservados = {_token(x["label"]) for x in CATALOG}
+
         out = []
         for entry in CATALOG:
             names = (entry["label"].lower(), simbolo_fuente(entry).lower())
-            have = next((d for d in owned
-                         if any(n in d["name"].lower() for n in names)), None)
+            have = next((d for d in owned if _token(d["name"]) in names), None)
+            if have is None:
+                have = next((d for d in owned
+                             if _token(d["name"]) not in reservados
+                             and any(n in d["name"].lower() for n in names)),
+                            None)
             out.append({**entry,
                         "dataset_id": have["id"] if have else None,
                         "rows": have["rows"] if have else 0,
@@ -2174,10 +2199,46 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
         carpeta = carpeta_de_estrategias()
         carpeta.mkdir(parents=True, exist_ok=True)
+        # NOMBRES ÚNICOS DENTRO DEL CONJUNTO, y no es cosmético.
+        #
+        # Dos estrategias guardadas pueden llamarse igual —guardar dos veces la
+        # misma desde el banco alcanza— y el nombre decide DOS cosas: el
+        # archivo y el Magic Number. Con el nombre repetido:
+        #
+        #   · el segundo archivo pisa al primero, así que el conjunto sale con
+        #     menos robots de los que dice. Visto: tres estrategias, el aviso
+        #     decía "3 robots guardados" y en el disco había dos. El reparto ya
+        #     había calculado 30% para cada uno de tres, o sea que la cuenta
+        #     quedaba operando al 60% en vez del 90%.
+        #   · y si no se pisaran, compartirían Magic Number, que es peor: dos
+        #     EA con el mismo número creen cada uno que las posiciones del otro
+        #     son suyas. Uno cierra lo que el otro abrió y ninguno da error.
+        #
+        # QUIÉN SE QUEDA CON EL NOMBRE LIMPIO NO PUEDE DEPENDER DEL ORDEN EN
+        # QUE SE TILDARON. Se lo queda el de id más chico, que es el mismo
+        # siempre; los demás llevan un sufijo con su propio id.
+        #
+        # La primera versión le dejaba el nombre limpio al primero de la lista,
+        # y eso hacía que reexportar el mismo conjunto en otro orden cambiara
+        # los Magic Number — con lo cual el EA nuevo no reconocería la posición
+        # que dejó abierta el anterior. Lo encontró la prueba, después de que
+        # el comentario de acá afirmara que no pasaba.
+        repetidos: dict[str, list[str]] = {}
+        for f in filas:
+            repetidos.setdefault(str(f["name"]), []).append(str(f["id"]))
+
+        nombres: dict[str, str] = {}
+        for base, unos in repetidos.items():
+            dueno_del_nombre = min(unos)
+            for sid in unos:
+                nombres[sid] = (base if sid == dueno_del_nombre
+                                else f"{base}_{sid[:4]}")
+
         escritos = []
         for f in filas:
             meta = f.get("meta") or {}
-            nombre = _nombre_de_archivo(f"BQ_{f['name']}", "BQ_Strategy")
+            propio = nombres[str(f["id"])]
+            nombre = _nombre_de_archivo(f"BQ_{propio}", "BQ_Strategy")
             codigo = export_mql5(
                 StrategySpec.from_dict(f["spec"]), ea_name=nombre,
                 symbol_hint=meta.get("dataset_name") or "",
@@ -2187,7 +2248,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 porcion=reparto.porciones[str(f["id"])])
             destino = carpeta / f"{nombre}.mq5"
             destino.write_text(codigo, encoding="utf-8")
-            escritos.append({"nombre": f["name"], "archivo": destino.name,
+            escritos.append({"nombre": propio, "archivo": destino.name,
                              "porcion_pct": reparto.porciones[str(f["id"])]})
 
         return {"carpeta": str(carpeta), "archivos": escritos,

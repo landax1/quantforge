@@ -152,8 +152,12 @@ def test_the_download_aborts_instead_of_returning_holes(monkeypatch):
     se entera. Es peor que fallar, porque el resultado parece válido."""
     monkeypatch.setattr(dk, "_traer_dia",
                         lambda cliente, simbolo, dia: ("fallo", b""))
+    monkeypatch.setattr(dk.time, "sleep", lambda *_: None)
 
-    with pytest.raises(dk.DukascopyError, match="rechazó"):
+    # "siguió rechazando" y no "rechazó": ahora hay una segunda pasada de a uno
+    # antes de rendirse, y el mensaje lo dice para que quien lo lea sepa que
+    # reintentar en el momento no va a cambiar nada.
+    with pytest.raises(dk.DukascopyError, match="siguió rechazando"):
         dk.descargar("eurusd", "2023-01-02", "2023-01-06")
 
 
@@ -232,3 +236,66 @@ def test_m1_data_can_still_be_asked_for_anything():
 
     assert len(resample_ohlcv(m1, "15m")) == 32
     assert len(resample_ohlcv(m1, "1h")) == 8
+
+
+# ------------------------------- la segunda pasada sobre los rechazados
+
+def _cliente_que_falla_las_primeras(monkeypatch, cuantas_fallan):
+    """Falla los primeros `cuantas_fallan` pedidos y después contesta bien.
+
+    Reproduce lo que hace Dukascopy con un tropiezo de límite: unos cuantos
+    días rechazados en la tanda paralela que sí contestan pedidos de a uno.
+    """
+    estado = {"n": 0}
+    velas = _archivo([(0, 107324, 107305, 107305, 107324, 66.5)])
+
+    class _R:
+        def __init__(self, code, contenido=b""):
+            self.status_code = code
+            self.content = contenido
+
+    class _C:
+        def __init__(self, *a, **k): pass
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def get(self, url):
+            estado["n"] += 1
+            if estado["n"] <= cuantas_fallan:
+                return _R(503)
+            return _R(200, velas)
+
+    monkeypatch.setattr(dk.httpx, "Client", _C)
+    monkeypatch.setattr(dk.time, "sleep", lambda *_: None)
+    return estado
+
+
+def test_los_dias_rechazados_se_reintentan_de_a_uno(monkeypatch):
+    """Lo que convierte un tropiezo del 5% en perder el 95% ya bajado.
+
+    MEDIDO bajando los tres instrumentos nuevos: Bund 174 días rechazados de
+    2.695, WTI 197 de 3.896, gas 127 de 3.650 —entre 3% y 6%— y las tres
+    descargas terminaron sin dejar nada después de diez minutos cada una.
+    Con eso, agregar un instrumento al catálogo no funcionaba para nadie.
+    """
+    # cada día se pide con REINTENTOS internos, así que se hacen fallar los
+    # primeros pedidos enteros de un par de días
+    _cliente_que_falla_las_primeras(monkeypatch, dk.REINTENTOS * 2)
+    df = dk.descargar("eurusd", "2023-01-02", "2023-01-06")
+    assert not df.empty, "la segunda pasada tendría que haber recuperado los días"
+
+
+def test_si_siguen_fallando_despues_de_la_segunda_pasada_aborta(monkeypatch):
+    """La regla que NO cambia: nada a medias.
+
+    Un histórico con semanas faltantes no da error en ningún lado — da un
+    backtest con menos operaciones y otras métricas, y nadie se entera.
+    """
+    _cliente_que_falla_las_primeras(monkeypatch, 10_000)
+    with pytest.raises(dk.DukascopyError, match="siguió rechazando"):
+        dk.descargar("eurusd", "2023-01-02", "2023-01-06")
+
+
+def test_la_segunda_pasada_va_espaciada(monkeypatch):
+    """De a uno y con espera: si lo que sobra son pedidos, repetirlos rápido
+    choca contra el mismo límite."""
+    assert dk.ESPERA_SEGUNDA_PASADA >= 1.0

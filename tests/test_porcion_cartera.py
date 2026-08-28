@@ -55,10 +55,20 @@ def test_por_defecto_maneja_la_cuenta_entera():
 def test_el_aviso_de_riesgo_tambien_mide_contra_la_porcion():
     """Medirlo contra el balance entero haria que un bot con 20% de la cuenta
     reporte 0,2% cuando pidio 1%, y quien lo lea va a pensar que el calculo
-    esta mal cuando el que esta mal es el aviso."""
+    esta mal cuando el que esta mal es el aviso.
+
+    La variable se llamaba `balance` conteniendo la PORCION, y el mensaje decia
+    "del balance". Visto en el probador de MetaTrader: un EA con el 30% imprimio
+    "pierde 30.64 = 0.98% del balance" sobre un balance de 10.410, donde 30,64
+    es el 0,3%. El calculo estaba bien y la frase producia justo la duda que
+    este bloque venia a evitar.
+    """
     code = export_mql5(_spec(), ea_name="a", porcion=20.0)
-    assert ("double balance = AccountInfoDouble(ACCOUNT_BALANCE) * "
+    assert ("double miParte = AccountInfoDouble(ACCOUNT_BALANCE) * "
             "InpPorcionPct / 100.0;") in code
+    assert "MathAbs(loss) / miParte * 100.0" in code
+    # y el texto dice contra que mide, con la porcion en plata al lado
+    assert "parte (%.0f%% de la cuenta" in code
 
 
 def test_sigue_siendo_editable():

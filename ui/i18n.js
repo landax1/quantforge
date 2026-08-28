@@ -1173,7 +1173,53 @@ const STR = {
   // El menú se está renombrando a "Operar" en otra sesión. Este texto va acá
   // para que la sección no se dibuje en crudo mientras tanto; la vieja se
   // deja hasta que ese cambio esté terminado y se pueda sacar de una.
+  /* Bajar el conjunto, que es lo que lo convierte en un portafolio y no en
+     varios archivos sueltos. El texto dice la diferencia porque no es obvia:
+     exportando de a uno, cada EA se cree dueño de toda la cuenta. */
+  "pf.export_title": ["Take the whole set to MetaTrader",
+                      "Llevar el conjunto a MetaTrader"],
+  "pf.export_sub": [
+    "{n} robots, each one already carrying its share of the account. Exported one by one, each would size as if it owned the whole account.",
+    "{n} robots, cada uno con su parte de la cuenta ya adentro. Exportados de a uno, cada uno se dimensiona como si fuera dueño de toda la cuenta."],
+  "pf.export_btn": ["Download the set", "Bajar el conjunto"],
+  "pf.export_ok": ["{n} robots saved in {carpeta}",
+                   "{n} robots guardados en {carpeta}"],
+
   "nav.operar": ["Trade", "Operar"],
+
+  /* LA ESCALERA: hasta dónde puede llegar una estrategia.
+     simulacro → práctica → real, y cada escalón pide más que el anterior.
+     Los textos existen desde acá; el código que los pide ya estaba y pedía
+     claves que nadie había escrito, así que las pestañas y la escalera se
+     dibujaban con el nombre interno de la clave. */
+  "esc.title": ["How far this one can go", "Hasta dónde puede llegar"],
+  "esc.sub": [
+    "Each rung asks for more than the one before, and the last one asks for it outside the sample the search looked at.",
+    "Cada escalón pide más que el anterior, y el último lo pide además afuera de la muestra que miró la búsqueda."],
+  "esc.simulacro": ["Simulation", "Simulacro"],
+  "esc.practica": ["Practice", "Práctica"],
+  "esc.real": ["Real money", "Plata real"],
+  "esc.ninguno": ["Not yet", "Todavía no"],
+  "esc.hasta": ["up to {destino}", "hasta {destino}"],
+  "esc.libre": ["always available — no money at risk",
+                "siempre disponible — no hay plata en juego"],
+  "esc.habilitada": ["clear", "habilitada"],
+  "esc.falta": ["For {destino}: {motivo}", "Para {destino}: {motivo}"],
+  /* Cuando la cantera dice que no y no explica: pasa con las guardadas viejas,
+     que no tienen las métricas que la vara mira. */
+  "esc.falta_sin_motivo": ["not enough measured yet", "todavía falta medirla"],
+  "esc.pie": [
+    "Getting past a rung is permission, not advice: it says the numbers hold up, not that it will work.",
+    "Pasar un escalón es un permiso, no un consejo: dice que los números aguantan, no que vaya a funcionar."],
+
+  /* Las dos pestañas de Operar y lo que las acompaña. */
+  "op.tab_bot": ["Bot", "Bot"],
+  "op.tab_claves": ["Exchange keys", "Claves"],
+  "op.sin_claves": ["No key loaded yet", "Todavía no cargaste ninguna clave"],
+  "op.sub_bot": [
+    "One bot at a time on one account: two of them would fight over the same position.",
+    "Un bot por vez sobre una cuenta: dos se pelearían por la misma posición."],
+  "op.ir_claves": ["Load a key", "Cargar una clave"],
   "ex.sub": ["Connect an exchange so a strategy can trade on its own",
              "Conectá un exchange para que una estrategia opere sola"],
   "ex.regla1_t": ["Your keys stay on this computer",
@@ -1307,6 +1353,10 @@ const STR = {
                      "CFDs de índices bursátiles, para MetaTrader"],
   "famsub.forex": ["currency pairs, for MetaTrader",
                    "pares de divisas, para MetaTrader"],
+  "famsub.bonos": ["government bond CFDs, for MetaTrader",
+                   "CFD de bonos de gobierno, para MetaTrader"],
+  "famsub.energia": ["energy CFDs, for MetaTrader",
+                     "CFD de energía, para MetaTrader"],
   "famsub.metals": ["gold and silver CFDs, for MetaTrader",
                     "CFDs de metales, para MetaTrader"],
   "famsub.crypto": ["crypto CFDs, for MetaTrader — spread, no funding",
@@ -1340,6 +1390,21 @@ const STR = {
   "inst.btcusd": [
     "Bitcoin / US Dollar — wide spread, careful with scalping",
     "Bitcoin / dólar — spread ancho, cuidado con el scalping"],
+
+  /* Los tres que se agregaron para que el portafolio DIVERSIFIQUE. La
+     descripción dice lo que los hace distintos de los otros cuatro, que es el
+     único motivo por el que están: no son más instrumentos, son otras
+     apuestas. Los números salen de medir la correlación de retornos diarios
+     2021-2025 contra los cuatro originales. */
+  "inst.gas": [
+    "Natural gas — the least correlated of all: weather and storage move it, and they move nothing else",
+    "Gas natural — el menos correlacionado de todos: lo mueven el clima y el almacenamiento, que no mueven nada más"],
+  "inst.bund": [
+    "German 10-year bond — fixed income, the one asset class the catalogue was missing",
+    "Bono alemán a 10 años — renta fija, la única familia que faltaba en el catálogo"],
+  "inst.wti": [
+    "WTI crude oil — moves with the world, not with US stocks",
+    "Petróleo WTI — se mueve con el mundo, no con la bolsa estadounidense"],
 
   /* Los perpetuos de exchange. La descripción dice lo que los distingue de un
      CFD y no una obviedad: que cobran o pagan por MANTENER la posición, y que

@@ -249,6 +249,21 @@ CATALOG: list[dict[str, Any]] = [
         "direction": "both",
     },
     # ── Perpetuos de exchange ────────────────────────────────────────────
+    #
+    # `oculto` LOS SACA DE LA VITRINA, NO DEL PROGRAMA.
+    #
+    # El producto apunta hoy a un portafolio de EA para MetaTrader, y en esa
+    # vitrina un CFD de Bitcoin y un perpetuo de Bitcoin se leen como el mismo
+    # instrumento repetido: se llaman igual salvo una letra y son cosas
+    # distintas —uno paga spread y se opera por MetaTrader, el otro paga
+    # comisión y funding y se opera en un exchange—. Mostrar los dos obliga a
+    # entender esa diferencia antes de poder elegir nada.
+    #
+    # Se OCULTAN y no se borran, por dos motivos concretos:
+    #   · quien ya bajó el perpetuo tiene datos y estrategias sobre él, y
+    #     borrarlo de acá le dejaría el instrumento sin sus costos: minaría
+    #     con el spread de otro sin que nada fallara.
+    #   · el plan es volver a ellos, construyendo sobre Binance primero.
     # Se bajan de Binance y no del exchange donde se opera. Medido: BTCUSDT en
     # Binance y en BingX correlacionan 0,99974 en sus movimientos, con 0,0019%
     # de diferencia media de precio — cien veces menos que la comision de una
@@ -259,6 +274,7 @@ CATALOG: list[dict[str, Any]] = [
     # comision, y ponerlo tambien como spread seria cobrarlo dos veces.
     {
         "key": "btcusdt",
+        "oculto": True,
         "label": "BTCUSDT",
         "full_name": "Bitcoin perpetuo (para exchange)",
         "fuente": "binance",
@@ -283,6 +299,7 @@ CATALOG: list[dict[str, Any]] = [
     },
     {
         "key": "ethusdt",
+        "oculto": True,
         "label": "ETHUSDT",
         "full_name": "Ethereum perpetuo (para exchange)",
         "fuente": "binance",

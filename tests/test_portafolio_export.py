@@ -216,3 +216,113 @@ def test_hay_un_tope_de_cuantas_entran(tmp_path, monkeypatch):
         r = c.post("/api/export/portafolio", json={"ids": [str(i) for i in range(25)]})
         assert r.status_code == 400
         assert "Veinte" in r.json()["detail"]
+
+
+def _guardar_nueva(c, nombre, instrumento="SP500 M1") -> str:
+    """El id de la que se ACABA de guardar.
+
+    `_guardar` devuelve la primera que coincide por nombre, y con dos que se
+    llaman igual eso devuelve dos veces la misma: la prueba exportaba un solo
+    id repetido y no dos estrategias. Se lo saca por diferencia.
+    """
+    antes = {x["id"] for x in c.get("/api/strategies").json()}
+    _guardar(c, nombre, instrumento)
+    despues = {x["id"] for x in c.get("/api/strategies").json()}
+    nuevos = despues - antes
+    assert len(nuevos) == 1, f"se esperaba una guardada nueva, hubo {len(nuevos)}"
+    return nuevos.pop()
+
+def test_dos_estrategias_con_el_MISMO_nombre_salen_como_dos(tmp_path, monkeypatch):
+    """VISTO USANDO LA APLICACIÓN, no deducido.
+
+    Guardar dos veces la misma estrategia desde el banco deja dos guardadas con
+    el mismo nombre. Exportando el conjunto, el aviso decía «3 robots
+    guardados» y en el disco había DOS: el segundo archivo pisó al primero.
+
+    Y el reparto ya había calculado 30% para cada uno de tres, así que la
+    cuenta quedaba operando al 60% en vez del 90%, con un robot que el usuario
+    cree tener y no tiene.
+    """
+    from pathlib import Path
+
+    with _cliente(tmp_path, monkeypatch) as c:
+        ids = [_guardar_nueva(c, "S-005"), _guardar_nueva(c, "S-005"),
+               _guardar_nueva(c, "S-007")]
+        d = c.post("/api/export/portafolio",
+                   json={"ids": ids, "usar_pct": 90}).json()
+
+        archivos = [a["archivo"] for a in d["archivos"]]
+        assert len(set(archivos)) == 3, f"se pisaron: {archivos}"
+        for a in archivos:
+            assert (Path(d["carpeta"]) / a).exists(), f"{a} no llegó al disco"
+
+
+def test_dos_con_el_mismo_nombre_NO_comparten_Magic_Number(tmp_path, monkeypatch):
+    """Lo que hace daño de verdad si los archivos no se pisan.
+
+    El Magic sale del nombre. Dos EA con el mismo número creen cada uno que las
+    posiciones del otro son suyas: uno cierra lo que el otro abrió, y ninguno
+    de los dos da error.
+    """
+    from pathlib import Path
+
+    with _cliente(tmp_path, monkeypatch) as c:
+        ids = [_guardar_nueva(c, "S-005"), _guardar_nueva(c, "S-005")]
+        d = c.post("/api/export/portafolio", json={"ids": ids}).json()
+        magicos = set()
+        for a in d["archivos"]:
+            texto = (Path(d["carpeta"]) / a["archivo"]).read_text(encoding="utf-8")
+            magicos.add([l for l in texto.splitlines() if "InpMagic" in l][0])
+        assert len(magicos) == 2, "dos EA con el mismo Magic Number"
+
+
+def test_el_nombre_propio_no_depende_del_ORDEN_en_que_se_tildan(tmp_path,
+                                                                monkeypatch):
+    """Si el sufijo fuera un contador, reexportar el mismo conjunto en otro
+    orden daría otro Magic — y el EA nuevo no reconocería la posición que dejó
+    abierta el anterior."""
+    with _cliente(tmp_path, monkeypatch) as c:
+        a, b = _guardar_nueva(c, "S-005"), _guardar_nueva(c, "S-005")
+        uno = c.post("/api/export/portafolio", json={"ids": [a, b]}).json()
+        dos = c.post("/api/export/portafolio", json={"ids": [b, a]}).json()
+        por_nombre = lambda d: {x["nombre"] for x in d["archivos"]}
+        assert por_nombre(uno) == por_nombre(dos)
+
+
+def test_el_EA_dice_contra_QUE_mide_el_riesgo(tmp_path, monkeypatch):
+    """VISTO EN EL PROBADOR DE METATRADER.
+
+    Un EA con el 30% de la cuenta imprimió «pierde 30.64 = 0.98% del balance»
+    sobre un balance de 10.410, donde 30,64 es el 0,3%. El cálculo estaba bien
+    —se dimensiona contra SU PARTE, que es lo correcto— y la frase producía
+    justo la duda que ese bloque venía a evitar.
+    """
+    from pathlib import Path
+
+    with _cliente(tmp_path, monkeypatch) as c:
+        ids = [_guardar_nueva(c, f"S{i}") for i in range(3)]
+        d = c.post("/api/export/portafolio", json={"ids": ids}).json()
+        texto = (Path(d["carpeta"]) / d["archivos"][0]["archivo"]).read_text(
+            encoding="utf-8")
+        # El literal va partido en dos líneas en el .mq5, así que se busca el
+        # trozo que no se corta. Buscando "de su parte" entero, la prueba
+        # fallaba con el arreglo YA puesto.
+        assert "parte (%.0f%% de la cuenta" in texto, (
+            "no dice contra qué mide el porcentaje ni cuánto es su parte")
+
+
+def test_un_EA_solo_sigue_diciendo_del_balance(tmp_path, monkeypatch):
+    """Con el 100% de la cuenta, «de su parte» sería una vuelta de más: su
+    parte ES el balance."""
+    from pathlib import Path
+
+    with _cliente(tmp_path, monkeypatch) as c:
+        sid = _guardar_nueva(c, "Sola")
+        d = c.post("/api/export/portafolio",
+                   json={"ids": [sid], "usar_pct": 100}).json()
+        texto = (Path(d["carpeta"]) / d["archivos"][0]["archivo"]).read_text(
+            encoding="utf-8")
+        assert "InpPorcionPct  = 100;" in texto
+        # Con el 100% su parte ES el balance, así que la rama que se usa es la
+        # que dice "del balance" — y ahí la frase es cierta.
+        assert "InpPorcionPct >= 100.0" in texto
