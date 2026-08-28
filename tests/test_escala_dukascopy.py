@@ -77,27 +77,28 @@ def test_los_de_la_tabla_no_consultan_nada(monkeypatch, simbolo, escala):
 # ------------------------------------------------------- lo que se consulta
 
 def test_un_instrumento_nuevo_se_consulta(monkeypatch):
+    """`espidxeur` no esta en la tabla A PROPOSITO: si se usara uno que si
+    esta, la prueba pasaria por la tabla y no por la consulta, y seguiria
+    verde con la consulta rota."""
+    assert "espidxeur" not in dk.ESCALA
     _cliente_falso(monkeypatch, [_Resp(200, {"multiplier": 0.001})])
-    assert dk.escala_de("usdjpy", "USD-JPY") == 1000.0
+    assert dk.escala_de("espidxeur", "ESP.IDX-EUR") == 1000.0
 
 
 def test_se_consulta_UNA_vez_por_instrumento(monkeypatch):
     """Bajar quince años son miles de días. Preguntar la escala en cada uno
     multiplicaría por mil los pedidos a una API que ya limita por IP."""
+    assert "espidxeur" not in dk.ESCALA
     pedidos = _cliente_falso(monkeypatch, [_Resp(200, {"multiplier": 0.001})])
     for _ in range(5):
-        dk.escala_de("usdjpy", "USD-JPY")
+        dk.escala_de("espidxeur", "ESP.IDX-EUR")
     assert len(pedidos) == 1
 
 
-def test_reintenta_cuando_lo_limitan(monkeypatch):
-    """429 es lo habitual pidiendo varios seguidos, y es el caso que importa:
-    sin reintentar, agregar cinco instrumentos de una vez dejaba a la mitad
-    sin escala.
-
-    Encontrado agregando siete de un saque: dos volvieron con 429.
-    """
-    _cliente_falso(monkeypatch, [_Resp(429), _Resp(429),
+def test_reintenta_UNA_vez_cuando_lo_limitan(monkeypatch):
+    """Una y no cinco. Ver el bloque de REINTENTOS_ESCALA: insistir no
+    atraviesa el limite de Dukascopy, lo causa."""
+    _cliente_falso(monkeypatch, [_Resp(429),
                                  _Resp(200, {"multiplier": 0.001})])
     assert dk.escala_de("usa30idxusd", "USA30.IDX-USD") == 1000.0
 
@@ -167,25 +168,85 @@ def test_la_API_coincide_con_lo_verificado_a_mano(monkeypatch, simbolo, codigo):
 
 # --------------------------------------- cuanto insiste, y por que asi
 
-def test_insiste_mas_con_la_escala_que_con_un_dia_de_velas(monkeypatch):
-    """La asimetria es la decision.
+def test_insiste_POCO_con_la_escala_y_espera_mucho(monkeypatch):
+    """Esta prueba existe porque la primera version hacia lo contrario.
 
-    Un dia es uno de miles: si insistiera mucho, bajar quince anios pasaria de
-    minutos a horas. La escala se pregunta UNA vez por instrumento en toda la
-    vida del programa, y sin ella el instrumento entero no se baja.
+    Se habia puesto cinco reintentos con espera corta, para "atravesar" el
+    limite de Dukascopy. MEDIDO despues:
 
-    MEDIDO: probando doce instrumentos seguidos con la espera corta, SEIS
-    fallaron por limite de pedidos de Dukascopy.
+      * diez codigos nunca pedidos, un pedido cada uno: OCHO dieron 200 a la
+        primera.
+      * un codigo al que se le habian hecho unos quince pedidos: TRECE
+        rechazos seguidos con un pedido cada veinte segundos, mientras los
+        frescos seguian contestando en el mismo minuto.
+
+    Insistir no atraviesa el limite: lo causa. Si esto vuelve a subir, sube
+    tambien la probabilidad de dejar un instrumento bloqueado.
     """
-    assert dk.REINTENTOS_ESCALA > dk.REINTENTOS
-    assert dk.ESPERA_ESCALA >= 2.0
+    assert dk.REINTENTOS_ESCALA <= 2
+    assert dk.ESPERA_ESCALA >= 30.0
 
 
-def test_aguanta_una_tanda_larga_de_429(monkeypatch):
-    """Cuatro seguidos y al quinto contesta: es lo que pasa agregando varios
-    instrumentos de una sentada."""
-    pedidos = _cliente_falso(monkeypatch, [_Resp(429), _Resp(429), _Resp(429),
-                                           _Resp(429),
-                                           _Resp(200, {"multiplier": 0.001})])
-    assert dk.escala_de("lightcmdusd", "LIGHT.CMD-USD") == 1000.0
-    assert len(pedidos) == 5
+def test_no_machaca_a_dukascopy_cuando_no_hay_caso(monkeypatch):
+    """Con 429 en las dos, para. Cada pedido de mas empeora el bloqueo."""
+    pedidos = _cliente_falso(monkeypatch, [_Resp(429)])
+    with pytest.raises(dk.DukascopyError):
+        dk.escala_de("lightcmdusd", "LIGHT.CMD-USD")
+    assert len(pedidos) == 2
+
+
+def test_el_mensaje_no_invita_a_insistir(monkeypatch):
+    """Decia «probá de nuevo en un minuto», que es exactamente lo que deja el
+    instrumento peor. El texto que ve el usuario tambien es parte del arreglo.
+    """
+    _cliente_falso(monkeypatch, [_Resp(429)])
+    with pytest.raises(dk.DukascopyError) as e:
+        dk.escala_de("lightcmdusd", "LIGHT.CMD-USD")
+    assert "UNA vez" in str(e.value)
+
+
+# ------------------------- lo que verificamos no se consulta en el usuario
+
+@pytest.mark.parametrize("simbolo,escala,cierre_real", [
+    ("usdjpy", 1e3, 155.116),
+    ("deuidxeur", 1e3, 18_482.477),
+    ("jpnidxjpy", 1e3, 38_551.417),
+    ("usatechidxusd", 1e3, 18_689.398),
+    ("gbridxgbp", 1e3, 8_258.592),
+    ("xagusd", 1e3, 29.562),
+    ("gascmdusd", 1e4, 2.6242),
+    ("audusd", 1e5, 0.6645),
+])
+def test_los_verificados_no_dependen_de_la_red(monkeypatch, simbolo, escala,
+                                               cierre_real):
+    """Cada uno se bajo el 3 de junio de 2024 y se comparo con el precio real.
+
+    Consultar es lo correcto para un instrumento que nadie verifico: es eso o
+    adivinar. Para uno que SI verificamos, dejar que dependa de la API en la
+    maquina del usuario cambia una certeza por un pedido de red que falla.
+
+    MEDIDO: probando doce instrumentos seguidos, Dukascopy contesto 429 a la
+    mitad, y cuatro siguieron en 429 con un pedido cada veinte segundos
+    mientras otros contestaban 200 en el mismo minuto. La causa no la se; el
+    usuario se topa con el 429 igual.
+
+    `cierre_real` no se usa en la assertion a proposito: esta para que el
+    numero contra el que se verifico quede en el archivo y se pueda repetir la
+    comprobacion sin buscarla en ningun lado.
+    """
+    pedidos = _cliente_falso(monkeypatch, [_Resp(429)])
+    assert dk.escala_de(simbolo) == escala
+    assert pedidos == [], f"{simbolo} salio a la red teniendolo verificado"
+    assert cierre_real > 0
+
+
+def test_las_dos_escalas_raras_siguen_siendo_raras():
+    """Son las que prueban que la tabla hace falta.
+
+    Seis de los ocho nuevos usan 1e3. Si alguien mira eso y concluye "los
+    indices y las materias primas son 1e3", el gas natural baja diez veces mas
+    caro y el AUDUSD mil veces. Ninguno de los dos falla.
+    """
+    assert dk.ESCALA["gascmdusd"] == 1e4
+    assert dk.ESCALA["audusd"] == 1e5
+    assert dk.ESCALA["btcusd"] == 1e1

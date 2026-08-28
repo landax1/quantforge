@@ -45,12 +45,44 @@ _TAM = _REGISTRO.size          # 24 bytes
 #: red: si la consulta a Dukascopy falla, estos siguen andando sin internet
 #: extra. Y de prueba: las cuatro coinciden con lo que devuelve la API, que es
 #: como se comprobó que la API dice la verdad.
+#: Cada uno de estos se comprobo bajando el 3 de junio de 2024 y comparando el
+#: cierre con el precio real de ese dia. El numero de al lado es ese cierre: es
+#: la prueba, no un comentario. Si alguna vez uno de estos baja distinto, se
+#: nota comparando contra el numero que esta aca.
 ESCALA: dict[str, float] = {
+    # los cuatro originales, verificados a mano hace meses
     "eurusd": 1e5,
     "usa500idxusd": 1e3,
     "xauusd": 1e3,
     "btcusd": 1e1,
+    # agregados el 27 de agosto de 2026, cada uno verificado contra el cierre
+    # real del 3 de junio de 2024
+    "usdjpy": 1e3,          # 155,116
+    "deuidxeur": 1e3,       # 18.482,477   (DAX 40)
+    "jpnidxjpy": 1e3,       # 38.551,417   (Nikkei)
+    "usatechidxusd": 1e3,   # 18.689,398   (Nasdaq 100)
+    "gbridxgbp": 1e3,       # 8.258,592    (FTSE 100)
+    "xagusd": 1e3,          # 29,562       (plata)
+    "gascmdusd": 1e4,       # 2,6242       (gas natural)
+    "audusd": 1e5,          # 0,6645
 }
+
+#: POR QUE ESTAN ACA Y NO SE CONSULTAN.
+#:
+#: Consultar es lo correcto para un instrumento que nadie verifico: es eso o
+#: adivinar. Pero para uno que SI verificamos, dejar que dependa de la API en
+#: la maquina del usuario es cambiar una certeza por un pedido de red que
+#: falla.
+#:
+#: MEDIDO, y por eso este bloque existe: probando doce instrumentos seguidos,
+#: Dukascopy contesto 429 a la mitad, y cuatro de esos siguieron en 429 con un
+#: pedido cada veinte segundos mientras otros contestaban 200 en el mismo
+#: minuto. No se por que —puede ser cuota por instrumento, o que esos codigos
+#: esten restringidos— y no hace falta saberlo para decidir esto: el usuario
+#: se topa con el 429 igual, sepamos o no la causa.
+#:
+#: Un usuario que agrega un instrumento del catalogo no tiene por que enterarse
+#: de nada de esto. La consulta queda para lo que no esta en esta tabla.
 
 #: NO HAY VALOR POR DEFECTO, y esa ausencia es la decisión importante de este
 #: módulo.
@@ -79,18 +111,26 @@ _ESCALAS_VISTAS: dict[str, float] = {}
 CONCURRENCIA = 12
 REINTENTOS = 3
 
-#: La escala se reintenta MAS veces y esperando MAS que un dia de velas, y la
-#: asimetria es a proposito.
+#: La escala insiste POCO y espera MUCHO, que es al reves de lo que parece.
 #:
-#: Un dia es uno de miles: si insiste demasiado, bajar quince anios pasa de
-#: minutos a horas. La escala se pregunta UNA vez por instrumento en toda la
-#: vida del programa, asi que esperar medio minuto no le cuesta nada a nadie
-#: — y si no la consigue, el instrumento entero no se puede bajar.
+#: La primera version insistia cinco veces con espera corta, con la idea de
+#: atravesar el limite de Dukascopy. MEDIDO despues, y es lo contrario:
 #:
-#: MEDIDO: probando doce instrumentos seguidos con la espera corta, SEIS
-#: fallaron por limite de pedidos. Con esta espera el limite se atraviesa.
-REINTENTOS_ESCALA = 5
-ESPERA_ESCALA = 2.0
+#:   * diez codigos que no se habian pedido nunca, un pedido cada uno:
+#:     OCHO contestaron 200 a la primera.
+#:   * un codigo al que se le habian hecho unos quince pedidos con reintentos:
+#:     TRECE rechazos seguidos, con un pedido cada veinte segundos, mientras
+#:     los frescos seguian contestando en el mismo minuto.
+#:
+#: O sea que insistir no atraviesa el limite: lo causa, y deja ese instrumento
+#: inutilizable un buen rato. Como ocho de cada diez salen a la primera, lo que
+#: conviene es pedir una vez, y si sale mal esperar de verdad antes del unico
+#: reintento.
+#:
+#: (Un dia de velas es otra cosa y sigue con `REINTENTOS`: son miles de
+#: pedidos y ahi esperar medio minuto por cada uno son horas.)
+REINTENTOS_ESCALA = 2
+ESPERA_ESCALA = 30.0
 
 
 class DukascopyError(Exception):
@@ -166,7 +206,8 @@ def escala_de(simbolo: str, codigo_api: str = "") -> float:
         f"No se pudo averiguar la escala de precios de {simbolo}. Sin ese dato "
         f"los precios saldrían divididos o multiplicados por cien y el "
         f"histórico parecería correcto igual, así que no se baja. "
-        f"Probá de nuevo en un minuto: Dukascopy limita las consultas seguidas.")
+        f"Esperá unos minutos y probá UNA vez: Dukascopy limita por "
+        f"instrumento, y reintentar seguido lo bloquea más tiempo.")
 
 
 def _url(simbolo: str, dia: dt.date) -> str:
