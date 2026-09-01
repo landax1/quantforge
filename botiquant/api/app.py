@@ -967,14 +967,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                     vistos.append(v)
             return vistos or None
 
-        accept = {"min_pf": _crit("min_pf"), "min_sharpe": _crit("min_sharpe"),
-                  "min_win_rate_pct": _crit("min_win_rate_pct"),
-                  "max_dd_pct": _crit("max_dd_pct"), "min_net_pct": _crit("min_net_pct"),
-                  "min_cagr_pct": _crit("min_cagr_pct"),
-                  "min_ret_dd": _crit("min_ret_dd"),
-                  "min_trades_month": _crit("min_trades_month"),
-                  "min_trades_week": _crit("min_trades_week"),
-                  "min_exposure_pct": _crit("min_exposure_pct")}
+        # SE ARMA DESDE LA TABLA DE CRITERIOS Y NO A MANO.
+        #
+        # Estaban enumerados uno por uno, y esa lista es un lugar donde un
+        # filtro desaparece sin ruido: se agrega un criterio a `_CRITERIA`, se
+        # dibuja en la pantalla, el usuario lo tilda... y si nadie se acordó de
+        # sumarlo también acá, el número viaja y nadie lo mira. No pasa un
+        # error: pasa que la búsqueda no filtra por algo que se le pidió.
+        #
+        # Derivándolo, agregar un criterio lo conecta de punta a punta o no
+        # existe en ningún lado. Las dos mitades del bug quedan cerradas: acá
+        # no se puede olvidar una clave, y `mine` rechaza una que no conozca.
+        from botiquant.mining.miner import _CRIT_BY_KEY
+        accept = {k: _crit(k) for k in _CRIT_BY_KEY}
 
         # the goal is a number of ACCEPTED strategies; max_candidates only caps
         # how long the search may hunt for them

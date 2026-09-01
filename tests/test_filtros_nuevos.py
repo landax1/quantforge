@@ -133,3 +133,51 @@ def test_los_operadores_de_igualdad_toleran_el_ruido_de_los_float():
     c = Condition(left=Operand(type="price", field_name="close"), op="==",
                   right=Operand(type="const", value=1.0))
     assert eval_condition(c, ctx).all()
+
+
+# ============== que ningun criterio se caiga entre la pantalla y el minero
+
+def test_TODOS_los_criterios_existen_en_la_pantalla():
+    """UN FILTRO QUE SE PIDE Y NO SE APLICA ES EL PEOR ERROR DE ESTA APP.
+
+    Son tres eslabones —la tabla de criterios, el mapa de la pantalla y el
+    endpoint— y basta que uno se olvide de un criterio para que el número
+    viaje y nadie lo mire. No hay error: hay una búsqueda que no filtra por lo
+    que se le pidió, y eso sólo se descubre leyendo los resultados con
+    desconfianza.
+
+    El endpoint ya no puede olvidarse: arma el diccionario recorriendo
+    `_CRIT_BY_KEY`. El que sí puede quedarse atrás es el mapa del navegador,
+    que es de otro archivo y de otro lenguaje. Esto lo ata.
+    """
+    from pathlib import Path
+
+    from botiquant.mining.miner import _CRIT_BY_KEY
+
+    app_js = (Path(__file__).resolve().parents[1] / "ui" / "app.js"
+              ).read_text(encoding="utf-8")
+    mapa = app_js[app_js.index("const CRIT_FIELD = {"):]
+    mapa = mapa[:mapa.index("};")]
+
+    faltan = sorted(k for k in _CRIT_BY_KEY if f'"{k}"' not in mapa)
+    assert not faltan, (
+        f"criterios que el minero conoce y la pantalla no puede mandar: "
+        f"{faltan}. Se agregaron a `_CRITERIA` y quedaron sin conectar.")
+
+
+def test_la_pantalla_no_inventa_criterios_que_el_minero_no_conoce():
+    """La contracara, y desde hoy es ruidosa: `mine` rechaza una clave que no
+    conoce. Antes la ignoraba, que es como se mina creyendo que se filtra."""
+    from pathlib import Path
+
+    from botiquant.mining.miner import _CRIT_BY_KEY
+
+    app_js = (Path(__file__).resolve().parents[1] / "ui" / "app.js"
+              ).read_text(encoding="utf-8")
+    mapa = app_js[app_js.index("const CRIT_FIELD = {"):]
+    mapa = mapa[:mapa.index("};")]
+
+    import re as _re
+    manda = set(_re.findall(r':\s*"([a-z_]+)"', mapa))
+    sobran = sorted(manda - set(_CRIT_BY_KEY))
+    assert not sobran, f"la pantalla manda criterios inexistentes: {sobran}"
