@@ -1268,6 +1268,14 @@ const STR = {
   /* Binance va SOLO en demo, y el rotulo lo dice en el titulo y no en una
      nota al pie: si estuviera abajo, alguien carga la clave, ve "configurada"
      y da por hecho que puede operar en real. */
+  /* El exchange se ELIGE. Ver el comentario del select en app.js. */
+  "bot.casa": ["Exchange", "Exchange"],
+  "bot.casa_bingx": ["BingX", "BingX"],
+  "bot.casa_binance": ["Binance (demo only)", "Binance (sólo demo)"],
+  "bot.casa_binance_nota": [
+    "On Binance the app only trades the demo environment, with fake money. There is no way to send it a real order.",
+    "En Binance la aplicación sólo opera el entorno demo, con plata de juguete. No tiene forma de mandarle una orden real."],
+
   "ex.bn_t": ["Binance (demo only)", "Binance (sólo demo)"],
   "ex.bn_sub": [
     "Fake money on Binance's demo environment. The app has no way to send a real order to Binance.",

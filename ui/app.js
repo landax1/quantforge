@@ -2054,6 +2054,14 @@ function panelBot(e, hayClave) {
     </div>
     <p class="help-note">${esc(t("bot.tope_nota"))}</p>
     <div class="fld-pair mt">
+      <!-- EN QUE CASA. Se elige y no se deduce del simbolo: BingX pide
+           BTC-USDT y Binance BTCUSDT, y adivinar por el guion convertiria un
+           error de tipeo en una orden al exchange equivocado. -->
+      <label class="fld"><span>${esc(t("bot.casa"))}</span>
+        <select id="bot-casa">
+          <option value="bingx">${esc(t("bot.casa_bingx"))}</option>
+          <option value="binance">${esc(t("bot.casa_binance"))}</option>
+        </select></label>
       <label class="fld"><span>${esc(t("bot.modo"))}</span>
         <select id="bot-modo">
           <option value="">${esc(t("bot.elegir"))}</option>
@@ -2062,6 +2070,7 @@ function panelBot(e, hayClave) {
           <option value="real">${esc(t("bot.modo_real"))}</option>
         </select></label>
     </div>
+    <p class="help-note" id="bot-casa-nota" hidden></p>
     <p class="bot-porque" id="bot-porque" hidden></p>
     <!-- Lo esconde y lo muestra revisarDestinos: sale SOLO cuando lo que
          falta es la clave. El motivo de arriba puede venir de la cantera, y
@@ -2203,9 +2212,32 @@ const vistaBot = async (main, hayClave) => {
 
   const selCual = $("#bot-cual", main);
   const selModo = $("#bot-modo", main);
+  const selCasa = $("#bot-casa", main);
+
+  /* CON BINANCE, "REAL" NO EXISTE — y se saca de la lista en vez de dejarlo
+     y avisar despues. Una opcion que se puede elegir y despues falla ensenia
+     que la pantalla miente; una que no esta dice la verdad sin texto. */
+  const revisarCasa = () => {
+    const casa = selCasa ? selCasa.value : "bingx";
+    const soloDemo = casa === "binance";
+    const opReal = selModo ? $("option[value='real']", selModo) : null;
+    if (opReal) {
+      opReal.hidden = soloDemo;
+      opReal.disabled = soloDemo;
+      if (soloDemo && selModo.value === "real") selModo.value = "";
+    }
+    const nota = $("#bot-casa-nota", main);
+    if (nota) {
+      nota.hidden = !soloDemo;
+      nota.textContent = soloDemo ? t("bot.casa_binance_nota") : "";
+    }
+    revisarDestinos();
+  };
+
   if (selCual) selCual.onchange = revisarDestinos;
   if (selModo) selModo.onchange = revisarDestinos;
-  revisarDestinos();
+  if (selCasa) selCasa.onchange = revisarCasa;
+  revisarCasa();
 
   const irClaves = $("#bot-ir-claves", main);
   if (irClaves) irClaves.onclick = () => navigate("operar", "claves");
@@ -2237,8 +2269,10 @@ const vistaBot = async (main, hayClave) => {
         oos: (fila.meta || {}).oos,
       });
       const tope = parseFloat(($("#bot-tope", main) || {}).value) || 0;
+      const casa = ($("#bot-casa", main) || {}).value || "bingx";
       await api.post("/api/bot/encender",
-                     { bot: archivo, modo, perdida_maxima: tope });
+                     { bot: archivo, modo, exchange: casa,
+                       perdida_maxima: tope });
       toast(t("bot.encendido"), "ok");
       await navigate("operar");
     } catch (e) { toast(e.message, "err"); }
