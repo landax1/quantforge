@@ -239,3 +239,84 @@ def test_el_rechazo_dice_que_falta(client):
     detalle = r.json()["detail"]
     assert "puertas" in detalle
     assert any(not p["pasa"] for p in detalle["puertas"])
+
+
+# ----------------------------------------------- Binance, y sólo en demo
+
+def test_binance_en_REAL_se_rechaza_en_el_ENDPOINT(client):
+    """SE CORTA EN DOS LUGARES, Y LOS DOS HACEN FALTA.
+
+    El adaptador ya no tiene forma de apuntar a la cuenta real —no acepta una
+    base— así que aunque esto pasara, la orden iría igual a demo. Y ahí está el
+    problema: el usuario habría pedido real y habría creído que operó en real.
+    Un 400 explica por qué no se puede; un adaptador que igual opera en demo
+    deja a alguien mirando números que no son los que cree.
+    """
+    r = client.post("/api/bot/encender",
+                    json={"bot": _con_respaldo(), "modo": "real",
+                          "exchange": "binance"})
+    assert r.status_code == 400
+    assert "sólo en demo" in r.json()["detail"]
+
+
+def test_un_exchange_inventado_se_rechaza(client):
+    r = client.post("/api/bot/encender",
+                    json={"bot": _con_respaldo(), "modo": "practica",
+                          "exchange": "kraken"})
+    assert r.status_code == 400
+
+
+def test_sin_decir_exchange_sigue_siendo_bingx(client):
+    """Compatibilidad: los bots que ya existían no mandan `exchange`, y no
+    pueden cambiar de casa por una actualización."""
+    r = client.post("/api/bot/encender",
+                    json={"bot": _con_respaldo(), "modo": "practica"})
+    # falla por falta de clave de BingX, no por exchange desconocido
+    assert r.status_code == 400
+    assert "bingx" in r.json()["detail"].lower()
+
+
+def test_binance_en_practica_pide_su_propia_clave(client):
+    """La de BingX no sirve, y el mensaje tiene que nombrar a Binance: si
+    dijera sólo "no hay claves guardadas", uno va a cargar la que ya tenía."""
+    r = client.post("/api/bot/encender",
+                    json={"bot": _con_respaldo(), "modo": "practica",
+                          "exchange": "binance"})
+    assert r.status_code == 400
+    assert "binance" in r.json()["detail"].lower()
+
+
+# ------------------------------------------------------- abrir un enlace
+
+def test_solo_se_abren_NUESTROS_enlaces(client, monkeypatch):
+    """SE PIDE POR NOMBRE Y NO POR URL.
+
+    Es más fuerte que una lista blanca de direcciones: aunque alguien llame al
+    endpoint a mano, lo único que puede pedir es uno de los nombres que la
+    aplicación conoce. Un endpoint que abre la URL que le manden es un endpoint
+    que manda a la gente adonde le manden.
+    """
+    import webbrowser
+    abiertas = []
+    monkeypatch.setattr(webbrowser, "open", lambda u: abiertas.append(u))
+
+    r = client.post("/api/abrir-enlace", json={"nombre": "binance_clave"})
+    assert r.status_code == 200
+    assert abiertas == ["https://demo.binance.com/en/my/settings/api-management"]
+
+    # una URL entera, que es lo que uno intentaría inyectar
+    r = client.post("/api/abrir-enlace",
+                    json={"nombre": "https://no-es-binance.example/robar"})
+    assert r.status_code == 403
+    assert len(abiertas) == 1, "abrió algo que no era nuestro"
+
+
+def test_el_enlace_de_la_clave_es_el_de_DEMO(client, monkeypatch):
+    """No el de binance.com a secas: esa sería la clave de la cuenta real, y
+    la aplicación no puede operar con ella."""
+    import webbrowser
+    abiertas = []
+    monkeypatch.setattr(webbrowser, "open", lambda u: abiertas.append(u))
+    client.post("/api/abrir-enlace", json={"nombre": "binance_clave"})
+    client.post("/api/abrir-enlace", json={"nombre": "binance_demo"})
+    assert all(u.startswith("https://demo.binance.com/") for u in abiertas)

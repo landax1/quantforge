@@ -2491,7 +2491,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         _solo_escritorio()
         from botiquant.data import bingx
         from botiquant.vivo import claves
-        from botiquant.vivo.adaptador import BASE_PRACTICA, BASE_REAL, BingX
+        from botiquant.vivo.adaptador import (BASE_PRACTICA, BASE_REAL,
+                                              Binance, BingX)
 
         pasos: list[dict[str, Any]] = []
 
@@ -2512,10 +2513,16 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 pasos.append({"paso": nombre, "ok": False, "detalle": str(exc)})
                 return False
 
+        # EL SIMBOLO Y EL LECTOR CAMBIAN SEGUN EL EXCHANGE. BingX pide el
+        # guion —BTC-USDT— y Binance lo rechaza; es el error mas comun al
+        # cambiar de casa, y aca se elige bien de entrada en vez de dejar que
+        # el exchange conteste algo que suena a "el simbolo no existe".
+        es_binance = exchange == "binance"
+        simbolo = "BTCUSDT" if es_binance else "BTC-USDT"
         base = BASE_REAL if entorno == "real" else BASE_PRACTICA
-        lector = BingX("", "", base=base)
+        lector = Binance("", "") if es_binance else BingX("", "", base=base)
 
-        if not paso("responde", lambda: f"{len(lector.velas('BTC-USDT', '1h', 2))} velas"):
+        if not paso("responde", lambda: f"{len(lector.velas(simbolo, '1h', 2))} velas"):
             return {"pasos": pasos, "listo": False}
 
         try:
@@ -2524,12 +2531,14 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             pasos.append({"paso": "clave", "ok": False, "detalle": str(exc)})
             return {"pasos": pasos, "listo": False}
 
-        cliente = BingX(api_key, secret, base=base)
+        cliente = (Binance(api_key, secret) if es_binance
+                   else BingX(api_key, secret, base=base))
         if not paso("saldo", lambda: f"{cliente.capital():,.2f} disponible"):
             return {"pasos": pasos, "listo": False}
-        paso("modo", lambda: "cobertura" if cliente.cobertura() else "simple")
+        paso("modo", lambda: (cliente.modo() if es_binance else
+                              ("cobertura" if cliente.cobertura() else "simple")))
         paso("posiciones",
-             lambda: "hay una abierta" if cliente.posicion("BTC-USDT").abierta
+             lambda: "hay una abierta" if cliente.posicion(simbolo).abierta
              else "ninguna abierta")
 
         return {"pasos": pasos, "listo": all(p["ok"] for p in pasos)}
@@ -2673,7 +2682,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         """
         _solo_escritorio()
         from botiquant.vivo import claves
-        from botiquant.vivo.adaptador import (BASE_PRACTICA, BASE_REAL, BingX,
+        from botiquant.vivo.adaptador import (BASE_PRACTICA, BASE_REAL,
+                                              Binance, BingX,
                                               Papel, SoloDatos)
         from botiquant.vivo.piloto import PILOTO
         from botiquant.vivo.runner import PRACTICA, REAL, SIMULACRO, Bot
@@ -2708,12 +2718,38 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "puertas": veredicto.puertas,
             })
 
+        # EN QUE CASA SE OPERA. Explicito y no deducido del simbolo: BingX
+        # pide BTC-USDT y Binance BTCUSDT, y adivinar por el guion convertiria
+        # un error de tipeo en una orden al exchange equivocado.
+        exchange = str(payload.get("exchange") or "bingx").lower()
+        if exchange not in ("bingx", "binance"):
+            raise HTTPException(400, f"Exchange desconocido: {exchange}")
+
+        # BINANCE ESTA HABILITADO SOLO EN DEMO, y se corta ACA ademas de en el
+        # adaptador. El adaptador ya no tiene forma de apuntar a la cuenta
+        # real —no acepta una base— pero un 400 explica POR QUE no se puede,
+        # mientras que un adaptador que igual opera en demo dejaria al usuario
+        # creyendo que encendio en real.
+        if exchange == "binance" and modo == REAL:
+            raise HTTPException(
+                400, "Binance está habilitado sólo en demo. La aplicación no "
+                     "tiene forma de mandar una orden real a Binance: para "
+                     "operar en real hay que cambiar el código a propósito.")
+
         if modo == SIMULACRO:
             # Sin credenciales: los datos de mercado son publicos y este modo
             # no manda ninguna orden. Asi se puede mirar que haria el bot
             # antes de haber creado siquiera la clave.
-            adaptador: Any = Papel(datos=SoloDatos(BASE_PRACTICA),
+            datos: Any = Binance("", "") if exchange == "binance" else SoloDatos(BASE_PRACTICA)
+            adaptador: Any = Papel(datos=datos,
                                    capital_inicial=float(payload.get("capital") or 1000.0))
+        elif exchange == "binance":
+            try:
+                api_key, secret = claves.leer(workdir / "claves", "binance",
+                                              "practica")
+            except claves.ClaveError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            adaptador = Binance(api_key, secret)
         else:
             entorno = "real" if modo == REAL else "practica"
             try:
@@ -2747,6 +2783,40 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         _solo_escritorio()
         from botiquant.vivo.piloto import PILOTO
         return PILOTO.panico()
+
+    #: Los enlaces que la aplicacion sabe abrir. SE PIDEN POR NOMBRE Y NO POR
+    #: URL, que es mas fuerte que una lista blanca de direcciones: aunque
+    #: alguien llame al endpoint a mano, lo unico que puede pedir es una de
+    #: estas dos. Un endpoint que abre la URL que le manden es un endpoint que
+    #: manda a la gente adonde le manden.
+    ENLACES = {
+        # Donde se crea la clave del entorno demo. NO es la de binance.com a
+        # secas: esa seria la de la cuenta real.
+        "binance_clave": "https://demo.binance.com/en/my/settings/api-management",
+        # La pantalla donde se ve la orden aparecer del otro lado. Es la que
+        # convierte "el registro dice que anduvo" en "lo vi".
+        "binance_demo": "https://demo.binance.com/en/futures/BTCUSDT",
+    }
+
+    @app.post("/api/abrir-enlace")
+    def abrir_enlace(payload: dict[str, Any] | None = None) -> dict[str, str]:
+        """Abre en el navegador del sistema uno de NUESTROS enlaces.
+
+        En el navegador del sistema y no en la ventana de la aplicacion: el
+        escritorio es una sola ventana sin barra de direcciones, asi que
+        navegar adentro dejaria al usuario en Binance sin forma de volver.
+
+        Y solo en el escritorio, igual que abrir una carpeta. Servido a varios,
+        esto abriria una pestania en la maquina del servidor.
+        """
+        _solo_escritorio()
+        nombre = str((payload or {}).get("nombre") or "")
+        url = ENLACES.get(nombre)
+        if url is None:
+            raise HTTPException(403, f"Ese enlace no es de Botiquant: {nombre}")
+        import webbrowser
+        webbrowser.open(url)
+        return {"abierto": url}
 
     @app.post("/api/abrir-carpeta")
     def abrir_carpeta(payload: dict[str, Any] | None = None) -> dict[str, str]:

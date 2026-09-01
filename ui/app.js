@@ -2280,41 +2280,58 @@ const vistaBot = async (main, hayClave) => {
    tarjetas separadas y no un interruptor, para que operar con plata de verdad
    pida cargar otra clave a proposito. */
 const vistaClaves = async (main, por) => {
-  const tarjeta = (entorno) => {
-    const e = por[entorno] || { configurada: false };
+  /* `casa` es el exchange. Mientras hubo uno solo estaba escrito a mano en
+     cada URL; con dos, olvidarse de cambiarlo en una sola de las tres
+     llamadas —guardar, probar, borrar— manda la clave de Binance al archivo
+     de BingX sin que nada avise. */
+  const tarjeta = (entorno, casa = "bingx", cabecera = null, extra = "") => {
+    const e = (casa === "bingx" ? por : {})[entorno] || { configurada: false };
     const real = entorno === "real";
     return `
     <div class="card ex-card${real ? " ex-real" : ""}">
       <div class="ex-head">
         <div>
-          <b>${esc(t(real ? "ex.real" : "ex.practica"))}</b>
-          <p class="help-note">${esc(t(real ? "ex.real_sub" : "ex.practica_sub"))}</p>
+          <b>${esc(cabecera ? t(cabecera + "_t") : t(real ? "ex.real" : "ex.practica"))}</b>
+          <p class="help-note">${esc(cabecera ? t(cabecera + "_sub") : t(real ? "ex.real_sub" : "ex.practica_sub"))}</p>
         </div>
         <span class="ex-estado ${e.configurada ? "on" : ""}">${
           esc(e.configurada
               ? (e.ilegible ? t("ex.ilegible") : t("ex.cargada", { cola: e.termina_en || "" }))
               : t("ex.vacia"))}</span>
       </div>
+      ${extra}
       <div class="fld-pair mt">
         <label class="fld"><span>${esc(t("ex.api_key"))}</span>
           <input type="text" autocomplete="off" spellcheck="false"
-                 data-ex="key" data-entorno="${entorno}"
+                 data-ex="key" data-casa="${casa}" data-entorno="${entorno}"
                  placeholder="${e.configurada ? "········" + esc(e.termina_en || "") : ""}"></label>
         <label class="fld"><span>${esc(t("ex.secret"))}</span>
           <input type="password" autocomplete="off" spellcheck="false"
-                 data-ex="secret" data-entorno="${entorno}"
+                 data-ex="secret" data-casa="${casa}" data-entorno="${entorno}"
                  placeholder="${e.configurada ? "········" : ""}"></label>
       </div>
       <div class="controls mt">
-        <button class="btn" data-ex-guardar="${entorno}">${esc(t("ex.guardar"))}</button>
-        <button class="btn ghost" data-ex-probar="${entorno}" ${e.configurada ? "" : "disabled"}
+        <button class="btn" data-ex-guardar="${entorno}" data-casa="${casa}">${esc(t("ex.guardar"))}</button>
+        <button class="btn ghost" data-ex-probar="${entorno}" data-casa="${casa}" ${e.configurada ? "" : "disabled"}
           >${esc(t("ex.probar"))}</button>
-        <button class="linkbtn" data-ex-borrar="${entorno}" ${e.configurada ? "" : "hidden"}
+        <button class="linkbtn" data-ex-borrar="${entorno}" data-casa="${casa}" ${e.configurada ? "" : "hidden"}
           >${esc(t("ex.borrar"))}</button>
       </div>
-      <div class="ex-pasos" id="ex-pasos-${entorno}" hidden></div>
+      <div class="ex-pasos" id="ex-pasos-${casa}-${entorno}" hidden></div>
     </div>`;
   };
+
+  /* LOS DOS ENLACES DE BINANCE. Van por el servidor y no como <a href>: el
+     escritorio es una sola ventana sin barra de direcciones, asi que navegar
+     adentro dejaria al usuario en Binance sin forma de volver. */
+  const enlacesBinance = `
+    <div class="controls mt">
+      <button class="btn ghost" data-enlace="binance_clave"
+        >${esc(t("ex.bn_crear"))}</button>
+      <button class="btn ghost" data-enlace="binance_demo"
+        >${esc(t("ex.bn_ver"))}</button>
+    </div>
+    <p class="help-note">${esc(t("ex.bn_nota"))}</p>`;
 
   main.innerHTML = pageHead(t("op.tab_claves"), esc(t("ex.sub"))) + `
     <div class="card ex-aviso">
@@ -2325,10 +2342,11 @@ const vistaClaves = async (main, por) => {
       </ul>
     </div>
     ${tarjeta("practica")}
-    ${tarjeta("real")}`;
+    ${tarjeta("real")}
+    ${tarjeta("practica", "binance", "ex.bn", enlacesBinance)}`;
 
-  const campo = (entorno, cual) =>
-    $(`[data-ex="${cual}"][data-entorno="${entorno}"]`, main);
+  const campo = (casa, entorno, cual) =>
+    $(`[data-ex="${cual}"][data-casa="${casa}"][data-entorno="${entorno}"]`, main);
 
   /* Los nombres de los pasos se escriben ENTEROS y no se arman concatenando
      el prefijo con el nombre del paso. Armados así, el examen de textos no
@@ -2343,8 +2361,8 @@ const vistaClaves = async (main, por) => {
     posiciones: t("ex.paso_posiciones"),
   });
 
-  const pintarPasos = (entorno, r) => {
-    const caja = $(`#ex-pasos-${entorno}`, main);
+  const pintarPasos = (casa, entorno, r) => {
+    const caja = $(`#ex-pasos-${casa}-${entorno}`, main);
     const nombres = NOMBRE_PASO();
     caja.hidden = false;
     caja.innerHTML = r.pasos.map(p => `
@@ -2358,18 +2376,19 @@ const vistaClaves = async (main, por) => {
   $$("[data-ex-guardar]", main).forEach(b => {
     b.onclick = async () => {
       const entorno = b.dataset.exGuardar;
-      const key = campo(entorno, "key").value.trim();
-      const secret = campo(entorno, "secret").value.trim();
+      const casa = b.dataset.casa;
+      const key = campo(casa, entorno, "key").value.trim();
+      const secret = campo(casa, entorno, "secret").value.trim();
       if (!key || !secret) return toast(t("ex.faltan"), "err");
       b.disabled = true;
       try {
-        await api.post(`/api/exchanges/bingx/${entorno}`,
+        await api.post(`/api/exchanges/${casa}/${entorno}`,
                        { api_key: key, secret });
         /* Los campos se vacian apenas se guardo. Una clave que queda a la
            vista en un input se ve en una captura de pantalla, en un video de
            YouTube y en cualquiera que pase por atras. */
-        campo(entorno, "key").value = "";
-        campo(entorno, "secret").value = "";
+        campo(casa, entorno, "key").value = "";
+        campo(casa, entorno, "secret").value = "";
         toast(t("ex.guardada"), "ok");
         await navigate("operar");
       } catch (e) { toast(e.message, "err"); }
@@ -2380,21 +2399,30 @@ const vistaClaves = async (main, por) => {
   $$("[data-ex-probar]", main).forEach(b => {
     b.onclick = async () => {
       const entorno = b.dataset.exProbar;
+      const casa = b.dataset.casa;
       b.disabled = true;
       try {
-        pintarPasos(entorno,
-                    await api.post(`/api/exchanges/bingx/${entorno}/comprobar`, {}));
+        pintarPasos(casa, entorno,
+                    await api.post(`/api/exchanges/${casa}/${entorno}/comprobar`, {}));
       } catch (e) { toast(e.message, "err"); }
       b.disabled = false;
+    };
+  });
+
+  $$("[data-enlace]", main).forEach(b => {
+    b.onclick = async () => {
+      try { await api.post("/api/abrir-enlace", { nombre: b.dataset.enlace }); }
+      catch (e) { toast(e.message, "err"); }
     };
   });
 
   $$("[data-ex-borrar]", main).forEach(b => {
     b.onclick = async () => {
       const entorno = b.dataset.exBorrar;
+      const casa = b.dataset.casa;
       if (!confirm(t("ex.borrar_seguro"))) return;
       try {
-        await api.del(`/api/exchanges/bingx/${entorno}`);
+        await api.del(`/api/exchanges/${casa}/${entorno}`);
         toast(t("ex.borrada"), "ok");
         await navigate("operar");
       } catch (e) { toast(e.message, "err"); }

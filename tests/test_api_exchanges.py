@@ -62,9 +62,12 @@ def test_ningun_endpoint_devuelve_el_secreto(client):
 def test_practica_y_real_no_se_pisan(client):
     _guardar(client, entorno="practica", api_key="DEMO1234")
     _guardar(client, entorno="real", api_key="REAL5678")
-    listado = {x["entorno"]: x for x in client.get("/api/exchanges").json()}
-    assert listado["practica"]["termina_en"] == "1234"
-    assert listado["real"]["termina_en"] == "5678"
+    # Se indexa por exchange Y entorno: con mas de un exchange, la practica de
+    # uno pisaba la del otro y el test pasaba por casualidad.
+    listado = {(x["exchange"], x["entorno"]): x
+               for x in client.get("/api/exchanges").json()}
+    assert listado[("bingx", "practica")]["termina_en"] == "1234"
+    assert listado[("bingx", "real")]["termina_en"] == "5678"
 
 
 def test_sin_configurar_lo_dice_y_no_revienta(client):
@@ -79,9 +82,24 @@ def test_una_clave_vacia_se_rechaza(client):
 
 
 def test_un_exchange_desconocido_se_rechaza(client):
-    r = client.post("/api/exchanges/binance/practica",
+    r = client.post("/api/exchanges/kraken/practica",
                     json={"api_key": CLAVE, "secret": SECRETO})
     assert r.status_code == 400
+
+
+def test_binance_en_REAL_se_rechaza(client):
+    """Binance está habilitado sólo en demo. Guardar una clave real dejaría en
+    pantalla un "configurada" que promete algo que la aplicación no puede
+    hacer."""
+    r = client.post("/api/exchanges/binance/real",
+                    json={"api_key": CLAVE, "secret": SECRETO})
+    assert r.status_code == 400
+
+
+def test_binance_en_practica_se_acepta(client):
+    r = client.post("/api/exchanges/binance/practica",
+                    json={"api_key": CLAVE, "secret": SECRETO})
+    assert r.status_code == 200 and r.json()["configurada"] is True
 
 
 def test_un_entorno_inventado_se_rechaza(client):

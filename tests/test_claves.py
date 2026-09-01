@@ -146,7 +146,6 @@ def test_se_le_sacan_los_espacios(carpeta):
 
 
 @pytest.mark.parametrize("exchange,entorno", [
-    ("binance", "practica"),          # todavía no soportado
     ("bingx", "produccion"),          # el entorno se llama "real"
     ("../../etc", "practica"),        # el nombre va a una ruta
 ])
@@ -170,3 +169,30 @@ def test_un_archivo_ilegible_no_revienta_la_pantalla(carpeta, monkeypatch):
     d = describir(carpeta, "bingx", "practica")
     assert d["configurada"] is True
     assert "ilegible" in d
+
+
+def test_binance_en_REAL_no_se_puede_guardar(carpeta):
+    """NO ES UNA PREFERENCIA: la aplicación no tiene forma de operar en real
+    con Binance —el adaptador no acepta una base— así que una clave real sería
+    una clave que no puede usar nadie.
+
+    Guardarla igual dejaría en pantalla un "configurada" que promete algo que
+    no existe, y ese es el tipo de mentira que después alguien toma por cierta.
+    """
+    with pytest.raises(ClaveError, match="solo en practica"):
+        guardar(carpeta, "binance", "real", api_key="K" * 20, secret="S" * 20)
+
+
+def test_binance_en_practica_si(carpeta):
+    d = guardar(carpeta, "binance", "practica", api_key="K" * 20, secret="S" * 20)
+    assert d["configurada"] is True
+    assert leer(carpeta, "binance", "practica") == ("K" * 20, "S" * 20)
+
+
+def test_el_listado_no_ofrece_binance_real(carpeta):
+    """Si apareciera con "configurada: false" sonaría a que falta cargarla,
+    cuando lo que pasa es que no existe."""
+    filas = {(x["exchange"], x["entorno"]) for x in listar(carpeta)}
+    assert ("binance", "practica") in filas
+    assert ("binance", "real") not in filas
+    assert ("bingx", "real") in filas

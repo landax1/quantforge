@@ -1265,6 +1265,19 @@ const STR = {
     "One bot at a time on one account: two of them would fight over the same position.",
     "Un bot por vez sobre una cuenta: dos se pelearían por la misma posición."],
   "op.ir_claves": ["Load a key", "Cargar una clave"],
+  /* Binance va SOLO en demo, y el rotulo lo dice en el titulo y no en una
+     nota al pie: si estuviera abajo, alguien carga la clave, ve "configurada"
+     y da por hecho que puede operar en real. */
+  "ex.bn_t": ["Binance (demo only)", "Binance (sólo demo)"],
+  "ex.bn_sub": [
+    "Fake money on Binance's demo environment. The app has no way to send a real order to Binance.",
+    "Plata de juguete en el entorno demo de Binance. La aplicación no tiene forma de mandarle una orden real."],
+  "ex.bn_crear": ["Create the demo key", "Crear la clave demo"],
+  "ex.bn_ver": ["Watch it execute", "Ver cómo ejecuta"],
+  "ex.bn_nota": [
+    "The demo key is created on demo.binance.com, not on binance.com: that one belongs to your real account. The second link opens the screen where you can watch the order land.",
+    "La clave demo se crea en demo.binance.com, no en binance.com: esa es la de tu cuenta real. El segundo enlace abre la pantalla donde ves la orden aparecer."],
+
   "ex.sub": ["Connect an exchange so a strategy can trade on its own",
              "Conectá un exchange para que una estrategia opere sola"],
   "ex.regla1_t": ["Your keys stay on this computer",
