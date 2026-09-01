@@ -48,6 +48,42 @@ REAL = "real"
 VELAS_MINIMAS = 500
 
 
+def por_que_no_operable(spec: StrategySpec) -> str:
+    """Por qué el bot NO puede encender esta estrategia; vacío si puede.
+
+    Es la misma pregunta que se hace el bot al arrancar, sacada afuera para
+    que el ciclo la haga ANTES de promover. Pasó: el ciclo promovió una con
+    trailing, el bot la rechazó y la estrategia quedó en "práctica" sin
+    operar. Dos lugares con dos criterios se desincronizan; uno solo, no.
+
+    EL TRAILING NO ESTA IMPLEMENTADO EN VIVO. El motor mueve el stop cada
+    vela siguiendo el maximo a favor; el bot deja UNA orden puesta en el
+    exchange y no la mueve. Operar igual seria operar algo distinto de lo
+    que se midio, sin ningun error a la vista. Cuando el trailing este
+    implementado —hay que reemplazar la orden de stop en cada vela que el
+    maximo mejore— la primera comprobación se saca.
+
+    QUE TODOS LOS INDICADORES QUE PIDE LA ESTRATEGIA EXISTAN. Sin esto el
+    bot no se niega a arrancar: arranca y se muere en la primera vuelta con
+    un traceback en el registro —"Unknown indicator: Mecha"— y la pantalla
+    diciendo que está encendido. Es el caso de actualizar la aplicación: una
+    estrategia guardada puede nombrar un bloque que se renombró o se quitó.
+    """
+    if getattr(spec.risk, "trail_atr", 0) > 0:
+        return ("Esta estrategia usa un stop dinámico (trailing), y el bot "
+                "todavía no sabe moverlo en el exchange. Operaría con un stop "
+                "fijo, que no es lo que se midió. Usá una estrategia sin "
+                "trailing, o exportala a TradingView, que sí lo reproduce.")
+    faltan = sorted({o.name for c in (*spec.entry_long, *spec.entry_short)
+                     for o in (c.left, c.right)
+                     if o.type == "indicator" and o.name not in REGISTRY})
+    if faltan:
+        return (f"Esta estrategia usa indicadores que esta versión no conoce: "
+                f"{', '.join(faltan)}. Suele pasar al abrir una estrategia "
+                f"guardada con otra versión de la aplicación.")
+    return ""
+
+
 @dataclass
 class Bot:
     """Una estrategia enlazada a un mercado, con su modo de ejecución."""
@@ -115,48 +151,13 @@ class Bot:
     def __post_init__(self) -> None:
         """Se niega a operar lo que no sabe reproducir.
 
-        EL TRAILING NO ESTA IMPLEMENTADO EN VIVO. El motor mueve el stop cada
-        vela siguiendo el maximo a favor; el bot deja UNA orden puesta en el
-        exchange y no la mueve. Operar igual seria operar algo distinto de lo
-        que se midio, sin ningun error a la vista: la estrategia sale, entra y
-        cierra, sólo que por niveles que no son los del backtest.
-
-        Negarse es peor experiencia y mejor producto. Cuando el trailing este
-        implementado —hay que reemplazar la orden de stop en cada vela que el
-        maximo mejore— esto se saca.
+        Negarse es peor experiencia y mejor producto: el motivo está en
+        `por_que_no_operable`, que es la misma pregunta que el ciclo hace
+        antes de promover, para que no promueva lo que acá se rechazaría.
         """
-        if getattr(self.spec.risk, "trail_atr", 0) > 0:
-            raise ValueError(
-                "Esta estrategia usa un stop dinámico (trailing), y el bot "
-                "todavía no sabe moverlo en el exchange. Operaría con un stop "
-                "fijo, que no es lo que se midió. Usá una estrategia sin "
-                "trailing, o exportala a TradingView, que sí lo reproduce.")
-
-        # QUE TODOS LOS INDICADORES QUE PIDE LA ESTRATEGIA EXISTAN.
-        #
-        # ==================================================================
-        # SIN ESTO EL BOT NO SE NIEGA A ARRANCAR: ARRANCA Y SE MUERE EN LA
-        # PRIMERA VUELTA.
-        # ==================================================================
-        #
-        # PASO DE VERDAD: una estrategia minada con un indicador nuevo se
-        # encendió contra un proceso que todavía no lo conocía, y el error
-        # llegó como un traceback en el registro —"Unknown indicator: Mecha"—
-        # con el bot ya apagado y la pantalla diciendo que estaba encendido.
-        #
-        # Es el caso de actualizar la aplicación: una estrategia guardada
-        # puede nombrar un bloque que se renombró o se quitó. Que falle al
-        # ENCENDER, con el nombre adentro del mensaje, es la diferencia entre
-        # arreglarlo y adivinarlo.
-        faltan = sorted({o.name for c in (*self.spec.entry_long,
-                                          *self.spec.entry_short)
-                         for o in (c.left, c.right)
-                         if o.type == "indicator" and o.name not in REGISTRY})
-        if faltan:
-            raise ValueError(
-                f"Esta estrategia usa indicadores que esta versión no conoce: "
-                f"{', '.join(faltan)}. Suele pasar al abrir una estrategia "
-                f"guardada con otra versión de la aplicación.")
+        motivo = por_que_no_operable(self.spec)
+        if motivo:
+            raise ValueError(motivo)
 
         # UNA PORCION IMPOSIBLE SE RECHAZA ACA Y NO SE CORRIGE EN SILENCIO.
         # Un cero apagaría el bot sin decirlo —dimensionaría sobre cero y no

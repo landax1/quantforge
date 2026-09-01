@@ -2633,6 +2633,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             db.guardar_vigilancia(f["id"], nueva)
             return int(nueva["vueltas_naranja"])
 
+        def _operable(spec: Any) -> bool:
+            """Si el bot la encenderia, con el criterio del bot.
+
+            Un spec que ni siquiera se puede leer tampoco se enciende, asi
+            que cuenta como no operable en vez de tirar abajo la vuelta.
+            """
+            from botiquant.core.models import StrategySpec
+            from botiquant.vivo.runner import por_que_no_operable
+            try:
+                return not por_que_no_operable(StrategySpec.from_dict(spec))
+            except Exception:                       # noqa: BLE001
+                return False
+
         filas = []
         for f in db.list_strategies(None):
             meta = f.get("meta") or {}
@@ -2644,6 +2657,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 # promueve las tres — que no es un portafolio de tres sino una
                 # apuesta con tres nombres.
                 "instrumento": str(meta.get("dataset_id") or ""),
+                # SI EL BOT PODRIA ENCENDERLA. Promover es encender, y el
+                # ciclo promovio una con trailing que el bot rechazo: quedo
+                # en "practica" sin operar. Se pregunta antes, con el mismo
+                # criterio que usa el bot al arrancar.
+                "operable": _operable(f.get("spec")),
                 "cantera": {"practica": cantera.revisar(entrada, cantera.PRACTICA).pasa,
                             "real": cantera.revisar(entrada, cantera.REAL).pasa},
                 # Contadas desde el registro guardado. Ver `_vueltas`.

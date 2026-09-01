@@ -196,11 +196,19 @@ def que_toca(p: Parametros, *, estrategias: list[dict[str, Any]],
                 if inst:
                     corriendo[inst] = corriendo.get(inst, 0) + 1
 
-        listas, llenos = [], set()
+        listas, llenos, inoperables = [], set(), 0
         for e in estrategias:
             if estados.normalizar(e.get("estado")) != estados.VALIDADA:
                 continue
             if not (e.get("cantera") or {}).get("practica"):
+                continue
+            # LO QUE EL BOT NO PUEDE ENCENDER NO SE PROMUEVE. Pasó: el ciclo
+            # promovió una con trailing, el bot la rechazó al arrancar y la
+            # estrategia quedó en "práctica" sin operar, ocupando un lugar en
+            # la pantalla y ninguno en la cuenta. Quien lee las filas dice si
+            # es operable; si no lo dice, se asume que sí.
+            if e.get("operable") is False:
+                inoperables += 1
                 continue
             inst = str(e.get("instrumento") or "")
             # Sin instrumento conocido no se puede juzgar la concentracion, y
@@ -218,6 +226,8 @@ def que_toca(p: Parametros, *, estrategias: list[dict[str, Any]],
                       f"validada(s) esperando")
             if llenos:
                 motivo += f"; {len(llenos)} instrumento(s) ya al tope"
+            if inoperables:
+                motivo += f"; {inoperables} que el bot no puede encender"
             return Tarea(PROMOVER, motivo, listas[:hueco], **marca)
 
     # 3) validar lo que se encontró y nadie probó

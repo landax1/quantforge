@@ -579,3 +579,27 @@ def test_se_niega_a_encender_con_un_indicador_QUE_NO_CONOCE():
 def test_los_indicadores_que_SI_existen_no_molestan():
     """El control no puede rechazar una estrategia legítima."""
     Bot(doc=_doc(), adaptador=_Exchange(), modo=SIMULACRO)
+
+
+def test_el_ciclo_puede_preguntar_lo_mismo_que_el_bot_antes_de_promover():
+    """`por_que_no_operable` es el criterio del bot sacado afuera. Pasó: el
+    ciclo promovió una con trailing, el bot la rechazó al arrancar y la
+    estrategia quedó en "práctica" sin operar."""
+    from botiquant.core.models import StrategySpec
+    from botiquant.vivo.runner import por_que_no_operable
+
+    ema = lambda p: {"type": "indicator", "name": "EMA", "params": {"period": p}}
+    spec = {"name": "t", "direction": "both",
+            "entry_long": [{"left": ema(5), "op": "cross_above", "right": ema(20)}],
+            "risk": {"size_mode": "risk_pct", "size_value": 1.0,
+                     "stop_type": "atr", "stop_value": 2.0,
+                     "target_type": "atr", "target_value": 4.0,
+                     "atr_period": 14, "trail_atr": 1.5}}
+    assert "trailing" in por_que_no_operable(StrategySpec.from_dict(spec))
+
+    spec["risk"]["trail_atr"] = 0
+    assert por_que_no_operable(StrategySpec.from_dict(spec)) == ""
+
+    spec["entry_long"][0]["left"] = {"type": "indicator", "name": "NoExiste",
+                                     "params": {}}
+    assert "NoExiste" in por_que_no_operable(StrategySpec.from_dict(spec))

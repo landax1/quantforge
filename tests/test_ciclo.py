@@ -295,3 +295,33 @@ def test_el_tope_por_instrumento_es_configurable_y_acotado():
     assert Parametros().max_por_instrumento == 2
     assert Parametros.from_dict({"max_por_instrumento": 0}).max_por_instrumento == 1
     assert Parametros.from_dict({"max_por_instrumento": 99}).max_por_instrumento == 10
+
+
+# ------------------------------------------- lo que el bot no puede encender
+
+def test_no_promueve_lo_que_el_bot_no_puede_encender():
+    """Pasó: el ciclo promovió una con trailing, el bot la rechazó y la
+    estrategia quedó en "práctica" sin operar. Promover es encender: lo que no
+    se puede encender no se promueve."""
+    fila = _e("trail", estados.VALIDADA)
+    fila["operable"] = False
+    t = que_toca(_p(), estrategias=[fila],
+                 horas_desde_el_ultimo_minado=1, en_practica=0)
+    assert t.accion != PROMOVER
+
+
+def test_pero_si_nadie_dice_que_no_es_operable_se_promueve():
+    """Las filas viejas no traen el dato, y no por eso se frena todo."""
+    t = que_toca(_p(), estrategias=[_e("vieja", estados.VALIDADA)],
+                 horas_desde_el_ultimo_minado=1, en_practica=0)
+    assert t.accion == PROMOVER
+
+
+def test_el_motivo_cuenta_las_que_el_bot_no_puede_encender():
+    """Si no, alguien ve "promovió una de dos" y no entiende por qué."""
+    mala = _e("trail", estados.VALIDADA)
+    mala["operable"] = False
+    t = que_toca(_p(), estrategias=[mala, _e("buena", estados.VALIDADA)],
+                 horas_desde_el_ultimo_minado=1, en_practica=0)
+    assert t.ids == ["buena"]
+    assert "no puede encender" in t.motivo
