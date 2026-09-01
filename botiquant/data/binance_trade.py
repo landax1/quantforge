@@ -30,6 +30,36 @@ que copiar aquello habría producido exactamente el mismo tipo de error:
   · Lo que se firma es `totalParams` = query string CONCATENADA con el cuerpo.
   · La firma va AL FINAL, y la cabecera se llama `X-MBX-APIKEY`.
 
+CONTRASTADO CONTRA LA REFERENCIA OFICIAL de `POST /fapi/v1/order`: una orden a
+mercado pide sólo `quantity` —sin `price` ni `timeInForce`—, `positionSide`
+DEBE mandarse en cobertura, `reduceOnly` NO PUEDE mandarse en cobertura, y
+`recvWindow` tiene un tope de 60.000 ms. Las cuatro coinciden con lo que hace
+este módulo.
+
+===========================================================================
+EL STOP NO SE MANDA POR DONDE SE MANDA LA ENTRADA
+===========================================================================
+
+MEDIDO el 31/8/2026 contra la API: `POST /fapi/v1/order` RECHAZA todos los
+tipos condicionales con `-4120 Order type not supported for this endpoint`.
+Se probaron ocho variantes de parametros —con y sin `closePosition`, con y sin
+`priceProtect`, con cantidad y con `reduceOnly`— y las ocho dieron lo mismo:
+no es una combinacion mal armada, es el endpoint.
+
+La causa es un cambio de Binance del 2025-12-09: las condicionales de futuros
+USDⓈ-M se mudaron a un Algo Service propio. Lo que cambia:
+
+    poner el stop      POST   /fapi/v1/algoOrder      (antes /fapi/v1/order)
+    el precio          `triggerPrice`                 (antes `stopPrice`)
+    verlas             GET    /fapi/v1/openAlgoOrders (antes /fapi/v1/openOrders)
+    cancelarlas        DELETE /fapi/v1/algoOpenOrders
+
+LO PELIGROSO NO ES EL RECHAZO SINO LA CONSULTA. Que la orden falle se ve. Pero
+`/fapi/v1/openOrders` sigue contestando 200 con una lista VACIA aunque el stop
+este perfectamente puesto —MEDIDO: cero ordenes con dos condicionales vivas—
+asi que un codigo que pregunte ahi concluye "no hay stop" cuando lo hay, y al
+reves nunca se entera de que si lo hay.
+
 ===========================================================================
 EL MODO DE POSICION SE PREGUNTA, NO SE SUPONE
 ===========================================================================
@@ -201,6 +231,13 @@ def contrato(simbolo: str, base: str = BASE_PRUEBA) -> dict[str, Any]:
                 "decimales_cantidad": int(s.get("quantityPrecision") or 0),
                 "decimales_precio": int(s.get("pricePrecision") or 0),
                 "minimo_nocional": float(f.get("MIN_NOTIONAL", {}).get("notional") or 0),
+                # El salto de precio. MEDIDO en BTCUSDT: el tick es 0,10
+                # mientras que `pricePrecision` dice 2, o sea que respetar los
+                # decimales NO alcanza para respetar el tick. Se guarda como
+                # texto además de como número porque el redondeo se hace con
+                # Decimal, y pasarlo por float pierde justo lo que hace falta.
+                "tick": float(f.get("PRICE_FILTER", {}).get("tickSize") or 0),
+                "tick_texto": str(f.get("PRICE_FILTER", {}).get("tickSize") or "0"),
             }
     raise BinanceError(f"{simbolo} no existe en los futuros de Binance.")
 
@@ -252,6 +289,110 @@ def posicion(simbolo: str, api_key: str, secret: str,
     return {"lado": lado, "cantidad": abs(total), "precio_entrada": entrada}
 
 
+def ordenes_abiertas(simbolo: str, api_key: str, secret: str,
+                     base: str = BASE_PRUEBA) -> list[dict[str, Any]]:
+    """Las órdenes que siguen vivas en ese símbolo. El stop, entre ellas.
+
+    ES LA UNICA FORMA DE COMPROBAR QUE LA PROTECCION QUEDO PUESTA. Que
+    `proteger` no haya devuelto error significa que el pedido se aceptó, no que
+    el exchange tenga el stop anotado. Y la diferencia entre esas dos cosas es
+    una posición que uno cree protegida y no lo está — que se descubre el día
+    que el precio va en contra, o sea el peor día para descubrirlo.
+
+    Se devuelve la lista cruda: al llamador le interesa el `type` y el
+    `stopPrice`, y filtrar acá lo obligaría a adivinar cuál le importa.
+    """
+    return _pedir("/fapi/v1/openOrders", {"symbol": simbolo},
+                  api_key=api_key, secret=secret, base=base) or []
+
+
+def condicionales_abiertas(simbolo: str, api_key: str, secret: str,
+                           base: str = BASE_PRUEBA) -> list[dict[str, Any]]:
+    """Los stops y objetivos vivos. NO ESTAN DONDE LAS DEMAS ORDENES.
+
+    ==================================================================
+    `ordenes_abiertas` NO LOS VE, Y NO AVISA: DEVUELVE UNA LISTA VACIA.
+    ==================================================================
+
+    MEDIDO el 31/8/2026 con un stop y un objetivo correctamente puestos:
+    `/fapi/v1/openOrders` devolvió CERO órdenes. Desde la mudanza al Algo
+    Service las condicionales sólo aparecen acá. Preguntar en el lugar viejo da
+    "no hay stop" cuando lo hay — una alarma falsa permanente— y jamás confirma
+    que lo haya.
+
+    Se normalizan los dos campos que importan, porque el Algo Service los llama
+    distinto que el endpoint viejo: `orderType` en vez de `type`, y
+    `triggerPrice` en vez de `stopPrice`.
+    """
+    d = _pedir("/fapi/v1/openAlgoOrders", {"symbol": simbolo},
+               api_key=api_key, secret=secret, base=base) or []
+    return [{
+        "id": o.get("algoId"),
+        "tipo": o.get("orderType") or o.get("type") or "",
+        "disparo": float(o.get("triggerPrice") or 0.0),
+        "estado": o.get("algoStatus") or "",
+        "cierra_todo": bool(o.get("closePosition")),
+        "crudo": o,
+    } for o in d]
+
+
+def detalle_orden(simbolo: str, order_id: Any, *, api_key: str, secret: str,
+                  base: str = BASE_PRUEBA) -> dict[str, Any]:
+    """A cuánto entró, preguntado DESPUES de mandar la orden.
+
+    HACE FALTA PORQUE LA RESPUESTA DE LA ORDEN NO LO TRAE. Ni siquiera con
+    `newOrderRespType=RESULT`: medido el 31/8/2026 en una orden a mercado
+    llenada entera, `executedQty` vino bien y `avgPrice` vino en None, porque
+    Binance responde antes de agregar los llenados.
+
+    Sin esto el registro del bot dice que operó pero no a cuánto, que es
+    justamente el dato que sirve para comparar la ejecución contra lo que
+    esperaba la estrategia.
+    """
+    o = _pedir("/fapi/v1/order", {"symbol": simbolo, "orderId": order_id},
+               api_key=api_key, secret=secret, base=base)
+    return {
+        "id": o.get("orderId"),
+        "estado": o.get("status") or "",
+        "cantidad": float(o.get("executedQty") or 0.0),
+        "precio": float(o.get("avgPrice") or 0.0),
+    }
+
+
+def cancelar_todo(simbolo: str, api_key: str, secret: str,
+                  base: str = BASE_PRUEBA) -> dict[str, Any]:
+    """Cancela TODAS las órdenes pendientes de ese símbolo.
+
+    HACE FALTA AL CERRAR A MANO. Si se cierra la posición con una orden a
+    mercado, el stop y el objetivo que quedaron puestos pueden sobrevivirla.
+    Los de `closePosition` se cancelan solos —no les queda nada que cerrar—
+    pero depender de eso es depender de un detalle del exchange en vez de
+    dejar la cuenta limpia a propósito.
+
+    ES UNA LIMPIEZA, NO UN CIERRE: no toca la posición. Cancelar las órdenes
+    con la posición abierta la deja DESPROTEGIDA, así que esto va DESPUES de
+    cerrar y nunca antes.
+
+    SON DOS BORRADOS Y NO UNO. Las comunes y las condicionales viven en
+    servicios distintos desde el cambio del 2025-12-09, y cancelar sólo las
+    comunes deja el stop y el objetivo dando vueltas: MEDIDO, después de cerrar
+    la posición las dos condicionales seguían vivas.
+    """
+    salidas: dict[str, Any] = {}
+    salidas["comunes"] = _pedir("/fapi/v1/allOpenOrders", {"symbol": simbolo},
+                                api_key=api_key, secret=secret,
+                                metodo="DELETE", base=base)
+    # Sin condicionales vivas esto devuelve un error en vez de no hacer nada,
+    # y no tener nada que borrar no es un fallo de la limpieza.
+    try:
+        salidas["condicionales"] = _pedir(
+            "/fapi/v1/algoOpenOrders", {"symbol": simbolo}, api_key=api_key,
+            secret=secret, metodo="DELETE", base=base)
+    except BinanceError as exc:
+        salidas["condicionales"] = {"sin_efecto": str(exc)}
+    return salidas
+
+
 # ------------------------------------------------------------ mandar órdenes
 
 def _redondear(cantidad: float, contrato_: dict[str, Any]) -> float:
@@ -269,8 +410,33 @@ def _redondear(cantidad: float, contrato_: dict[str, Any]) -> float:
     return round(n, int(contrato_.get("decimales_cantidad") or 8))
 
 
+def _a_tick(precio: float, contrato_: dict[str, Any]) -> float:
+    """Un precio ajustado al salto que el símbolo acepta.
+
+    SIN ESTO EL STOP NO ENTRA. Medido el 31/8/2026: un stop calculado como
+    `precio * 0.95` da 74.783,525 y Binance lo rechaza con -1111 "Precision is
+    over the maximum defined for this asset". El número es correcto; lo que
+    está mal es que tenga más decimales de los que el símbolo admite.
+
+    Se redondea al TICK y no a los decimales, que son dos límites distintos: en
+    BTCUSDT el tick es 0,10 y los decimales son 2, así que 74.783,52 respeta
+    los decimales y no respeta el tick. Redondear al tick cumple los dos.
+
+    Al más cercano y no hacia un lado: acá no hay riesgo que se acumule —el
+    tick son diez centavos sobre setenta y ocho mil dólares— y sesgarlo correría
+    el stop siempre para el mismo lado sin ningún motivo.
+    """
+    from decimal import ROUND_HALF_UP, Decimal
+    tick = Decimal(str(contrato_.get("tick_texto") or "0"))
+    n = Decimal(str(precio))
+    if tick > 0:
+        n = (n / tick).to_integral_value(rounding=ROUND_HALF_UP) * tick
+    return float(n)
+
+
 def abrir(simbolo: str, lado: int, cantidad: float, *,
           api_key: str, secret: str, modo: str,
+          precio: float | None = None,
           contrato_: dict[str, Any] | None = None,
           base: str = BASE_PRUEBA) -> dict[str, Any]:
     """Abre a mercado. `lado` es +1 largo, -1 corto.
@@ -279,6 +445,10 @@ def abrir(simbolo: str, lado: int, cantidad: float, *,
     un valor por omisión: en `cobertura` hay que decir a qué lado va la
     posición, y en `una_via` mandar ese mismo parámetro da -4061. Un valor por
     omisión sería elegir al azar entre andar y fallar.
+
+    `precio` es opcional y sirve para UNA sola cosa: comprobar el mínimo por
+    NOCIONAL antes de mandar. Sin él ese control no se puede hacer —una orden a
+    mercado no lleva precio— y lo termina haciendo el exchange.
     """
     if lado not in (1, -1):
         raise BinanceError("El lado tiene que ser +1 (largo) o -1 (corto).")
@@ -291,12 +461,96 @@ def abrir(simbolo: str, lado: int, cantidad: float, *,
             f"debajo del mínimo de {simbolo} ({minimo:g}). Con esta cuenta el "
             f"bot no puede abrir sin arriesgar más de lo pedido.")
 
+    # EL MINIMO POR NOCIONAL, QUE ES OTRO Y SE COMPRUEBA APARTE.
+    #
+    # Son dos límites distintos y pasar uno no dice nada del otro: en BTCUSDT
+    # manda la cantidad —0,001 BTC son 78 USDT contra 50 de nocional— pero en
+    # un símbolo barato manda el nocional, y ahí una orden que pasa el control
+    # de arriba la rechaza el exchange igual. Es el mismo hueco que apareció en
+    # Bybit, donde el nocional manda en seis de los diez símbolos líquidos.
+    nocional_min = float(c.get("minimo_nocional") or 0.0)
+    if precio and nocional_min and qty * precio < nocional_min:
+        raise BinanceError(
+            f"La orden ({qty:g} {simbolo} ≈ {qty * precio:,.2f} USDT) no llega "
+            f"al mínimo por nocional de {nocional_min:g} USDT. El mínimo por "
+            f"cantidad sí lo pasa: son dos límites distintos.")
+
     p: dict[str, Any] = {"symbol": simbolo, "type": "MARKET", "quantity": qty,
-                         "side": "BUY" if lado > 0 else "SELL"}
+                         "side": "BUY" if lado > 0 else "SELL",
+                         # RESULT trae mas que ACK, pero OJO: NO TRAE EL
+                         # PRECIO DE EJECUCION. Medido el 31/8/2026 en una
+                         # orden a mercado que se lleno entera: `executedQty`
+                         # viene bien (0.0007) y `avgPrice` viene en None.
+                         # Binance responde antes de agregar los llenados.
+                         # Para saber a cuanto entro hay que preguntarlo
+                         # despues, con `detalle_orden`.
+                         "newOrderRespType": "RESULT"}
     if modo == "cobertura":
         p["positionSide"] = "LONG" if lado > 0 else "SHORT"
     return _pedir("/fapi/v1/order", p, api_key=api_key, secret=secret,
                   metodo="POST", base=base)
+
+
+def proteger(simbolo: str, lado: int, *, stop: float, objetivo: float,
+             api_key: str, secret: str, modo: str,
+             contrato_: dict[str, Any] | None = None,
+             base: str = BASE_PRUEBA) -> list[dict[str, Any]]:
+    """Deja el stop y el objetivo PUESTOS EN EL EXCHANGE.
+
+    ==================================================================
+    ESTO ES LO QUE HACE QUE APAGAR LA APLICACION NO DESPROTEJA NADA.
+    ==================================================================
+
+    Un bot que vigila su propio stop deja de proteger en el momento en que deja
+    de correr — que es justo cuando más falta hace: se cortó la luz, se cerró el
+    programa, se suspendió la laptop. Con las órdenes puestas del lado del
+    exchange, apagar la aplicación significa que no entra en operaciones nuevas,
+    no que la abierta quede a la deriva.
+
+    Son DOS ORDENES SEPARADAS y no parámetros de la de entrada: en futuros de
+    Binance el stop y el objetivo se mandan como `STOP_MARKET` y
+    `TAKE_PROFIT_MARKET` aparte.
+
+    `closePosition=true` cierra la posición ENTERA al dispararse, y por eso NO
+    lleva cantidad —la documentación dice que no se puede usar con `quantity` ni
+    con `reduceOnly`—. Es lo que se quiere: si el stop cerrara sólo una parte,
+    quedaría la mitad de la posición sin protección y nadie lo miraría.
+
+    `workingType=MARK_PRICE` y no el precio del contrato: el precio de marca es
+    el que Binance usa para liquidar, así que es contra el que conviene medir el
+    stop. Con el precio del contrato, una mecha en un libro fino puede disparar
+    un stop que la liquidación no habría tocado.
+
+    VA POR `/fapi/v1/algoOrder` Y NO POR DONDE VA LA ENTRADA. Desde el cambio
+    de Binance del 2025-12-09 las condicionales viven en el Algo Service, y el
+    endpoint de siempre las rechaza con -4120. Ver el encabezado del módulo.
+
+    Y EL PRECIO SE LLAMA `triggerPrice`, NO `stopPrice`. Es el mismo número con
+    otro nombre: mandarlo con el viejo lo ignora y la orden queda sin disparo.
+
+    EL PRECIO SE AJUSTA AL TICK antes de mandarlo. Un stop calculado como un
+    porcentaje del precio casi nunca cae en un múltiplo del tick, y Binance lo
+    rechaza con -1111 — que habla de precisión y no dice cuál de los dos
+    límites se pasó. Ver `_a_tick`.
+    """
+    c = contrato_ or contrato(simbolo, base)
+    salidas = []
+    contraria = "SELL" if lado > 0 else "BUY"
+    for tipo, precio in (("STOP_MARKET", stop),
+                         ("TAKE_PROFIT_MARKET", objetivo)):
+        if not precio or precio != precio:      # None o NaN
+            continue
+        p: dict[str, Any] = {
+            "algoType": "CONDITIONAL",
+            "symbol": simbolo, "side": contraria, "type": tipo,
+            "triggerPrice": _a_tick(precio, c), "closePosition": True,
+            "workingType": "MARK_PRICE", "priceProtect": True,
+        }
+        if modo == "cobertura":
+            p["positionSide"] = "LONG" if lado > 0 else "SHORT"
+        salidas.append(_pedir("/fapi/v1/algoOrder", p, api_key=api_key,
+                              secret=secret, metodo="POST", base=base))
+    return salidas
 
 
 def cerrar(simbolo: str, lado_abierto: int, cantidad: float, *,
@@ -325,10 +579,52 @@ def cerrar(simbolo: str, lado_abierto: int, cantidad: float, *,
 
     p: dict[str, Any] = {"symbol": simbolo, "type": "MARKET", "quantity": qty,
                          # la contraria a la que abrió
-                         "side": "SELL" if lado_abierto > 0 else "BUY"}
+                         "side": "SELL" if lado_abierto > 0 else "BUY",
+                         "newOrderRespType": "RESULT"}
     if modo == "cobertura":
         p["positionSide"] = "LONG" if lado_abierto > 0 else "SHORT"
     else:
         p["reduceOnly"] = True
     return _pedir("/fapi/v1/order", p, api_key=api_key, secret=secret,
                   metodo="POST", base=base)
+
+
+# ------------------------------------------------------------------- velas
+
+def velas(simbolo: str, intervalo: str = "1h", limite: int = 500,
+          base: str = BASE_REAL) -> "Any":
+    """Las últimas `limite` velas cerradas.
+
+    ==================================================================
+    OJO CON LA BASE: por omisión son las de PRODUCCION, incluso cuando
+    se está operando contra el testnet.
+    ==================================================================
+
+    MEDIDO el 28/8/2026 en BTCUSDT, la misma vela horaria:
+
+        testnet   O=77.802,5  C=77.877,0  volumen 73.438
+        real      O=77.755,8  C=77.877,1  volumen  9.244
+
+    El precio se sigue casi exacto —los cierres coinciden al décimo— pero el
+    VOLUMEN difiere ocho veces, porque el del testnet sale de operaciones
+    falsas. Y la biblioteca tiene dos indicadores de volumen: una estrategia
+    que use alguno decidiría distinto en pruebas que en real, y esa diferencia
+    no aparece como error sino como un bot que "en testnet andaba".
+
+    Se pide a producción para que la decisión sea la misma en los dos lados.
+    Lo que cambia entre entornos es dónde se ejecuta la orden, no qué se ve.
+    """
+    import pandas as pd
+
+    d = _pedir("/fapi/v1/klines",
+               {"symbol": simbolo, "interval": intervalo, "limit": int(limite)},
+               base=base)
+    if not d:
+        raise BinanceError(f"Binance no devolvió velas de {simbolo} {intervalo}.")
+    df = pd.DataFrame(d, columns=[
+        "time", "open", "high", "low", "close", "volume", "cierra", "quote",
+        "trades", "taker_base", "taker_quote", "ignorar"])
+    df["time"] = pd.to_datetime(df["time"], unit="ms", utc=True)
+    for c in ("open", "high", "low", "close", "volume"):
+        df[c] = df[c].astype("float64")
+    return df.set_index("time")[["open", "high", "low", "close", "volume"]]
