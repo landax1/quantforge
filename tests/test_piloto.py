@@ -42,8 +42,8 @@ class _Exchange:
         return Posicion(self._pos, 0.01 if self._pos else 0.0, 78_000.0)
 
     def contrato(self, simbolo):
-        return {"quantityPrecision": 4, "tradeMinQuantity": 0.0001,
-                "tradeMinUSDT": 2.0}
+        return {"decimales_cantidad": 4, "minimo": 0.0001,
+                "minimo_nocional": 2.0}
 
     def abrir(self, simbolo, lado, cantidad, stop, objetivo):
         self.ordenes.append(("abrir", lado, cantidad))

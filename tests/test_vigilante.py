@@ -161,8 +161,8 @@ def test_el_estado_del_bot_trae_el_veredicto_del_vigilante():
                                  "close": c, "volume": np.full(n, 10.0)}, index=t)
         def capital(self): return 10_000.0
         def posicion(self, s): return Posicion()
-        def contrato(self, s): return {"quantityPrecision": 4,
-                                       "tradeMinQuantity": 0.0001}
+        def contrato(self, s): return {"decimales_cantidad": 4,
+                                       "minimo": 0.0001}
         def abrir(self, *a): return {}
         def cerrar(self, *a): return {}
 

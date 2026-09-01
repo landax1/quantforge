@@ -20,8 +20,8 @@ from botiquant.vivo.guardas import Estado, anotar_resultado, revisar
 from botiquant.vivo.nucleo import ABRIR_CORTO, ABRIR_LARGO, CERRAR, NADA, Decision
 
 VELA = pd.Timestamp("2026-08-26 20:00", tz="UTC")
-CONTRATO = {"quantityPrecision": 4, "tradeMinQuantity": 0.0001,
-            "tradeMinUSDT": 2.0}
+CONTRATO = {"decimales_cantidad": 4, "minimo": 0.0001,
+            "minimo_nocional": 2.0}
 PRECIO = 78_000.0
 
 

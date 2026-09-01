@@ -317,8 +317,8 @@ def _adaptador(falso, cobertura: bool):
     llamadas, cuerpo = falso
     a = BingX("k", "s")
     a._cobertura = cobertura
-    a._contratos["BTC-USDT"] = {"quantityPrecision": 4,
-                                "tradeMinQuantity": 0.0001}
+    a._contratos["BTC-USDT"] = {"decimales_cantidad": 4,
+                                "minimo": 0.0001}
     cuerpo["valor"] = _respuesta({"orderId": 1})
     return a, llamadas
 
