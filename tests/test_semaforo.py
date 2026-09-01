@@ -196,3 +196,59 @@ def test_el_estado_del_bot_trae_el_semaforo():
     assert e["semaforo"]["estado"] == AMARILLO
     assert e["semaforo"]["pf_base"] == 1.4
     assert e["semaforo"]["recomendacion"]
+
+
+# ============================ la memoria: sin esto no se retira nada
+
+from botiquant.vivo.semaforo import Veredicto, actualizar, NARANJA, VERDE  # noqa: E402
+
+
+def _v(color, cerradas=40):
+    return Veredicto(color, "motivo", "", cerradas=cerradas)
+
+
+def test_el_naranja_SUMA_una_vuelta():
+    """Es la única que puede terminar en retiro. Un veredicto suelto no
+    alcanza para decidir: el ciclo espera una racha, y alguien tiene que
+    contarla."""
+    v = actualizar(None, _v(NARANJA))
+    assert v["vueltas_naranja"] == 1
+    v = actualizar(v, _v(NARANJA))
+    assert v["vueltas_naranja"] == 2
+
+
+def test_el_verde_RESETEA():
+    """Volvió a rendir: la racha anterior ya no describe a esta estrategia."""
+    v = {"vueltas_naranja": 5}
+    assert actualizar(v, _v(VERDE))["vueltas_naranja"] == 0
+
+
+def test_el_amarillo_NI_SUMA_NI_BORRA():
+    """El semáforo dice de sí mismo que un amarillo "puede ser mala suerte
+    todavía": sumarlo retiraría por ruido, y borrarlo dejaría que una caída
+    real se limpie sola cada vez que rebota un poco."""
+    v = actualizar({"vueltas_naranja": 2}, _v(AMARILLO))
+    assert v["vueltas_naranja"] == 2
+
+
+def test_el_callado_tampoco_borra():
+    """No hay con qué opinar. No opinar no es una opinión buena, así que no
+    puede limpiar una racha que ya se había ganado."""
+    v = actualizar({"vueltas_naranja": 2}, _v(CALLADO, cerradas=3))
+    assert v["vueltas_naranja"] == 2
+
+
+def test_solo_el_verde_borra_y_hace_falta_DEMOSTRARLO():
+    """Una que cae, rebota a amarillo y vuelve a caer NO limpia la cuenta.
+    Para borrarla hay que volver a rendir, no simplemente dejar de estar mal.
+    """
+    v = None
+    for color in (NARANJA, AMARILLO, NARANJA, CALLADO, NARANJA):
+        v = actualizar(v, _v(color))
+    assert v["vueltas_naranja"] == 3, "un rebote a amarillo le limpió la racha"
+
+
+def test_guarda_lo_que_hace_falta_para_mostrarlo():
+    v = actualizar(None, _v(NARANJA), cuando="2026-09-01")
+    assert v["color"] == NARANJA and v["cerradas"] == 40
+    assert v["actualizado"] == "2026-09-01"
