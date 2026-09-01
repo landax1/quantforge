@@ -733,10 +733,21 @@ function varaAplicada(snap) {
     partes.push(`${esc(cr.label.replace(/ [≥≤]$/, ""))} ${cr.label.slice(-1)}
                  <b>${fmtNum(v, cr.step < 1 ? 2 : 0)}${cr.unit}</b>`);
   }
+  /* LOS BLOQUES QUE NO SE PUDIERON USAR, dichos acá y no callados.
+
+     El funding lo cobran los perpetuos; un CFD no lo tiene. Pedirlo igual es
+     legítimo —"todos los bloques" es una elección razonable— pero si se
+     descartan sin avisar, la corrida sale con menos herramientas de las que
+     uno cree que pidió y no hay forma de notarlo. */
+  const fuera = snap.sin_funding || [];
+  const nota = fuera.length
+    ? `<div class="vara floja">${esc(t("vara.sin_funding", { n: fuera.length }))}</div>`
+    : "";
+
   if (partes.length > 1) {
-    return `<div class="vara">${t("vara.required")}: ${partes.join(" · ")}</div>`;
+    return `<div class="vara">${t("vara.required")}: ${partes.join(" · ")}</div>${nota}`;
   }
-  return `<div class="vara floja">${t("vara.none", { unico: partes[0] })}</div>`;
+  return `<div class="vara floja">${t("vara.none", { unico: partes[0] })}</div>${nota}`;
 }
 
 function acceptPayload() {

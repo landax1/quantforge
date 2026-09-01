@@ -308,6 +308,54 @@ class VolumeSMA(Indicator):
 
 
 @register
+class FundingPct(Indicator):
+    """Dónde está el funding de ahora dentro de su propio rango reciente, 0..100.
+
+    ==================================================================
+    VA NORMALIZADO, Y NO ES UN CAPRICHO: UN UMBRAL CRUDO NO SIGNIFICA
+    LO MISMO EN DOS MONEDAS.
+    ==================================================================
+
+    MEDIDO el 1/9/2026 sobre los últimos 1000 cobros de cada una, la tasa media
+    anualizada va de +16,62% en Monero a -2,21% en Zcash. O sea que no sólo
+    cambia de tamaño: CAMBIA DE SIGNO. Un bloque que dijera "funding mayor que
+    0,01%" estaría casi siempre encendido en Monero y casi nunca en Zcash, y la
+    misma regla minada en dos pares serían dos reglas distintas sin que nada lo
+    dijera. El percentil arregla eso: "está en el 90% más alto de los últimos
+    noventa días" significa lo mismo en cualquier moneda, que es la regla que
+    ya cumplen los demás filtros de contexto —ATR, porcentaje, día—.
+
+    QUE MIDE, Y POR QUE VALE LA PENA. El funding lo paga el lado que está de
+    más: alto y positivo son largos amontonados pagándole a los cortos. Es
+    información de POSICIONAMIENTO y no de precio — no está adentro de la vela
+    — así que puede decidir distinto de todo lo demás. Es justo lo que le falta
+    a un portafolio armado sólo con medias móviles: decisiones que no se muevan
+    todas juntas.
+
+    NO MIRA EL FUTURO: la ventana termina en la vela que se está evaluando.
+    """
+
+    name = "FundingPct"
+    label = "Funding percentile"
+    category = "funding"
+    params = (ParamDef("period", 90, 20, 400, 10),)
+
+    @classmethod
+    def compute(cls, df: pd.DataFrame, **p: float) -> dict[str, np.ndarray]:
+        n = int(p["period"])
+        if "funding" not in df.columns:
+            # SIN LA COLUMNA NO SE INVENTA UN VALOR. Devolver ceros haría que
+            # el filtro comparara contra un número real y decidiera; con NaN la
+            # condición es falsa siempre, que es lo honesto — no se puede
+            # filtrar por algo que no se midió. `mine` corta antes y con un
+            # mensaje; esto es la red de abajo.
+            return {"value": np.full(len(df), np.nan)}
+        f = df["funding"].astype("float64")
+        pos = f.rolling(n, min_periods=max(5, n // 4)).rank(pct=True)
+        return {"value": _arr(pos * 100.0)}
+
+
+@register
 class Momentum(Indicator):
     name = "Momentum"
     label = "Momentum (ROC %)"

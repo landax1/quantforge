@@ -359,7 +359,35 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             # pedir un timeframe más fino que el del dataset: 400 y no 500,
             # porque es una elección corregible y el texto explica cómo
             raise HTTPException(400, str(exc)) from exc
-        return _slice_dates(df, payload)
+        df = _slice_dates(df, payload)
+
+        # EL FUNDING TAMBIEN COMO COLUMNA, no sólo como costo.
+        #
+        # Ya viajaba al motor adentro de `settings` para que la posición
+        # abierta lo pague. Pero ahí es un costo, y la biblioteca no lo puede
+        # MIRAR: no hay forma de escribir "sólo operá cuando los largos están
+        # amontonados" si el dato no está en el dataframe.
+        #
+        # SE ALINEA HACIA ATRAS Y NUNCA HACIA ADELANTE. Cada vela recibe la
+        # tasa del último cobro anterior o igual a ella; la del cobro que
+        # todavía no pasó no existe para esa vela. Un `ffill` es exactamente
+        # eso, y cualquier otra cosa —interpolar, rellenar hacia atrás— le
+        # daría a la búsqueda un dato que en ese momento nadie tenía.
+        #
+        # Un CFD no tiene archivo de funding y la columna no aparece. Eso es
+        # deliberado: `mine` corta con un mensaje si le piden un bloque de
+        # funding sobre un histórico que no lo trae, en vez de minar con una
+        # condición que nunca es cierta.
+        try:
+            tasas = store.funding(ds_id)
+            if tasas is not None and len(tasas):
+                df = df.copy()
+                df["funding"] = tasas.reindex(df.index, method="ffill")
+        except Exception:                                      # noqa: BLE001
+            # Que falte o esté ilegible el archivo de funding NO puede impedir
+            # minar por precio, que es lo que hace la mayoría.
+            pass
+        return df
 
     def _spec(payload: dict[str, Any]) -> StrategySpec:
         raw = payload.get("spec")

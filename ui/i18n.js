@@ -499,6 +499,11 @@ const STR = {
   "run.locked": [
     "Settings are frozen while it searches. Changing the criteria while looking at the results would be choosing them to fit this particular history. <b>Stop</b> to adjust and search again.",
     "Configuración congelada mientras busca. Cambiar los criterios viendo los resultados sería elegirlos a medida del histórico. <b>Detené</b> para ajustar y volver a minar."],
+  /* Cuando el histórico no tiene funding. Se dice el número y no los nombres:
+     lo que importa es que la corrida usó menos bloques de los pedidos. */
+  "vara.sin_funding": [
+    "{n} funding block(s) were left out: this instrument has no funding — perpetuals charge it, a CFD does not.",
+    "Quedaron afuera {n} bloque(s) de funding: este instrumento no lo tiene — lo cobran los perpetuos, un CFD no."],
   "vara.required": ["Required", "Se exigió"],
   "vara.min_trades": ["at least <b>{n}</b> trades", "mínimo <b>{n}</b> operaciones"],
   "vara.none": [

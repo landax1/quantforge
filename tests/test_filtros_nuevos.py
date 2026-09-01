@@ -39,10 +39,17 @@ def df():
                          "close": close, "volume": 1000.0}, index=idx)
 
 
-def test_ahora_hay_diez_filtros():
+def test_ahora_hay_doce_filtros():
+    """Diez de contexto y precio, más los dos de funding.
+
+    El número está clavado a propósito: cada filtro nuevo multiplica el espacio
+    de búsqueda —los dos de funding lo llevaron de 245 a 419 millones— y eso no
+    puede pasar sin que alguien lo mire.
+    """
     ids = {f.id for f in filters()}
-    assert len(ids) == 10
+    assert len(ids) == 12
     assert set(NUEVOS) <= ids
+    assert {"funding_alto_filter", "funding_bajo_filter"} <= ids
 
 
 @pytest.mark.parametrize("fid", NUEVOS)
