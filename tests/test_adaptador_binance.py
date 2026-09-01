@@ -17,7 +17,7 @@ import pandas as pd
 import pytest
 
 from botiquant.data import binance_trade as bt
-from botiquant.vivo.adaptador import Binance, Posicion
+from botiquant.vivo.adaptador import Binance, Posicion, a_simbolo
 
 _CONTRATO = {"simbolo": "BTCUSDT", "minimo": 0.0001, "paso": 0.0001,
              "decimales_cantidad": 4, "decimales_precio": 2,
@@ -217,3 +217,51 @@ def test_cerrar_sin_posicion_no_manda_nada(monkeypatch):
     monkeypatch.setattr(bt, "cerrar", lambda *a, **k: llamadas.append("x"))
     r = Binance("K", "S").cerrar("BTCUSDT", Posicion())
     assert not llamadas and "sin_efecto" in r
+
+
+# ================================== el mismo par, escrito como cada casa
+
+def test_el_simbolo_del_BOT_GUARDADO_funciona_en_Binance(monkeypatch):
+    """EL AGUJERO QUE ABRIA ELEGIR EXCHANGE SIN TOCAR EL DOCUMENTO DEL BOT.
+
+    El archivo del bot se escribió cuando había un solo exchange, así que lleva
+    el símbolo con guion —BTC-USDT— adentro. Elegir Binance le pedía ese
+    símbolo a Binance, y Binance no contesta "formato inválido": contesta que
+    ese símbolo no existe, que manda a revisar el catálogo cuando el par existe
+    perfectamente.
+    """
+    vistos = []
+    monkeypatch.setattr(bt, "velas",
+                        lambda s, i, l, base=None: vistos.append(s) or _velas())
+    monkeypatch.setattr(bt, "contrato",
+                        lambda s, b=None: vistos.append(s) or dict(_CONTRATO))
+    monkeypatch.setattr(bt, "posicion",
+                        lambda s, *a, **k: vistos.append(s) or
+                        {"lado": 0, "cantidad": 0.0, "precio_entrada": float("nan")})
+
+    a = Binance("K", "S")
+    a.velas("BTC-USDT", "1h", 5)
+    a.contrato("BTC-USDT")
+    a.posicion("BTC-USDT")
+    assert vistos == ["BTCUSDT", "BTCUSDT", "BTCUSDT"]
+
+
+def test_se_traduce_EN_LOS_DOS_SENTIDOS():
+    """Cada casa recibe lo suyo, venga como venga el símbolo guardado."""
+    for entrada in ("BTCUSDT", "BTC-USDT", "btc-usdt"):
+        assert a_simbolo(entrada, con_guion=True) == "BTC-USDT"
+        assert a_simbolo(entrada, con_guion=False) == "BTCUSDT"
+
+
+def test_las_cotizaciones_de_CUATRO_letras_no_se_parten_mal():
+    """BTCUSDC partido por longitud fija da "BTCU" + "SDC", que es un símbolo
+    que no existe. Y BTCUSD sí existe: son tres letras."""
+    assert a_simbolo("BTCUSDC", con_guion=True) == "BTC-USDC"
+    assert a_simbolo("BTCUSD", con_guion=True) == "BTC-USD"
+
+
+def test_lo_que_no_reconoce_pasa_TAL_CUAL():
+    """No adivina. Inventar un guion en el lugar equivocado daría un símbolo
+    que existe y es otro; mejor que falle del lado del exchange con su propio
+    mensaje."""
+    assert a_simbolo("RAROUNO", con_guion=True) == "RAROUNO"

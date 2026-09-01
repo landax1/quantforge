@@ -48,6 +48,38 @@ BASE_PRACTICA = "https://open-api-vst.bingx.com"
 BASE_REAL = "https://open-api.bingx.com"
 
 
+def a_simbolo(simbolo: str, *, con_guion: bool) -> str:
+    """El mismo par, escrito como lo escribe cada casa.
+
+    ==================================================================
+    BINGX PIDE BTC-USDT Y BINANCE PIDE BTCUSDT, Y EL EQUIVOCADO NO
+    DEVUELVE "FORMATO INVALIDO": DEVUELVE "ESE SIMBOLO NO EXISTE".
+    ==================================================================
+
+    Que es el peor mensaje posible, porque manda a revisar el catálogo cuando
+    el par existe perfectamente y lo único que está mal es el guion.
+
+    SE TRADUCE ACA Y NO AL GUARDAR EL BOT. El archivo del bot se escribió
+    cuando había un solo exchange, así que lleva el símbolo con guion adentro;
+    traducir al guardar arreglaría los bots nuevos y dejaría rotos todos los
+    que ya existen. Traducir acá los arregla a todos, incluidos los que alguien
+    guardó hace meses.
+
+    NO ADIVINA. La cuenta base/cotización no se puede partir por longitud fija
+    —hay cotizaciones de tres letras y de cuatro, y BTCUSDC partido a lo bruto
+    da "BTCU" + "SDC"— así que si no reconoce la cotización devuelve el símbolo
+    tal cual y que falle del lado del exchange con su propio mensaje. Inventar
+    un guion en el lugar equivocado daría un símbolo que existe y es otro.
+    """
+    s = str(simbolo or "").upper().replace("-", "")
+    if not con_guion:
+        return s
+    for cot in ("USDT", "USDC", "BUSD", "USD"):
+        if s.endswith(cot) and len(s) > len(cot):
+            return f"{s[:-len(cot)]}-{cot}"
+    return simbolo
+
+
 @dataclass
 class Posicion:
     """Lo que el exchange dice que hay abierto. No lo que el bot recuerda."""
@@ -110,14 +142,19 @@ class BingX:
             bingx.BASE = anterior
 
     # ------------------------------------------------------------- lectura
+    def _simbolo(self, simbolo: str) -> str:
+        """BingX escribe BTC-USDT. Ver `a_simbolo`."""
+        return a_simbolo(simbolo, con_guion=True)
+
     def velas(self, simbolo: str, intervalo: str, limite: int = 500) -> pd.DataFrame:
-        return self._con_base(bingx.velas, simbolo, intervalo, limite)
+        return self._con_base(bingx.velas, self._simbolo(simbolo), intervalo, limite)
 
     def capital(self) -> float:
         s = self._con_base(bingx.saldo, self.api_key, self.secret)
         return float(s.get("disponible") or s.get("saldo") or 0.0)
 
     def posicion(self, simbolo: str) -> Posicion:
+        simbolo = self._simbolo(simbolo)
         for p in self._con_base(bingx.posiciones, self.api_key, self.secret, simbolo):
             cant = abs(float(p["cantidad"]))
             if cant <= 1e-12:
@@ -153,6 +190,7 @@ class BingX:
         los datos. Con un segundo exchange, o el de más abajo finge los nombres
         del primero, o cada capa aprende los dos. Ninguna de las dos cosas.
         """
+        simbolo = self._simbolo(simbolo)
         if simbolo not in self._contratos:
             c = self._con_base(bingx.contrato, simbolo)
             self._contratos[simbolo] = {
@@ -190,6 +228,7 @@ class BingX:
         proteger nada en el momento en que deja de correr, que es justo cuando
         más falta hace.
         """
+        simbolo = self._simbolo(simbolo)
         cant = self.redondear(simbolo, cantidad)
         if cant <= 0:
             raise bingx.BingXError(
@@ -225,6 +264,7 @@ class BingX:
         """
         if not posicion.abierta:
             return {"sin_efecto": "no hay posición abierta"}
+        simbolo = self._simbolo(simbolo)
         params = {
             "symbol": simbolo,
             "side": "SELL" if posicion.lado > 0 else "BUY",
@@ -283,17 +323,21 @@ class Binance:
         self._modo: str | None = None
 
     # ------------------------------------------------------------- lectura
+    def _simbolo(self, simbolo: str) -> str:
+        """Binance escribe BTCUSDT, sin guion. Ver `a_simbolo`."""
+        return a_simbolo(simbolo, con_guion=False)
+
     def velas(self, simbolo: str, intervalo: str, limite: int = 500) -> pd.DataFrame:
         # A PRODUCCION, a propósito. Ver el encabezado de la clase.
-        return binance_trade.velas(simbolo, intervalo, limite,
+        return binance_trade.velas(self._simbolo(simbolo), intervalo, limite,
                                    base=binance_trade.BASE_REAL)
 
     def capital(self) -> float:
         return binance_trade.saldo(self.api_key, self.secret, base=self.base)
 
     def posicion(self, simbolo: str) -> Posicion:
-        p = binance_trade.posicion(simbolo, self.api_key, self.secret,
-                                   base=self.base)
+        p = binance_trade.posicion(self._simbolo(simbolo), self.api_key,
+                                   self.secret, base=self.base)
         if not p["lado"]:
             return Posicion()
         return Posicion(p["lado"], p["cantidad"], p["precio_entrada"])
@@ -312,6 +356,7 @@ class Binance:
         traducción que hacer — que es justamente la señal de que los nombres
         neutros eran los correctos y no un capricho.
         """
+        simbolo = self._simbolo(simbolo)
         if simbolo not in self._contratos:
             self._contratos[simbolo] = binance_trade.contrato(simbolo, self.base)
         return self._contratos[simbolo]
@@ -343,6 +388,7 @@ class Binance:
         """
         c = self.contrato(simbolo)
         precio = float(self.velas(simbolo, "1m", 1)["close"].iloc[-1])
+        simbolo = self._simbolo(simbolo)
         orden = binance_trade.abrir(
             simbolo, lado, cantidad, precio=precio, api_key=self.api_key,
             secret=self.secret, modo=self.modo(), contrato_=c, base=self.base)
@@ -395,10 +441,12 @@ class Binance:
         """
         if not posicion.abierta:
             return {"sin_efecto": "no hay posición abierta"}
+        contrato_ = self.contrato(simbolo)
+        simbolo = self._simbolo(simbolo)
         r = binance_trade.cerrar(
             simbolo, posicion.lado, posicion.cantidad, api_key=self.api_key,
             secret=self.secret, modo=self.modo(),
-            contrato_=self.contrato(simbolo), base=self.base)
+            contrato_=contrato_, base=self.base)
         try:
             binance_trade.cancelar_todo(simbolo, self.api_key, self.secret,
                                         base=self.base)
