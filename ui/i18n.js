@@ -1342,8 +1342,11 @@ const STR = {
   "ex.paso_posiciones": ["Open positions", "Posiciones abiertas"],
   "bot.sin_cripto": ["No crypto strategy saved yet",
                      "Todavía no hay ninguna estrategia de cripto guardada"],
-  "bot.sin_cripto_sub": ["A crypto exchange cannot trade indices or metals. Mine on BTCUSDT or ETHUSDT and save one, and it will show up here.",
-                         "Un exchange de cripto no opera índices ni metales. Miná sobre BTCUSDT o ETHUSDT y guardá una, y va a aparecer acá."],
+  /* NO ENUMERA LOS PARES. Decía "BTCUSDT o ETHUSDT" cuando eran los dos
+     únicos, y con trece quedó mintiendo: mandaba a minar sobre dos de trece.
+     Un texto que lista opciones envejece cada vez que se agrega una. */
+  "bot.sin_cripto_sub": ["A crypto exchange cannot trade indices or metals. Mine on one of the perpetuals and save it, and it will show up here.",
+                         "Un exchange de cripto no opera índices ni metales. Miná sobre alguno de los perpetuos y guardala, y va a aparecer acá."],
   "bot.acc_nada": ["waited", "esperó"],
   "bot.acc_largo": ["opened long", "abrió largo"],
   "bot.acc_corto": ["opened short", "abrió corto"],

@@ -3215,6 +3215,13 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
    el estado importa mas que el contenido: hay que poder saber de un vistazo,
    desde lejos, si hay algo operando con plata. */
 .bot-card { margin-top: 16px; }
+
+/* CADA VUELO SEPARADO DEL SIGUIENTE. Con varios bots corridos uno debajo del
+   otro sin nada en medio, el "Apagar" de uno parece el del otro — y apagar el
+   que no era es el error caro de esta pantalla. Una línea y aire alcanzan:
+   una tarjeta adentro de otra tarjeta agrega un borde que no significa nada. */
+.bot-vuelo { padding: 12px 0; }
+.bot-vuelo + .bot-vuelo { border-top: 1px solid var(--border); }
 .bot-on { border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 
 .bot-linea { display: flex; align-items: center; justify-content: space-between;
