@@ -49,14 +49,16 @@ def client(tmp_path):
     # Un bot que quede vivo entre pruebas las contamina todas: la siguiente
     # encuentra el piloto ocupado y falla por un motivo que no es el suyo.
     PILOTO.apagar(espera=5.0)
-    PILOTO.bot = None
+    PILOTO.vuelos.clear()
 
 
 # ------------------------------------------------------------- apagado
 
 def test_arranca_apagado(client):
     """Nada opera solo. Encender es siempre una decisión de alguien."""
-    assert client.get("/api/bot").json() == {"encendido": False, "hay_bot": False}
+    e = client.get("/api/bot").json()
+    assert e["encendido"] is False and e["hay_bot"] is False
+    assert e["vuelos"] == [] and e["porcion_libre"] == 1.0
 
 
 def test_apagar_lo_que_no_esta_encendido_no_revienta(client):
@@ -122,7 +124,8 @@ def test_el_simulacro_NO_necesita_ninguna_clave(client):
     assert r.status_code == 200, r.text
     e = r.json()
     assert e["encendido"] is True
-    assert e["manda_ordenes"] is False, "el simulacro no puede mandar órdenes"
+    assert e["vuelos"][0]["manda_ordenes"] is False, (
+        "el simulacro no puede mandar órdenes")
     client.post("/api/bot/apagar")
 
 
@@ -182,7 +185,7 @@ def test_el_tope_de_perdida_llega_hasta_el_bot(client):
     r = client.post("/api/bot/encender", json={
         "bot": _doc(), "modo": "simulacro", "perdida_maxima": 250.0})
     assert r.status_code == 200, r.text
-    assert PILOTO.bot.perdida_maxima_diaria == 250.0
+    assert next(iter(PILOTO.vuelos.values())).bot.perdida_maxima_diaria == 250.0
     client.post("/api/bot/apagar")
 
 
@@ -191,7 +194,7 @@ def test_sin_tope_declarado_queda_en_cero(client):
     su dueno no pidio detener, y a la hora equivocada."""
     from botiquant.vivo.piloto import PILOTO
     client.post("/api/bot/encender", json={"bot": _doc(), "modo": "simulacro"})
-    assert PILOTO.bot.perdida_maxima_diaria == 0.0
+    assert next(iter(PILOTO.vuelos.values())).bot.perdida_maxima_diaria == 0.0
     client.post("/api/bot/apagar")
 
 
@@ -320,3 +323,33 @@ def test_el_enlace_de_la_clave_es_el_de_DEMO(client, monkeypatch):
     client.post("/api/abrir-enlace", json={"nombre": "binance_clave"})
     client.post("/api/abrir-enlace", json={"nombre": "binance_demo"})
     assert all(u.startswith("https://demo.binance.com/") for u in abiertas)
+
+
+# ==================================== la porcion, desde el endpoint
+
+def test_la_porcion_llega_hasta_el_bot(client):
+    """Sin esto cada bot se cree dueño del 100% de la cuenta."""
+    from botiquant.vivo.piloto import PILOTO
+    r = client.post("/api/bot/encender",
+                    json={"bot": _con_respaldo(), "modo": "simulacro",
+                          "porcion": 0.25})
+    assert r.status_code == 200
+    assert next(iter(PILOTO.vuelos.values())).bot.porcion == 0.25
+    assert r.json()["porcion_usada"] == 0.25
+
+
+def test_sin_porcion_es_la_cuenta_entera(client):
+    """Compatibilidad: un bot de antes no puede achicarse por actualizar."""
+    from botiquant.vivo.piloto import PILOTO
+    client.post("/api/bot/encender",
+                json={"bot": _con_respaldo(), "modo": "simulacro"})
+    assert next(iter(PILOTO.vuelos.values())).bot.porcion == 1.0
+
+
+def test_una_porcion_imposible_se_rechaza(client):
+    """Con 0 el bot dimensionaría sobre cero, no abriría nunca, y parecería
+    que la estrategia no da señales."""
+    r = client.post("/api/bot/encender",
+                    json={"bot": _con_respaldo(), "modo": "simulacro",
+                          "porcion": 0})
+    assert r.status_code == 400

@@ -1990,6 +1990,48 @@ function rotuloModo(modo) {
   return t("bot.modo_simulacro");
 }
 
+
+/* UN BOT EN EL AIRE. Cada uno con su estado y sus botones: apagar "el bot"
+   cuando hay cinco no significa nada, y un botón que apaga algo distinto de lo
+   que uno está mirando es peor que no tenerlo. */
+function tarjetaVuelo(v) {
+  const detenido = v.detenido || v.error;
+  return `
+  <div class="bot-vuelo${v.encendido ? " vivo" : ""}">
+    <div class="bot-linea">
+      <span><b>${esc(v.nombre || "—")}</b> · ${esc(v.simbolo || "")} ${esc(v.timeframe || "")}</span>
+      <span class="bot-modo bot-modo-${esc(v.modo || "")}">${esc(rotuloModo(v.modo))}</span>
+    </div>
+    <p class="help-note">${esc(t("bot.maneja", { pct: Math.round((v.porcion || 1) * 100) }))}</p>
+
+    ${(v.vigilante || {}).estado === "amarillo" ? `<div class="bot-alerta mt">
+      <span class="g-ic">${icono("alerta")}</span>
+      <span><b>${esc(t("bot.vig_titulo"))}</b> ${esc(v.vigilante.razon)}</span>
+    </div>` : ""}
+
+    ${detenido ? `<div class="bot-alerta mt">
+      <span class="g-ic">${icono("alerta")}</span>
+      <span>${esc(v.motivo_detencion || v.error || "")}</span>
+    </div>` : ""}
+
+    ${(v.registro || []).length ? `
+    <div class="bot-registro mt">
+      ${v.registro.slice(0, 5).map(f => `
+        <div class="bot-fila">
+          <span class="bot-hora">${esc(String(f.cuando || "").slice(11, 19))}</span>
+          <span class="bot-que">${esc(rotuloAccion(f.accion))}</span>
+          <span class="bot-det">${esc(f.bloqueado || f.error || f.motivo || "")}</span>
+        </div>`).join("")}
+    </div>` : ""}
+
+    ${v.encendido ? `
+    <div class="controls mt">
+      <button class="btn ghost" data-apagar="${esc(v.simbolo)}">${esc(t("bot.apagar"))}</button>
+      <button class="btn danger" data-panico="${esc(v.simbolo)}">${esc(t("bot.panico"))}</button>
+    </div>` : ""}
+  </div>`;
+}
+
 function panelBot(e, hayClave) {
   const on = e.encendido;
   /* SOLO las estrategias minadas sobre un perpetuo. Un exchange de cripto no
@@ -2000,7 +2042,13 @@ function panelBot(e, hayClave) {
     .filter(d => d.source === "binance").map(d => d.id));
   const operables = (S.saved || []).filter(
     x => cripto.has((x.meta || {}).dataset_id));
-  const detenido = e.detenido || e.error;
+  const vuelos = e.vuelos || [];
+  const libre = typeof e.porcion_libre === "number" ? e.porcion_libre : 1;
+  /* HAY LUGAR SI SOBRA CUPO Y SOBRA CUENTA. Ofrecer el formulario sin una de
+     las dos cosas es dejar que alguien arme un bot entero para que el servidor
+     lo rechace al final. */
+  const hayLugar = vuelos.filter(v => v.encendido).length < (e.maximo || 8)
+                   && libre > 0.001;
   return `
   <div class="card bot-card${on ? " bot-on" : ""}">
     <div class="ex-head">
@@ -2009,32 +2057,25 @@ function panelBot(e, hayClave) {
         <p class="help-note">${esc(t("bot.sub"))}</p>
       </div>
       <span class="ex-estado ${on ? "on" : ""}">${
-        esc(on ? t("bot.on") : (detenido ? t("bot.detenido") : t("bot.off")))}</span>
+        esc(on ? t("bot.n_operando", { n: e.cuantos }) : t("bot.off"))}</span>
     </div>
 
-    ${e.hay_bot ? `
-    <div class="bot-linea mt">
-      <span><b>${esc(e.nombre || "—")}</b> · ${esc(e.simbolo || "")} ${esc(e.timeframe || "")}</span>
-      <span class="bot-modo bot-modo-${esc(e.modo || "")}">${
-        esc(rotuloModo(e.modo))}</span>
-    </div>` : ""}
+    ${vuelos.map(tarjetaVuelo).join("")}
 
-    ${(e.vigilante || {}).estado === "amarillo" ? `<div class="bot-alerta mt">
-      <span class="g-ic">${icono("alerta")}</span>
-      <span><b>${esc(t("bot.vig_titulo"))}</b> ${esc(e.vigilante.razon)}</span>
+    ${vuelos.length ? `
+    <p class="help-note mt">${esc(t("bot.reparto", {
+      usado: Math.round((e.porcion_usada || 0) * 100),
+      libre: Math.round(libre * 100) }))}</p>
+    ${e.cuantos > 1 ? `<div class="controls mt">
+      <button class="btn ghost" id="bot-apagar-todos">${esc(t("bot.apagar_todos"))}</button>
     </div>` : ""}
+    <p class="help-note mt">${esc(t("bot.apagar_nota"))}</p>` : ""}
 
-    ${detenido ? `<div class="bot-alerta mt">
-      <span class="g-ic">${icono("alerta")}</span>
-      <span>${esc(e.motivo_detencion || e.error || "")}</span>
-    </div>` : ""}
-
-    ${on ? `
-    <div class="controls mt">
-      <button class="btn ghost" id="bot-apagar">${esc(t("bot.apagar"))}</button>
-      <button class="btn danger" id="bot-panico">${esc(t("bot.panico"))}</button>
-    </div>
-    <p class="help-note mt">${esc(t("bot.apagar_nota"))}</p>` : `
+    ${!hayLugar ? `
+    <div class="empty-state mt">
+      <b>${esc(t("bot.sin_lugar"))}</b>
+      <p class="mt">${esc(t("bot.sin_lugar_sub"))}</p>
+    </div>` : `
     ${!operables.length ? `
     <div class="empty-state mt">
       <b>${esc(t("bot.sin_cripto"))}</b>
@@ -2053,6 +2094,14 @@ function panelBot(e, hayClave) {
                placeholder="0"></label>
     </div>
     <p class="help-note">${esc(t("bot.tope_nota"))}</p>
+    <div class="fld-pair mt">
+      <!-- QUE PORCION DE LA CUENTA. Se ofrece lo que queda libre, no el 100%:
+           el default tiene que ser algo que entre. -->
+      <label class="fld"><span>${esc(t("bot.porcion"))}</span>
+        <input type="number" id="bot-porcion" min="1" max="100" step="1"
+               value="${Math.round(libre * 100)}"></label>
+    </div>
+    <p class="help-note">${esc(t("bot.porcion_nota"))}</p>
     <div class="fld-pair mt">
       <!-- EN QUE CASA. Se elige y no se deduce del simbolo: BingX pide
            BTC-USDT y Binance BTCUSDT, y adivinar por el guion convertiria un
@@ -2080,16 +2129,6 @@ function panelBot(e, hayClave) {
     <div class="controls mt">
       <button class="btn" id="bot-encender">${esc(t("bot.encender"))}</button>
     </div>`}`}
-
-    ${(e.registro || []).length ? `
-    <div class="bot-registro mt">
-      ${e.registro.slice(0, 8).map(f => `
-        <div class="bot-fila">
-          <span class="bot-hora">${esc(String(f.cuando || "").slice(11, 19))}</span>
-          <span class="bot-que">${esc(rotuloAccion(f.accion))}</span>
-          <span class="bot-det">${esc(f.bloqueado || f.error || f.motivo || "")}</span>
-        </div>`).join("")}
-    </div>` : ""}
   </div>`;
 }
 
@@ -2270,12 +2309,17 @@ const vistaBot = async (main, hayClave) => {
       });
       const tope = parseFloat(($("#bot-tope", main) || {}).value) || 0;
       const casa = ($("#bot-casa", main) || {}).value || "bingx";
+      const pct = parseFloat(($("#bot-porcion", main) || {}).value);
       await api.post("/api/bot/encender",
                      { bot: archivo, modo, exchange: casa,
                        /* SIN ESTO LO OPERADO NO SE GUARDA, y el semaforo no
                           puede opinar manana sobre lo de hoy: el registro del
                           bot vive en memoria y se pierde al cerrar la app. */
                        estrategia_id: id,
+                       /* En fracción y no en porcentaje: el backend razona
+                          sobre 0..1 y traducir en dos lugares es cómo se
+                          termina arriesgando cien veces lo pedido. */
+                       porcion: Number.isFinite(pct) && pct > 0 ? pct / 100 : 1,
                        perdida_maxima: tope });
       toast(t("bot.encendido"), "ok");
       await navigate("operar");
@@ -2283,7 +2327,33 @@ const vistaBot = async (main, hayClave) => {
     btnEncender.disabled = false;
   };
 
-  const btnApagar = $("#bot-apagar", main);
+  $$("[data-apagar]", main).forEach(b => {
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        await api.post("/api/bot/apagar", { simbolo: b.dataset.apagar });
+        toast(t("bot.apagado"), "ok");
+        await navigate("operar");
+      } catch (e) { toast(e.message, "err"); }
+      b.disabled = false;
+    };
+  });
+
+  $$("[data-panico]", main).forEach(b => {
+    b.onclick = async () => {
+      if (!confirm(t("bot.panico_seguro"))) return;
+      b.disabled = true;
+      try {
+        const r = await api.post("/api/bot/panico", { simbolo: b.dataset.panico });
+        toast(t("bot.panico_hecho"), "ok");
+        await navigate("operar");
+        if (r && r.cerrado) console.info("[bot] pánico:", r.cerrado);
+      } catch (e) { toast(e.message, "err"); }
+      b.disabled = false;
+    };
+  });
+
+  const btnApagar = $("#bot-apagar-todos", main);
   if (btnApagar) btnApagar.onclick = async () => {
     btnApagar.disabled = true;
     try {
@@ -2294,18 +2364,6 @@ const vistaBot = async (main, hayClave) => {
     btnApagar.disabled = false;
   };
 
-  const btnPanico = $("#bot-panico", main);
-  if (btnPanico) btnPanico.onclick = async () => {
-    if (!confirm(t("bot.panico_seguro"))) return;
-    btnPanico.disabled = true;
-    try {
-      const r = await api.post("/api/bot/panico", {});
-      toast(t("bot.panico_hecho"), "ok");
-      await navigate("operar");
-      if (r && r.cerrado) console.info("[bot] pánico:", r.cerrado);
-    } catch (e) { toast(e.message, "err"); }
-    btnPanico.disabled = false;
-  };
 };
 
 

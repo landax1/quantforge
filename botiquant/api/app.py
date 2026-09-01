@@ -2636,7 +2636,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 pass
 
         return {"estrategias": filas, "horas_desde_minado": horas,
-                "en_practica": 1 if PILOTO.encendido else 0}
+                # CUANTOS, no "hay o no hay": el ciclo usa este número para
+                # saber si le queda lugar, y con varios bots un booleano le
+                # decía que había lugar cuando ya estaban todos ocupados.
+                "en_practica": PILOTO.cuantos}
 
     def _orq():
         """El ciclo del proceso, armado la primera vez que se lo pide."""
@@ -2812,8 +2815,20 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             if sid and fila.get("accion") in ("abrir", "cerrar"):
                 db.anotar_operacion(sid, fila)
 
+        # QUE PORCION DE LA CUENTA MANEJA. Por omisión la entera, que es lo
+        # que corresponde con un solo bot y lo que hacían los que ya existían.
+        # `or 1.0` NO SIRVE ACA: un cero es falso en Python, así que
+        # `porcion: 0` se convertiría en 1.0 y el bot manejaría LA CUENTA
+        # ENTERA justo cuando alguien pidió que no manejara nada. Se compara
+        # contra None, que es lo único que significa "no lo mandaron".
+        crudo = (payload or {}).get("porcion")
         try:
-            bot = Bot(doc=doc, adaptador=adaptador, modo=modo,
+            porcion = 1.0 if crudo is None else float(crudo)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "La porción tiene que ser un número.")
+
+        try:
+            bot = Bot(doc=doc, adaptador=adaptador, modo=modo, porcion=porcion,
                       oyente=_anotar_afuera if sid else None,
                       perdida_maxima_diaria=float(payload.get("perdida_maxima") or 0.0))
         except ValueError as exc:
@@ -2825,18 +2840,25 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             raise HTTPException(409, str(exc)) from exc
 
     @app.post("/api/bot/apagar")
-    def bot_apagar() -> dict[str, Any]:
-        """Deja de operar. NO cierra la posición: para eso está el pánico."""
+    def bot_apagar(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Deja de operar. NO cierra la posición: para eso está el pánico.
+
+        Sin `simbolo` apaga TODOS. Es el botón de "me voy", y que exista uno
+        solo para todo evita el caso peor: apagar cuatro de cinco creyendo que
+        se apagaron los cinco.
+        """
         _solo_escritorio()
         from botiquant.vivo.piloto import PILOTO
-        return PILOTO.apagar()
+        simbolo = str((payload or {}).get("simbolo") or "").strip() or None
+        return PILOTO.apagar(simbolo)
 
     @app.post("/api/bot/panico")
-    def bot_panico() -> dict[str, Any]:
-        """Apaga y cierra lo que haya abierto."""
+    def bot_panico(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Apaga y cierra lo que haya abierto. Sin `simbolo`, todos."""
         _solo_escritorio()
         from botiquant.vivo.piloto import PILOTO
-        return PILOTO.panico()
+        simbolo = str((payload or {}).get("simbolo") or "").strip() or None
+        return PILOTO.panico(simbolo)
 
     #: Los enlaces que la aplicacion sabe abrir. SE PIDEN POR NOMBRE Y NO POR
     #: URL, que es mas fuerte que una lista blanca de direcciones: aunque

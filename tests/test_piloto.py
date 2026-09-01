@@ -86,6 +86,21 @@ def _bot(ex=None, modo=SIMULACRO, posicion_propia=False, porcion=1.0):
     return b
 
 
+def _montar(p, bot):
+    """Mete un bot en el piloto SIN arrancar el hilo: hay pruebas que
+    sólo quieren leer el estado y no necesitan que nada opere."""
+    from botiquant.vivo.piloto import Vuelo
+    p.vuelos[bot.simbolo] = Vuelo(bot=bot)
+
+
+def _uno(p):
+    """El estado del único vuelo. El piloto ahora sostiene varios, así que lo
+    de cada bot vive en `vuelos` y arriba queda sólo lo del conjunto."""
+    vuelos = p.estado()["vuelos"]
+    assert vuelos, "no hay ningún vuelo"
+    return vuelos[0]
+
+
 @pytest.fixture
 def piloto():
     p = Piloto()
@@ -98,14 +113,16 @@ def piloto():
 def test_apagado_de_entrada(piloto):
     """Nada arranca solo. Encender el bot es siempre una decisión de alguien."""
     assert piloto.encendido is False
-    assert piloto.estado() == {"encendido": False, "hay_bot": False}
+    e = piloto.estado()
+    assert e["encendido"] is False and e["hay_bot"] is False
+    assert e["vuelos"] == [] and e["porcion_libre"] == 1.0
 
 
 def test_encender_lo_pone_a_correr(piloto):
     piloto.encender(_bot())
     assert piloto.encendido is True
-    e = piloto.estado()
-    assert e["nombre"] == "S-042" and e["simbolo"] == "BTC-USDT"
+    v = _uno(piloto)
+    assert v["nombre"] == "S-042" and v["simbolo"] == "BTC-USDT"
 
 
 def test_no_se_pueden_encender_dos(piloto):
@@ -132,11 +149,11 @@ def test_da_al_menos_una_vuelta_apenas_arranca(piloto):
     # empezar la vuelta y la anotación pasa al terminarla, así que mirar el
     # contador corta en el medio y la prueba falla por carrera, no por bug.
     for _ in range(60):
-        if piloto.estado()["registro"]:
+        if _uno(piloto)["registro"]:
             break
         time.sleep(0.05)
     assert ex.vueltas >= 1
-    assert piloto.estado()["registro"], "la vuelta tendría que quedar anotada"
+    assert _uno(piloto)["registro"], "la vuelta tendría que quedar anotada"
 
 
 # --------------------------------------------------------------- apagar
@@ -207,7 +224,7 @@ def test_panico_apaga_ANTES_de_cerrar(piloto):
     original = ex.cerrar
 
     def _cerrar(simbolo, posicion):
-        visto["parado"] = piloto._parar.is_set()
+        visto["parado"] = piloto.vuelos["BTC-USDT"].parar.is_set()
         return original(simbolo, posicion)
 
     ex.cerrar = _cerrar
@@ -232,7 +249,7 @@ def test_panico_queda_anotado_en_el_registro(piloto):
     piloto.encender(_bot(ex, modo=PRACTICA, posicion_propia=True))
     time.sleep(0.2)
     piloto.panico()
-    assert any(f.get("accion") == "panico" for f in piloto.estado()["registro"])
+    assert any(f.get("accion") == "panico" for f in _uno(piloto)["registro"])
 
 
 def test_si_el_cierre_falla_el_panico_igual_apaga(piloto):
@@ -266,7 +283,7 @@ def test_un_error_inesperado_apaga_el_bot(piloto):
             break
         time.sleep(0.05)
     assert piloto.encendido is False
-    assert "se cayó" in piloto.estado()["error"]
+    assert "se cayó" in _uno(piloto)["error"]
 
 
 def test_una_guarda_que_detiene_saca_al_bot_del_bucle(piloto):
@@ -278,7 +295,7 @@ def test_una_guarda_que_detiene_saca_al_bot_del_bucle(piloto):
             break
         time.sleep(0.05)
     assert piloto.encendido is False
-    assert piloto.estado()["detenido"] is True
+    assert _uno(piloto)["detenido"] is True
 
 
 # ------------------------------------------------------------- el estado
@@ -288,7 +305,7 @@ def test_el_estado_nunca_trae_una_credencial(piloto):
     from botiquant.vivo.adaptador import BingX
     bot = Bot(doc=_doc(), adaptador=BingX("CLAVE_PUBLICA", "SECRETO_DEL_BOT"),
               modo=SIMULACRO)
-    piloto.bot = bot
+    _montar(piloto, bot)
     texto = str(piloto.estado())
     assert "SECRETO_DEL_BOT" not in texto
     assert "CLAVE_PUBLICA" not in texto
@@ -298,8 +315,8 @@ def test_el_registro_viene_de_lo_mas_nuevo_a_lo_mas_viejo(piloto):
     """Es como se lee un registro cuando uno quiere saber qué acaba de pasar."""
     bot = _bot()
     bot.registro = [{"cuando": f"t{i}"} for i in range(5)]
-    piloto.bot = bot
-    assert [f["cuando"] for f in piloto.estado()["registro"]] == \
+    _montar(piloto, bot)
+    assert [f["cuando"] for f in _uno(piloto)["registro"]] == \
         ["t4", "t3", "t2", "t1", "t0"]
 
 
@@ -352,11 +369,11 @@ def test_un_rechazo_del_exchange_se_lee_como_un_mensaje_y_no_como_un_traceback(p
             break
         time.sleep(0.05)
 
-    e = piloto.estado()
-    assert e["encendido"] is False
-    assert e["error"] == "[100413] Incorrect apiKey"
-    assert "Traceback" not in e["error"]
-    assert e["registro"][0]["accion"] == "apagado por el exchange"
+    assert piloto.estado()["encendido"] is False
+    v = _uno(piloto)
+    assert v["error"] == "[100413] Incorrect apiKey"
+    assert "Traceback" not in v["error"]
+    assert v["registro"][0]["accion"] == "apagado por el exchange"
 
 
 def test_un_error_que_no_previmos_si_guarda_el_traceback(piloto):
@@ -369,8 +386,8 @@ def test_un_error_que_no_previmos_si_guarda_el_traceback(piloto):
         if not piloto.encendido:
             break
         time.sleep(0.05)
-    assert "Traceback" in piloto.estado()["error"]
-    assert "algo raro" in piloto.estado()["error"]
+    assert "Traceback" in _uno(piloto)["error"]
+    assert "algo raro" in _uno(piloto)["error"]
 
 
 # ================================ cada bot sobre SU porcion de la cuenta
@@ -413,3 +430,127 @@ def test_sin_porcion_es_la_cuenta_entera(monkeypatch):
     """Compatibilidad: un bot de antes no puede achicarse por actualizar."""
     from botiquant.vivo.runner import Bot
     assert Bot.__dataclass_fields__["porcion"].default == 1.0
+
+
+# ================================ varios bots, pero uno por simbolo
+
+def _bot_de(simbolo, ex=None, porcion=1.0, modo=SIMULACRO,
+            posicion_propia=False):
+    """Un bot sobre otro símbolo. Es lo único que cambia entre vuelos.
+
+    `posicion_propia` importa igual que en `_bot`: sin eso, un exchange con una
+    posición abierta dispara la guarda de posición huérfana y el bot se detiene
+    SOLO en la primera vuelta.
+    """
+    doc = _doc()
+    doc["ejecucion"] = dict(doc["ejecucion"], simbolo=simbolo)
+    b = Bot(doc=doc, adaptador=ex or _Exchange(), modo=modo, porcion=porcion)
+    if posicion_propia:
+        b.estado.posicion_propia = True
+    return b
+
+
+def test_dos_bots_en_SIMBOLOS_DISTINTOS_conviven(piloto):
+    """EL CHOQUE ES POR SIMBOLO Y NO POR CUENTA.
+
+    En una cuenta de futuros hay una posición neta por símbolo, así que dos
+    bots en símbolos distintos no se pelean por nada: sólo comparten margen, y
+    de eso se ocupa la porción.
+
+    Es lo que hace posible un portafolio, que era la razón entera de operar por
+    API en vez de por una alerta de TradingView.
+    """
+    piloto.encender(_bot_de("BTC-USDT", porcion=0.5))
+    piloto.encender(_bot_de("ETH-USDT", porcion=0.5))
+
+    e = piloto.estado()
+    assert e["cuantos"] == 2
+    assert {v["simbolo"] for v in e["vuelos"]} == {"BTC-USDT", "ETH-USDT"}
+
+
+def test_dos_bots_en_el_MISMO_simbolo_se_rechazan(piloto):
+    """Ahí sí chocan de raíz: el cierre de uno es la apertura del otro.
+
+    Uno abre, el otro ve una posición que él no abrió, se detiene, y el primero
+    sigue creyendo que está solo.
+    """
+    piloto.encender(_bot_de("BTC-USDT", porcion=0.5))
+    with pytest.raises(RuntimeError, match="mismo símbolo"):
+        piloto.encender(_bot_de("BTC-USDT", porcion=0.5))
+    assert piloto.cuantos == 1
+
+
+def test_las_porciones_NO_PUEDEN_SUMAR_MAS_QUE_LA_CUENTA(piloto):
+    """Es el único lugar que las ve a todas: cada bot solo no puede saberlo.
+
+    Sin este control, tres bots al 50% arriesgan el 150% de la cuenta y nada lo
+    dice hasta que el exchange rechaza una orden por margen — o peor, la acepta.
+    """
+    piloto.encender(_bot_de("BTC-USDT", porcion=0.6))
+    with pytest.raises(RuntimeError, match="no entran en la cuenta"):
+        piloto.encender(_bot_de("ETH-USDT", porcion=0.5))
+    assert piloto.cuantos == 1
+    assert piloto.porcion_usada == 0.6
+
+
+def test_el_estado_dice_cuanto_queda_libre(piloto):
+    """Para que la pantalla pueda ofrecer un número que entre, en vez de dejar
+    que alguien pida uno que va a ser rechazado."""
+    piloto.encender(_bot_de("BTC-USDT", porcion=0.25))
+    e = piloto.estado()
+    assert e["porcion_usada"] == 0.25 and e["porcion_libre"] == 0.75
+
+
+def test_apagar_SIN_simbolo_los_apaga_a_TODOS(piloto):
+    """Es el botón de "me voy", y que exista uno solo para todo evita el caso
+    peor: apagar cuatro de cinco creyendo que se apagaron los cinco."""
+    piloto.encender(_bot_de("BTC-USDT", porcion=0.3))
+    piloto.encender(_bot_de("ETH-USDT", porcion=0.3))
+    piloto.apagar()
+    assert piloto.encendido is False and piloto.cuantos == 0
+
+
+def test_apagar_UNO_deja_al_otro_volando(piloto):
+    piloto.encender(_bot_de("BTC-USDT", porcion=0.3))
+    piloto.encender(_bot_de("ETH-USDT", porcion=0.3))
+    piloto.apagar("BTC-USDT")
+    vivos = [v["simbolo"] for v in piloto.estado()["vuelos"] if v["encendido"]]
+    assert vivos == ["ETH-USDT"]
+
+
+def test_el_panico_FRENA_A_TODOS_antes_de_cerrar_a_ninguno(piloto):
+    """Cerrar el primero mientras el quinto sigue vivo le da a ese quinto una
+    vuelta entera para abrir algo nuevo mientras uno cree que está vaciando la
+    cuenta."""
+    frenados = []
+    # con posición abierta: sin eso el pánico no tiene nada que cerrar y el
+    # test pasaría por no llamar a `cerrar` nunca
+    ex1, ex2 = _Exchange(posicion_lado=1), _Exchange(posicion_lado=1)
+
+    def _espiar(ex):
+        original = ex.cerrar
+
+        def _cerrar(simbolo, posicion):
+            # cuando se cierra el primero, TODOS tienen que estar frenados
+            frenados.append(all(v.bot.detenido for v in piloto.vuelos.values()))
+            return original(simbolo, posicion)
+        ex.cerrar = _cerrar
+
+    _espiar(ex1); _espiar(ex2)
+    piloto.encender(_bot_de("BTC-USDT", ex1, porcion=0.3, modo=PRACTICA,
+                            posicion_propia=True))
+    piloto.encender(_bot_de("ETH-USDT", ex2, porcion=0.3, modo=PRACTICA,
+                            posicion_propia=True))
+    time.sleep(0.2)
+    piloto.panico()
+    assert frenados and all(frenados), (
+        "cerró uno mientras otro seguía sin frenar")
+
+
+def test_un_vuelo_que_termino_sin_error_no_ensucia_la_lista(piloto):
+    """Pero el que murió POR UN ERROR se queda: ese estado es justamente lo que
+    alguien va a querer leer cuando pregunte por qué se apagó."""
+    piloto.encender(_bot_de("BTC-USDT", porcion=0.3))
+    piloto.apagar()
+    piloto.encender(_bot_de("ETH-USDT", porcion=0.3))
+    assert [v["simbolo"] for v in piloto.estado()["vuelos"]] == ["ETH-USDT"]

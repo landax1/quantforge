@@ -186,16 +186,20 @@ def test_el_estado_del_bot_trae_el_semaforo():
                      "target_type": "atr", "target_value": 4.0,
                      "atr_period": 14}},
     }
+    from botiquant.vivo.piloto import Vuelo
     p = Piloto()
-    p.bot = Bot(doc=doc, adaptador=_Nada(), modo=SIMULACRO)
-    p.bot.registro = _mezcla(60, 0.85)
+    bot = Bot(doc=doc, adaptador=_Nada(), modo=SIMULACRO)
+    bot.registro = _mezcla(60, 0.85)
+    # El piloto sostiene VARIOS bots, así que lo de cada uno vive en `vuelos`
+    # y arriba queda sólo lo del conjunto.
+    p.vuelos[bot.simbolo] = Vuelo(bot=bot)
 
-    e = p.estado()
-    assert "semaforo" in e, "el semáforo no llegó al estado"
-    assert "vigilante" in e, "y el vigilante tiene que seguir estando"
-    assert e["semaforo"]["estado"] == AMARILLO
-    assert e["semaforo"]["pf_base"] == 1.4
-    assert e["semaforo"]["recomendacion"]
+    v = p.estado()["vuelos"][0]
+    assert "semaforo" in v, "el semáforo no llegó al estado"
+    assert "vigilante" in v, "y el vigilante tiene que seguir estando"
+    assert v["semaforo"]["estado"] == AMARILLO
+    assert v["semaforo"]["pf_base"] == 1.4
+    assert v["semaforo"]["recomendacion"]
 
 
 # ============================ la memoria: sin esto no se retira nada

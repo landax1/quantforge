@@ -1269,6 +1269,23 @@ const STR = {
      nota al pie: si estuviera abajo, alguien carga la clave, ve "configurada"
      y da por hecho que puede operar en real. */
   /* El exchange se ELIGE. Ver el comentario del select en app.js. */
+  /* VARIOS BOTS. El rótulo dice CUANTOS y no "encendido": con cinco
+     corriendo, "encendido" no dice si están los cinco o quedó uno. */
+  "bot.n_operando": ["{n} operating", "{n} operando"],
+  "bot.maneja": ["Handles {pct}% of the account", "Maneja el {pct}% de la cuenta"],
+  "bot.reparto": [
+    "{usado}% of the account is committed, {libre}% free.",
+    "El {usado}% de la cuenta está comprometido, queda {libre}% libre."],
+  "bot.apagar_todos": ["Stop them all", "Apagarlos a todos"],
+  "bot.porcion": ["Share of the account (%)", "Porción de la cuenta (%)"],
+  "bot.porcion_nota": [
+    "Each bot sizes its risk on ITS share, not on the whole balance. Fixed when it starts: turning on a new bot must not resize one that already has a position open.",
+    "Cada bot calcula su riesgo sobre SU porción, no sobre el saldo entero. Se fija al encender: prender uno nuevo no puede cambiarle el tamaño a otro que ya tiene una posición abierta."],
+  "bot.sin_lugar": ["No room for another one", "No hay lugar para otro"],
+  "bot.sin_lugar_sub": [
+    "Either every slot is taken or the account is fully committed. Stop one to free up its share.",
+    "O están todos los lugares ocupados, o la cuenta está comprometida entera. Apagá uno para liberar su porción."],
+
   "bot.casa": ["Exchange", "Exchange"],
   "bot.casa_bingx": ["BingX", "BingX"],
   "bot.casa_binance": ["Binance (demo only)", "Binance (sólo demo)"],
