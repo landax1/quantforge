@@ -269,6 +269,23 @@ def mine(
     settings = settings or BacktestSettings()
 
     accept = accept or {}
+    # UN FILTRO MAL ESCRITO NO PUEDE PASAR DESAPERCIBIDO.
+    #
+    # Las claves se leen con `accept.get(...)`, así que una que no exista
+    # devuelve None y el criterio simplemente no se aplica: se mina creyendo
+    # que se filtra, el databank se llena de perdedoras y NADA lo dice. Pasó
+    # de verdad —`min_profit_factor` en vez de `min_pf`— y el resultado fue un
+    # databank con profit factors de 0,62 que parecía normal.
+    #
+    # La pantalla siempre manda claves válidas; esto protege a quien llame a
+    # `mine` desde código, que es como corre el ciclo cuando no hay nadie
+    # mirando.
+    desconocidas = sorted(set(accept) - set(_CRIT_BY_KEY))
+    if desconocidas:
+        raise ValueError(
+            f"Criterio de aceptación desconocido: {', '.join(desconocidas)}. "
+            f"Los que existen son {', '.join(sorted(_CRIT_BY_KEY))}.")
+
     seen: set[str] = set()
     bank: list[dict[str, Any]] = []
     best_history: list[float] = []
