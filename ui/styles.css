@@ -133,6 +133,11 @@
   --accent-soft:   rgba(53, 169, 174, 0.13);
   --accent-line:   rgba(53, 169, 174, 0.34);
   --pos:           #4FC38A;
+  /* `--ok` se usaba en siete reglas y no estaba definido en ninguna: el
+     borde del bot encendido y el chip "operando" se dibujaban sin color, sin
+     ningún error a la vista. Es un alias del verde de ganancia, que es lo
+     que esas reglas siempre quisieron decir. */
+  --ok:            var(--pos);
   --pos-soft:      rgba(79, 195, 138, 0.09);
   --pos-line:      rgba(79, 195, 138, 0.28);
   --pos-glow:      rgba(79, 195, 138, 0.16);
@@ -3328,3 +3333,32 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 .est-camino { margin-right: 6px; font-weight: 600; }
 .est-retirada { color: var(--text-dim); border-color: var(--border); }
 .est-practica, .est-produccion { color: var(--pos); }
+
+/* ---- la franja de agentes en Operar ----
+   Una fila por agente —el ciclo primero, después cada bot— con un punto que
+   late mientras trabaja. Es lo primero que se ve al entrar: responde "¿está
+   haciendo algo?" antes de que haya que leer un registro. El punto se anima
+   sólo con opacidad y escala, como el pulso del minado, y se queda quieto
+   con reduced-motion. */
+.agentes { margin-top: 16px; }
+.agentes .ex-head { margin-bottom: 4px; }
+.ag-fila { display: grid; grid-template-columns: 14px 1fr auto; gap: 0 12px;
+  align-items: start; padding: 12px 0; border-top: 1px solid var(--line); }
+.ag-fila:first-child { border-top: 0; }
+.ag-punto { width: 9px; height: 9px; border-radius: 50%; margin-top: 4px;
+  background: var(--border-strong); }
+.ag-punto.vivo { background: var(--pos);
+  animation: latir 1.6s ease-in-out infinite; }
+.ag-punto.alerta { background: var(--warn); }
+.ag-quien { font-size: 13px; }
+.ag-quien b { font-weight: 600; }
+.ag-que { font-size: 12px; color: var(--muted); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-que .ag-hora { font-variant-numeric: tabular-nums; }
+.ag-lado { flex: none; }
+.ag-fila .btn { padding: 6px 12px; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .ag-punto.vivo { animation: none; } }
+@media (max-width: 640px) {
+  .ag-fila { grid-template-columns: 14px 1fr; }
+  .ag-lado { grid-column: 2; margin-top: 8px; }
+}

@@ -1337,6 +1337,31 @@ const STR = {
   "bot.esperado_mes": ["≈{n} trades/mo per its backtest", "≈{n} ops/mes según su backtest"],
   "bot.proxima": ["next candle ~{h}", "próxima vela ~{h}"],
 
+  /* ---- la franja de agentes en Operar: qué está haciendo cada uno ---- */
+  "ag.titulo": ["Your agents", "Tus agentes"],
+  "ag.sub": ["What each one is doing right now. Refreshes every 30 seconds.",
+             "Qué está haciendo cada uno ahora mismo. Se actualiza cada 30 segundos."],
+  "ag.ciclo": ["The cycle", "El ciclo"],
+  "ag.ciclo_sub": ["Mines, validates, promotes and turns bots on by itself, on the demo account.",
+                   "Mina, valida, promueve y enciende bots por su cuenta, en la cuenta demo."],
+  "ag.ciclo_on": ["Turn the cycle on", "Encender el ciclo"],
+  "ag.ciclo_off": ["Turn the cycle off", "Apagar el ciclo"],
+  "ag.corriendo": ["running", "corriendo"],
+  "ag.apagado": ["off", "apagado"],
+  "ag.ahora": ["now", "ahora"],
+  "ag.ciclo_encendido": ["Cycle on. It decides once a minute.", "Ciclo encendido. Decide una vez por minuto."],
+  "ag.ciclo_apagado": ["Cycle off. Nothing runs by itself.", "Ciclo apagado. Nada corre solo."],
+  "ag.acc_validar": ["validated", "validó"],
+  "ag.acc_promover": ["promoted and turned on", "promovió y encendió"],
+  "ag.acc_minar": ["started mining", "se puso a minar"],
+  "ag.acc_retirar": ["retired", "retiró"],
+  "ag.acc_nada": ["waited", "esperó"],
+  "ag.bots": ["Bots", "Bots"],
+  "ag.sin_bots": ["No bot is running. Turn one on below, or let the cycle do it.",
+                  "Ningún bot corriendo. Encendé uno abajo, o dejá que lo haga el ciclo."],
+  "ag.mirando": ["watching {sim} · next candle ~{h}", "mirando {sim} · próxima vela ~{h}"],
+  "ag.detenido": ["stopped", "detenido"],
+
   /* VARIOS BOTS. El rótulo dice CUANTOS y no "encendido": con cinco
      corriendo, "encendido" no dice si están los cinco o quedó uno. */
   "bot.n_operando": ["{n} operating", "{n} operando"],

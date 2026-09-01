@@ -2184,6 +2184,114 @@ function atarVuelos(main) {
   };
 }
 
+/* ---- la franja de agentes: qué está haciendo cada uno AHORA ----
+
+   Es lo primero que se ve al entrar a Operar, y responde "¿está haciendo
+   algo?" antes de que haya que leer un registro: una fila por agente —el
+   ciclo primero, después cada bot— con un punto que late mientras trabaja y
+   la última decisión de cada uno en una línea.
+
+   EL CICLO NO TENÍA PANTALLA. Minaba, validaba y encendía bots por su cuenta
+   y la única forma de saberlo era la API: alguien podía ver aparecer un bot
+   que no encendió y no tener dónde mirar por qué. Acá se ve, y se apaga. */
+function rotuloCiclo(a) {
+  if (a === "validar") return t("ag.acc_validar");
+  if (a === "promover") return t("ag.acc_promover");
+  if (a === "minar") return t("ag.acc_minar");
+  if (a === "retirar") return t("ag.acc_retirar");
+  return t("ag.acc_nada");
+}
+
+function horaLocal(iso) {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleTimeString(localeNum(), HORA());
+}
+
+function zonaAgentes(e, c) {
+  const p = (c && c.params) || {};
+  const cicloOn = !!(c && c.corriendo && p.encendido);
+  const ult = ((c && c.registro) || [])[0];
+  const prox = (c && c.proxima) || {};
+  const vuelos = e.vuelos || [];
+  /* Los motivos del ciclo y de los bots los escribe el motor: son frases
+     libres en español y se muestran tal cual, como en la tarjeta del bot. */
+  const filaCiclo = !c ? "" : `
+    <div class="ag-fila">
+      <span class="ag-punto${cicloOn ? " vivo" : ""}${c.error ? " alerta" : ""}"></span>
+      <div>
+        <div class="ag-quien"><b>${esc(t("ag.ciclo"))}</b> · ${
+          esc(cicloOn ? t("ag.corriendo") : t("ag.apagado"))}</div>
+        <div class="ag-que">${esc(c.error ? c.error
+          : cicloOn ? t("ag.ahora") + ": " + (prox.motivo || "")
+          : t("ag.ciclo_sub"))}</div>
+        ${ult ? `<div class="ag-que"><span class="ag-hora">${esc(horaLocal(ult.cuando))}</span> · ${
+          esc(rotuloCiclo(ult.accion))} · ${esc(ult.motivo || "")}</div>` : ""}
+      </div>
+      <div class="ag-lado">
+        <button class="btn ghost" id="ag-ciclo" data-encender="${cicloOn ? "0" : "1"}">${
+          esc(cicloOn ? t("ag.ciclo_off") : t("ag.ciclo_on"))}</button>
+      </div>
+    </div>`;
+  const filasBots = vuelos.length ? vuelos.map(v => {
+    const parado = v.detenido || v.error;
+    const f = (v.registro || [])[0] || null;
+    return `
+    <div class="ag-fila">
+      <span class="ag-punto${v.encendido && !parado ? " vivo" : ""}${parado ? " alerta" : ""}"></span>
+      <div>
+        <div class="ag-quien"><b>${esc(v.nombre || "—")}</b> · ${esc(v.simbolo || "")} ${esc(v.timeframe || "")}${
+          parado ? " · " + esc(t("ag.detenido")) : ""}</div>
+        ${f ? `<div class="ag-que"><span class="ag-hora">${esc(horaLocal(f.cuando))}</span> · ${
+          esc(rotuloAccion(f.accion))} · ${esc(f.bloqueado || f.error || f.motivo || "")}</div>` : ""}
+        ${v.encendido && !parado && v.timeframe ? `<div class="ag-que">${
+          esc(t("ag.mirando", { sim: v.simbolo || "", h: proximaVela(v.timeframe) }))}</div>` : ""}
+      </div>
+      <div class="ag-lado"></div>
+    </div>`;
+  }).join("") : `
+    <div class="ag-fila">
+      <span class="ag-punto"></span>
+      <div class="ag-que">${esc(t("ag.sin_bots"))}</div>
+    </div>`;
+  return filaCiclo + filasBots;
+}
+
+function panelAgentes(e, c) {
+  const algo = (e.vuelos || []).some(v => v.encendido)
+    || !!(c && c.corriendo && (c.params || {}).encendido);
+  return `
+  <div class="card agentes">
+    <div class="ex-head">
+      <div>
+        <b>${esc(t("ag.titulo"))}</b>
+        <p class="help-note">${esc(t("ag.sub"))}</p>
+      </div>
+      <span class="ex-estado ${algo ? "on" : ""}">${esc(algo ? t("ag.corriendo") : t("ag.apagado"))}</span>
+    </div>
+    <div id="ag-zona">${zonaAgentes(e, c)}</div>
+  </div>`;
+}
+
+/* El interruptor del ciclo se vuelve a atar en cada refresco, porque la zona
+   se redibuja entera. Manda TODOS los parámetros y no sólo el interruptor:
+   el servidor reemplaza el juego completo, y mandar uno solo devolvería los
+   demás a sus valores por defecto sin que nadie lo pidiera. */
+function atarCiclo(main, c) {
+  const b = $("#ag-ciclo", main);
+  if (!b) return;
+  b.onclick = async () => {
+    const encender = b.dataset.encender === "1";
+    b.disabled = true;
+    try {
+      await api.post("/api/ciclo/params",
+                     Object.assign({}, (c && c.params) || {}, { encendido: encender }));
+      toast(t(encender ? "ag.ciclo_encendido" : "ag.ciclo_apagado"), "ok");
+      await navigate("operar");
+    } catch (err) { toast(err.message, "err"); }
+    b.disabled = false;
+  };
+}
+
 function panelBot(e, hayClave) {
   const on = e.encendido;
   /* SOLO las estrategias minadas sobre un perpetuo. Un exchange de cripto no
@@ -2442,14 +2550,18 @@ PAGES.operar = async (main) => {
    con apretar encender es exactamente el clic de mas que este proyecto viene
    evitando en todas las pantallas. */
 const vistaBot = async (main, hayClave) => {
-  const bot = await api.get("/api/bot");
+  // El ciclo puede no estar (versión compartida): la franja lo omite.
+  const [bot, ciclo] = await Promise.all([
+    api.get("/api/bot"), api.get("/api/ciclo").catch(() => null)]);
   await refreshSavedCount();
   // Hace falta para saber la FUENTE de cada dataset: sin esto, el filtro de
   // estrategias operables no puede distinguir un perpetuo de un CFD.
   if (!(S.datasets || []).length) await refreshDatasets();
 
   main.innerHTML = pageHead(t("nav.operar"), esc(t("op.sub_bot")))
+    + panelAgentes(bot, ciclo)
     + panelBot(bot, hayClave);
+  atarCiclo(main, ciclo);
 
   /* Que destinos puede tomar la estrategia elegida, y por que no los otros.
 
@@ -2641,7 +2753,12 @@ const vistaBot = async (main, hayClave) => {
     const zona = $("#bot-zona-vuelos", main);
     if (!zona || !document.body.contains(zona)) { clearInterval(refresco); return; }
     try {
-      const e = await api.get("/api/bot");
+      const [e, c] = await Promise.all([
+        api.get("/api/bot"), api.get("/api/ciclo").catch(() => null)]);
+      // La franja de agentes se redibuja SIEMPRE: el ciclo se mueve aunque no
+      // haya ningún bot, y es justamente eso lo que hay que poder ver.
+      const ag = $("#ag-zona", main);
+      if (ag) { ag.innerHTML = zonaAgentes(e, c); atarCiclo(main, c); }
       if (!(e.vuelos || []).length) return;
       zona.innerHTML = zonaVuelos(e);
       atarVuelos(main);
