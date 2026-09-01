@@ -1482,6 +1482,45 @@ const STR = {
   "inst.ethusdt": [
     "Ethereum perpetual — same funding mechanics as Bitcoin, more movement",
     "Ethereum perpetuo — mismo funding que Bitcoin, más movimiento"],
+  /* LOS ONCE QUE SE SUMARON EL 1/9/2026. Cada descripción dice el funding
+     MEDIDO de esa moneda y no una obviedad, porque es el dato que cambia si
+     una familia de estrategias es rentable o no — y NO va en la misma
+     dirección en todas: en Monero le paga al corto un 16,6% anual y en Zcash
+     se lo cobra un 2,2%. Medido sobre los últimos 1000 cobros de cada una. */
+  "inst.solusdt": [
+    "Solana perpetual — funding is roughly neutral (-0.3% a year), unusual among these",
+    "Solana perpetuo — el funding es casi neutro (-0,3% anual), raro entre estos"],
+  "inst.zecusdt": [
+    "Zcash perpetual — funding CHARGES the short side (-2.2% a year): a short starts behind",
+    "Zcash perpetuo — el funding le COBRA al lado corto (-2,2% anual): un corto arranca en contra"],
+  "inst.xrpusdt": [
+    "XRP perpetual — funding barely tilts either way (+0.2% a year)",
+    "XRP perpetuo — el funding casi no se inclina para ningún lado (+0,2% anual)"],
+  "inst.dogeusdt": [
+    "Dogecoin perpetual — funding pays the short side (+3.8% a year)",
+    "Dogecoin perpetuo — el funding le paga al lado corto (+3,8% anual)"],
+  "inst.arbusdt": [
+    "Arbitrum perpetual — the shortest history here: listed in 2023",
+    "Arbitrum perpetuo — la historia más corta de todos: cotiza desde 2023"],
+  "inst.uniusdt": [
+    "Uniswap perpetual — funding pays the short side (+4.4% a year)",
+    "Uniswap perpetuo — el funding le paga al lado corto (+4,4% anual)"],
+  "inst.bnbusdt": [
+    "BNB perpetual — the exchange's own token, funding pays the short side (+3.4% a year)",
+    "BNB perpetuo — el token del propio exchange, y el funding le paga al lado corto (+3,4% anual)"],
+  "inst.suiusdt": [
+    "Sui perpetual — listed in 2023, funding pays the short side (+2.8% a year)",
+    "Sui perpetuo — cotiza desde 2023, y el funding le paga al lado corto (+2,8% anual)"],
+  "inst.xmrusdt": [
+    "Monero perpetual — the most extreme funding here: +16.6% a year to the short side",
+    "Monero perpetuo — el funding más extremo de todos: +16,6% anual al lado corto"],
+  "inst.adausdt": [
+    "Cardano perpetual — funding pays the short side (+1.0% a year)",
+    "Cardano perpetuo — el funding le paga al lado corto (+1,0% anual)"],
+  "inst.linkusdt": [
+    "Chainlink perpetual — funding pays the short side (+4.8% a year)",
+    "Chainlink perpetuo — el funding le paga al lado corto (+4,8% anual)"],
+
   "cat.perpetuos": ["Crypto perpetuals", "Perpetuos de cripto"],
 
   "data.ready": ["{nombre}: {n} bars ready", "{nombre}: {n} velas listas"],
