@@ -3297,3 +3297,25 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
   text-transform: uppercase; letter-spacing: .06em; }
 .conj-stat b { font-size: 18px; font-variant-numeric: tabular-nums; }
 .conj-detalle { display: flex; flex-direction: column; gap: 2px; }
+
+
+/* ------------------------------------------------- los dos mundos, al entrar
+   Dos tarjetas grandes y del mismo peso: ninguna es la recomendada, porque la
+   correcta depende de que cuenta tenga el usuario y eso no lo sabemos. Iguales
+   en tamanio y color es la forma de no empujar para un lado. */
+.wel-mundos {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px; margin-top: 24px;
+}
+.wel-mundo {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  padding: 24px; text-align: left; cursor: pointer;
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: var(--r-md); color: inherit; font: inherit;
+  transition: border-color .15s, background .15s;
+}
+.wel-mundo:hover { border-color: var(--accent); background: var(--bg-card); }
+.wel-mundo b { font-size: 20px; }
+.wel-mundo p { color: var(--text-dim); margin: 0; }
+.wel-mundo-ico { color: var(--accent); }
+.wel-mundo-ir { color: var(--accent); font-weight: 600; margin-top: 8px; }

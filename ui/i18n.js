@@ -1719,9 +1719,12 @@ const STR = {
 
   /* ------------------------------------------------------------- bienvenida */
   "wel.title": ["Three steps", "Tres pasos"],
+  /* NO NOMBRA A METATRADER, y eso importa: se lee ANTES de elegir mundo, y
+     prometer un destino que el usuario todavía no eligió deja a quien viene
+     por cripto pensando que se equivocó de programa. */
   "wel.sub": [
-    "Botiquant searches for trading strategies on your own data, you keep the ones worth keeping, and you take them to MetaTrader. Everything runs on this machine.",
-    "Botiquant busca estrategias sobre tus propios datos, vos te quedás con las que valgan la pena, y te las llevás a MetaTrader. Todo corre en esta máquina."],
+    "Botiquant searches for trading strategies on your own data, you keep the ones worth keeping, and you take them to where you trade. Everything runs on this machine.",
+    "Botiquant busca estrategias sobre tus propios datos, vos te quedás con las que valgan la pena, y te las llevás a donde operes. Todo corre en esta máquina."],
   "wel.s1": ["Search", "Buscar"],
   "wel.s1_sub": [
     "Pick a market and how many strategies you want. The search does not stop until it has them.",
@@ -1731,9 +1734,18 @@ const STR = {
     "Look at what it found and save the ones worth a second look. The rest you can throw away without thinking twice.",
     "Mirás lo que encontró y guardás las que merezcan una segunda mirada. El resto se tira sin pensarlo."],
   "wel.s3": ["Take it away", "Llevarla"],
+  /* Los DOS destinos, porque este texto se lee antes de elegir. Decir sólo
+     MetaTrader deja a quien viene por cripto pensando que se equivocó. */
   "wel.s3_sub": [
-    "Each saved strategy exports as a robot for MetaTrader 5, ready to compile. Run it in your own broker's tester before putting real money on it.",
-    "Cada estrategia guardada se exporta como robot para MetaTrader 5, lista para compilar. Correla en el probador de tu propio bróker antes de ponerle plata."],
+    "On CFDs it exports as a robot for MetaTrader 5; on crypto it connects straight to the exchange. Either way, run it on a demo account before putting real money on it.",
+    "En CFDs se exporta como robot para MetaTrader 5; en cripto se conecta directo al exchange. En los dos casos, correla en una cuenta demo antes de ponerle plata."],
+  /* La bienvenida ya no es "empezar" sino ELEGIR QUE SE OPERA: son dos
+     productos distintos y el que elige mal mina sobre datos que no va a poder
+     operar. `wel.start` queda para no romper una traducción a medio camino. */
+  "wel.elegir": ["Start here", "Empezar por acá"],
+  "wel.cambiar": [
+    "You can switch at any time from the top left. Nothing you save is lost.",
+    "Podés cambiar cuando quieras desde arriba a la izquierda. No se pierde nada de lo guardado."],
   "wel.start": ["Start searching", "Empezar a buscar"],
   "wel.again": [
     "You will not see this again. Everything is in the menu on the left.",

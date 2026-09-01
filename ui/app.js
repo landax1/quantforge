@@ -1663,14 +1663,44 @@ PAGES.bienvenida = async (main) => {
           <p>${esc(t(p.clave + "_sub"))}</p>
         </li>`).join("")}
     </ol>
-    <button class="btn grande" id="wel-ir">${esc(t("wel.start"))}</button>
-    <p class="wel-fina">${esc(t("wel.again"))}</p>
+    <!-- LA PRIMERA DECISION ES QUE SE OPERA, y va acá y no escondida en un
+         interruptor de la barra lateral. No son dos filtros de lo mismo: son
+         dos productos que comparten el buscador y no comparten nada más —otro
+         mercado, otro costo, otro lugar donde termina corriendo el robot—.
+         Elegir mal significa minar sobre datos que no se van a poder operar,
+         y descubrirlo recién al querer encender.
+
+         Se elige y no se adivina: nadie puede deducir de un instrumento si el
+         usuario tiene cuenta de MetaTrader o de un exchange. -->
+    <div class="wel-mundos">
+      ${MUNDOS().map(m => `
+        <button class="wel-mundo" data-elegir="${esc(m.id)}">
+          <span class="wel-mundo-ico">${icono(m.id === "metatrader" ? "pico" : "banco", "ico-lg")}</span>
+          <b>${esc(m.rotulo)}</b>
+          <p>${esc(m.sub)}</p>
+          <span class="wel-mundo-ir">${esc(t("wel.elegir"))}</span>
+        </button>`).join("")}
+    </div>
+    <p class="wel-fina">${esc(t("wel.cambiar"))}</p>
   </div>`;
 
-  $("#wel-ir", main).onclick = () => {
-    try { localStorage.setItem(VISTA_BIENVENIDA, "1"); } catch (e) { /* modo privado */ }
+  $$("[data-elegir]", main).forEach(b => b.onclick = () => {
+    S.mundo = b.dataset.elegir;
+    try {
+      localStorage.setItem("qf.mundo", S.mundo);
+      localStorage.setItem(VISTA_BIENVENIDA, "1");
+    } catch (e) { /* modo privado */ }
+    /* El instrumento elegido se olvida al cambiar de mundo, por el mismo
+       motivo que en el interruptor de la barra: quedaría apuntando a uno que
+       en la sección nueva no existe. */
+    S.sel.dataset_id = null;
+    saveCfg();
+    pintarMundo();
+    /* AL MINADO Y NO A DATOS: con la semilla adentro, las dos secciones abren
+       con instrumentos listos. Mandar a Datos era correcto cuando la
+       aplicación abría vacía y ahora sería un rodeo. */
     navigate(S.datasets.length ? "mining" : "data");
-  };
+  });
 };
 
 /* Se muestra si nunca se vio Y no hay nada hecho. La segunda mitad importa:
