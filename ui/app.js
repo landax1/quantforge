@@ -2193,7 +2193,13 @@ function panelBot(e, hayClave) {
      dejaba el conjunto a medias. */
   const operables = (S.saved || []).filter(
     x => cripto.has((x.meta || {}).dataset_id)
-      && !(((x.spec || {}).risk || {}).trail_atr > 0));
+      && !(((x.spec || {}).risk || {}).trail_atr > 0)
+      /* Y NO LAS RETIRADAS. El cementerio existe para no volver a encender lo
+         que ya se sabe que no sirve, y retirar EXIGE un motivo justamente por
+         eso — ofrecerlas de nuevo en el desplegable tiraba ese trabajo a la
+         basura. Hoy no aparecían de casualidad: las retiradas que hay son de
+         históricos borrados, así que el filtro del instrumento las tapaba. */
+      && !estaRetirada(x));
   const vuelos = e.vuelos || [];
   const libre = typeof e.porcion_libre === "number" ? e.porcion_libre : 1;
   /* HAY LUGAR SI SOBRA CUPO Y SOBRA CUENTA. Ofrecer el formulario sin una de
@@ -3245,7 +3251,13 @@ async function refreshSavedCount() {
   try {
     S.saved = await api.get("/api/strategies");
     const el = $("#saved-count");
-    if (el) el.textContent = S.saved.length || "";
+    /* NO CUENTA LAS RETIRADAS. El menú decía 14 y había 7 vivas: el
+       cementerio existe para separar lo vivo de lo muerto y el contador los
+       volvía a mezclar, así que el número prometía el doble de lo que hay. */
+    if (el) {
+      const vivas = S.saved.filter(x => (x.estado || "") !== "retirada").length;
+      el.textContent = vivas || "";
+    }
   } catch (e) { /* si el backend no responde ya hay un aviso arriba */ }
 }
 
@@ -3401,6 +3413,41 @@ const ESTADO_UI = {
 
 const estadoDe = (s) => (s.validacion && s.validacion.estado) || "sin_probar";
 
+/* DONDE ESTA en el camino, que es OTRA COSA que cómo le fue en la prueba.
+
+   La columna se llamaba "Estado" y mostraba el veredicto del walk-forward, así
+   que una estrategia RETIRADA se veía idéntica a una viva: decía "Sin probar"
+   y ofrecía el botón de probarla. Peor todavía cuando el motivo del retiro es
+   que se borró su histórico — la acción que ofrecía no podía funcionar.
+
+   `estados.py` guarda el motivo y lo exige para retirar, justamente para no
+   volver a encender lo mismo. Ese trabajo no servía de nada si la pantalla no
+   lo mostraba. */
+const RETIRADA = "retirada";
+const estaRetirada = (s) => (s.estado || "") === RETIRADA;
+
+/* Las claves ENTERAS y no armadas pegando el prefijo con el nombre del
+   estado: así el examen de textos no puede saber cuáles se piden —ve el
+   prefijo suelto— y una que falte se dibuja en crudo sin que nada avise.
+
+   (Y el examen lee el archivo como TEXTO, así que la versión mala tampoco se
+   puede escribir acá como ejemplo: la contaría igual. Ya pasó.) */
+const CAMINO_ROTULO = () => ({
+  validada: t("camino.validada"),
+  practica: t("camino.practica"),
+  produccion: t("camino.produccion"),
+  retirada: t("camino.retirada"),
+});
+
+function caminoChip(s) {
+  const e = s.estado || "";
+  const rotulo = CAMINO_ROTULO()[e];
+  if (!rotulo) return "";
+  const motivo = (s.retiro || {}).motivo || "";
+  return `<span class="est est-camino est-${esc(e)}"
+    title="${esc(motivo)}">${esc(rotulo)}</span>`;
+}
+
 function estadoChip(s) {
   const e = estadoDe(s);
   const ui = ESTADO_UI[e];
@@ -3494,9 +3541,9 @@ PAGES.saved = async (main) => {
         m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
       <td class="num ${nivelDD(m.max_drawdown_pct, riesgoDeCtx(ctx))}">${
         m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
-      ${PRUEBAS ? `<td>${estadoChip(s)}</td>` : ""}
+      ${PRUEBAS ? `<td>${caminoChip(s)}${estadoChip(s)}</td>` : ""}
       <td class="num" style="white-space:nowrap">
-        ${PRUEBAS ? `<button class="btn ghost small" data-probar="${esc(s.id)}">${
+        ${PRUEBAS && !estaRetirada(s) ? `<button class="btn ghost small" data-probar="${esc(s.id)}">${
           esc(t(estadoDe(s) === "sin_probar" ? "wf.test_it" : "wf.retest"))}</button>` : ""}
         <button class="btn ghost small" data-export="${esc(s.id)}">${icono("bajar")} MQL5</button>
         <button class="btn ghost small" data-del-strat="${esc(s.id)}"

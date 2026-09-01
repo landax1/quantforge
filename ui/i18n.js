@@ -1659,6 +1659,13 @@ const STR = {
   "exp.open_file": ["Open file", "Abrir archivo"],
   "exp.saved_in": ["{archivo} saved in {carpeta}", "{archivo} guardado en {carpeta}"],
   "col.status": ["Status", "Estado"],
+  /* DONDE ESTA en el camino, que es otra cosa que cómo le fue en la prueba.
+     Sin esto una retirada se veía igual que una viva. */
+  "camino.validada": ["Validated", "Validada"],
+  "camino.practica": ["Running on demo", "Operando en demo"],
+  "camino.produccion": ["Running live", "Operando en real"],
+  "camino.retirada": ["Retired", "Retirada"],
+
   "est.sin_probar": ["Not tested", "Sin probar"],
   "est.aprobada": ["Passed", "Aprobada"],
   "est.aceptable": ["Partly held", "Aguantó a medias"],

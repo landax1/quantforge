@@ -3319,3 +3319,12 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 .wel-mundo p { color: var(--text-dim); margin: 0; }
 .wel-mundo-ico { color: var(--accent); }
 .wel-mundo-ir { color: var(--accent); font-weight: 600; margin-top: 8px; }
+
+
+/* ------------------------------------------- donde esta cada estrategia
+   Va ANTES del chip del veredicto y con otro peso: son dos preguntas
+   distintas -donde esta y como le fue- y verlas juntas con el mismo formato
+   es lo que hacia que una retirada se leyera como una viva sin probar. */
+.est-camino { margin-right: 6px; font-weight: 600; }
+.est-retirada { color: var(--text-dim); border-color: var(--border); }
+.est-practica, .est-produccion { color: var(--pos); }
