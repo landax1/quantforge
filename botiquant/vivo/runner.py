@@ -66,6 +66,19 @@ class Bot:
     detenido: bool = False
     motivo_detencion: str = ""
 
+    #: A quién avisarle cada vez que se anota algo. Opcional.
+    #:
+    #: ES UN CALLABLE Y NO UNA BASE DE DATOS, a propósito: `vivo/` no sabe que
+    #: existe una base y no tiene por qué. El que enciende el bot decide qué
+    #: hacer con cada fila —guardarla, mandarla a un archivo, ignorarla— y esta
+    #: capa sigue siendo probable sin montar nada.
+    #:
+    #: HACE FALTA PORQUE EL REGISTRO VIVE EN MEMORIA. Al cerrar la aplicación
+    #: se pierde, y con él la única evidencia de cómo le fue en vivo — que es
+    #: justo lo que el semáforo compara contra el backtest para decidir si la
+    #: ventaja se agotó.
+    oyente: Any = None
+
     @classmethod
     def desde_archivo(cls, ruta: str | Path, adaptador: Any,
                       modo: str = SIMULACRO, capital: float = 1000.0) -> "Bot":
@@ -123,6 +136,14 @@ class Bot:
             **(extra or {}),
         }
         self.registro.append(fila)
+        # QUE EL OYENTE FALLE NO PUEDE TUMBAR AL BOT. Perder una línea del
+        # registro es malo; quedarse con una posición abierta porque el bot se
+        # murió anotando es peor.
+        if self.oyente is not None:
+            try:
+                self.oyente(fila)
+            except Exception:                                 # noqa: BLE001
+                pass
         return fila
 
     # --------------------------------------------------------------- en vivo

@@ -2272,6 +2272,10 @@ const vistaBot = async (main, hayClave) => {
       const casa = ($("#bot-casa", main) || {}).value || "bingx";
       await api.post("/api/bot/encender",
                      { bot: archivo, modo, exchange: casa,
+                       /* SIN ESTO LO OPERADO NO SE GUARDA, y el semaforo no
+                          puede opinar manana sobre lo de hoy: el registro del
+                          bot vive en memoria y se pierde al cerrar la app. */
+                       estrategia_id: id,
                        perdida_maxima: tope });
       toast(t("bot.encendido"), "ok");
       await navigate("operar");

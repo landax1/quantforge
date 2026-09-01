@@ -2562,7 +2562,43 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         base de datos: se le pasan funciones y se comprueba a cuales llamo.
         """
         from botiquant import cantera, estados as est
+        from botiquant.vivo import semaforo
         from botiquant.vivo.piloto import PILOTO
+
+        ahora = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+        def _vueltas(f: dict[str, Any]) -> int:
+            """Cuantas vueltas en naranja lleva, contadas de verdad.
+
+            ==================================================================
+            ES EL CABLE QUE LE FALTABA AL RETIRO AUTOMATICO.
+            ==================================================================
+
+            La rama de retiro de `ciclo.que_toca` pregunta esto, y hasta ahora
+            recibia 0 fijo, asi que no podia dispararse nunca. El mecanismo
+            estaba escrito entero y no estaba conectado.
+
+            SE CALCULA DESDE EL REGISTRO GUARDADO y no desde el bot encendido:
+            asi el semaforo tambien opina sobre las que operaron ayer y hoy no
+            estan corriendo, que son la mayoria cuando hay un bot a la vez.
+
+            SOLO PARA LAS QUE OPERARON. Una estrategia que nunca se encendio no
+            tiene con que compararse, y preguntarle a la base por operaciones
+            que no existen en cada vuelta del ciclo es trabajo al pedo.
+            """
+            estado = est.normalizar(f.get("estado"))
+            if estado not in (est.PRACTICA, est.PRODUCCION):
+                return int((f.get("vigilancia") or {}).get("vueltas_naranja") or 0)
+
+            ops = db.operaciones(f["id"])
+            if not ops:
+                return int((f.get("vigilancia") or {}).get("vueltas_naranja") or 0)
+
+            respaldo = ((f.get("meta") or {}).get("metrics")) or {}
+            v = semaforo.revisar(ops, respaldo)
+            nueva = semaforo.actualizar(f.get("vigilancia"), v, cuando=ahora)
+            db.guardar_vigilancia(f["id"], nueva)
+            return int(nueva["vueltas_naranja"])
 
         filas = []
         for f in db.list_strategies(None):
@@ -2577,12 +2613,15 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "instrumento": str(meta.get("dataset_id") or ""),
                 "cantera": {"practica": cantera.revisar(entrada, cantera.PRACTICA).pasa,
                             "real": cantera.revisar(entrada, cantera.REAL).pasa},
-                # El semaforo cuenta vueltas en naranja, y eso todavia no se
-                # persiste: hasta que exista, nada se retira solo. Es la
-                # direccion segura del error — el ciclo deja corriendo algo
-                # que habria que sacar, y eso lo ve una persona; al reves,
-                # retiraria estrategias buenas sin que nadie se entere.
-                "vueltas_en_naranja": 0,
+                # Contadas desde el registro guardado. Ver `_vueltas`.
+                #
+                # Que esto sea distinto de cero no significa que se retire: el
+                # ciclo sale con `retirar_solo` APAGADO, y entonces dice a
+                # quien sacaria sin sacarlo. Prenderlo es una decision de una
+                # persona, despues de ver el semaforo cambiar de color varias
+                # veces y decidir si le cree.
+                "vueltas_en_naranja": _vueltas(f),
+                "vigilancia": f.get("vigilancia") or {},
             })
 
         corridas = db.list_corridas(None) or []
@@ -2759,8 +2798,23 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             adaptador = BingX(api_key, secret,
                               base=BASE_REAL if modo == REAL else BASE_PRACTICA)
 
+        # QUE LO OPERADO SOBREVIVA A CERRAR LA APLICACION. Sin esto el
+        # registro vive en memoria y se pierde, y con el la unica evidencia de
+        # como le fue en vivo — que es lo que el semaforo compara contra el
+        # backtest para decidir si la ventaja se agoto.
+        #
+        # Se guardan solo las filas que son una operacion. El bot anota una por
+        # vuelta aunque no haga nada, y eso serian veinticuatro filas por dia
+        # por bot diciendo "no hubo senal".
+        sid = str(payload.get("estrategia_id") or "").strip()
+
+        def _anotar_afuera(fila: dict[str, Any]) -> None:
+            if sid and fila.get("accion") in ("abrir", "cerrar"):
+                db.anotar_operacion(sid, fila)
+
         try:
             bot = Bot(doc=doc, adaptador=adaptador, modo=modo,
+                      oyente=_anotar_afuera if sid else None,
                       perdida_maxima_diaria=float(payload.get("perdida_maxima") or 0.0))
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
