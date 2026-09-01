@@ -1104,6 +1104,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 method="evolution" if payload.get("method") == "evolution" else "random",
                 population=int(min(max(int(payload.get("population", 40)), 8), 200)),
                 seed=seed,
+                # SOLO LO QUE EL BOT PUEDE ENCENDER, cuando quien mina lo pide.
+                # El ciclo lo pedía y esto no lo pasaba: minaba con trailing
+                # igual y descubría al promover que no podía usarlas.
+                sin_trailing=bool(payload.get("sin_trailing")),
                 handle=handle,
             )
             out["range"] = used_range

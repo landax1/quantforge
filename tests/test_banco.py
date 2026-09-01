@@ -457,7 +457,7 @@ def test_el_ciclo_puede_pedir_que_lo_minado_quede_guardado(client):
         "dataset_id": ds, "target_keep": 2, "max_candidates": 120,
         "min_trades": 3, "seed": 5, "timeframe": "1h",
         "settings": {"spread": 0.0002, "slippage": 0.0},
-        "guardar_al_terminar": True,
+        "guardar_al_terminar": True, "sin_trailing": True,
     }).json()["job_id"]
     for _ in range(600):
         job = client.get(f"/api/jobs/{jid}").json()
@@ -471,6 +471,10 @@ def test_el_ciclo_puede_pedir_que_lo_minado_quede_guardado(client):
     assert banco and len(guardadas) == len(banco)
     assert {g["estado"] for g in guardadas} == {"nueva"}
     assert guardadas[0]["meta"]["dataset_name"].startswith("EURUSD")
+    # Y SIN TRAILING, que el ciclo pide y el endpoint no pasaba: minaba con
+    # trailing igual y descubría al promover que el bot no podía usarlas.
+    assert all(not ((g["spec"].get("risk") or {}).get("trail_atr") or 0)
+               for g in guardadas)
 
 
 def test_sin_la_marca_lo_minado_no_se_guarda_solo(client):
