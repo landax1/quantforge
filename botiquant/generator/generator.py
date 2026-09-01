@@ -225,6 +225,7 @@ def random_session(sessions: list[str] | None, rng) -> str:
 
 def random_genome(drivers: list[str], filters: list[str],
                   max_filters: int, rng, evolve_exits: bool = True,
+                  sin_trailing: bool = False,
                   sessions: list[str] | None = None,
                   rr_choices: list[float] | None = None) -> Genome:
     """One random strategy recipe: driver + filter subset + random genes."""
@@ -235,7 +236,15 @@ def random_genome(drivers: list[str], filters: list[str],
     genes = {t: random_genes(t, rng) for t in (drv, *fs)}
     return Genome(driver=drv, filters=fs, genes=genes,
                   stop_mult=random_stop_mult(rng) if evolve_exits else None,
-                  trail_mult=random_trail_mult(rng) if evolve_exits else 0.0,
+                  # SIN TRAILING ES OTRA COSA QUE SIN SALIDAS EVOLUCIONADAS.
+                  # `evolve_exits=False` apaga tambien la distancia del stop,
+                  # que es un gen central —la busca el minero justamente para
+                  # que el umbral signifique lo mismo en cualquier mercado—.
+                  # Esto apaga SOLO el trailing, que es lo unico que el bot no
+                  # sabe reproducir en vivo: el motor mueve el stop cada vela y
+                  # el bot deja UNA orden puesta en el exchange.
+                  trail_mult=(0.0 if (sin_trailing or not evolve_exits)
+                              else random_trail_mult(rng)),
                   max_bars=random_max_bars(rng) if evolve_exits else 0,
                   rr_mult=random_rr(rr_choices, rng),
                   session=random_session(sessions, rng))

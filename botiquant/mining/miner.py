@@ -196,6 +196,17 @@ def mine(
     keep_top: int = 100,
     seed: int | None = None,
     method: str = "random",
+    #: Buscar sólo estrategias que el bot pueda ENCENDER.
+    #:
+    #: El bot se niega a operar una con stop dinámico —el motor lo mueve cada
+    #: vela y el bot deja una orden fija en el exchange, así que operaría algo
+    #: distinto de lo que se midió— y ese rechazo está bien. Lo que está mal es
+    #: encontrarla, guardarla y descubrirlo al apretar encender.
+    #:
+    #: PASO DE VERDAD: la estrategia más frecuente de una corrida entera
+    #: resultó tener trailing y no se pudo usar. Con esto, quien mina para
+    #: operar busca directamente entre las que va a poder encender.
+    sin_trailing: bool = False,
     population: int = 40,
     oos_pct: float = 0.0,
     #: Si los filtros de aceptación tienen que cumplirse TAMBIEN en el tramo
@@ -737,7 +748,8 @@ def mine(
         nonlocal dupes
         for _ in range(_EXHAUSTED_AFTER):
             g = random_genome(drivers, filters, max_filters, rng,
-                              sessions=sessions, rr_choices=rr_choices)
+                              sessions=sessions, rr_choices=rr_choices,
+                              sin_trailing=sin_trailing)
             if g.key() not in seen:
                 seen.add(g.key())
                 dupes = 0

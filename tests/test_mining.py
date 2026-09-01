@@ -367,3 +367,36 @@ def test_los_criterios_que_SI_existen_se_aceptan(df):
     r = mine(df, ["ema_cross"], [], accept={"min_pf": 1.05, "max_dd_pct": 50.0},
              max_candidates=2, min_trades=1)
     assert "databank" in r
+
+
+def test_sin_trailing_devuelve_SOLO_lo_que_el_bot_puede_encender(df):
+    """EL BOT SE NIEGA A OPERAR UNA CON STOP DINAMICO, Y TIENE RAZON.
+
+    El motor mueve el stop cada vela; el bot deja UNA orden puesta en el
+    exchange. Operarla igual sería operar algo distinto de lo que se midió.
+
+    Lo que está mal no es el rechazo sino encontrarla, guardarla y descubrirlo
+    al apretar encender. PASO DE VERDAD: la estrategia más frecuente de una
+    corrida entera tenía trailing y no se pudo usar.
+    """
+    con = mine(df, DRIVERS, FILTERS, max_candidates=60, min_trades=1, seed=5)
+    sin = mine(df, DRIVERS, FILTERS, max_candidates=60, min_trades=1, seed=5,
+               sin_trailing=True)
+
+    assert any(f.get("trail_mult") for f in con["databank"]), (
+        "sin la bandera tiene que salir trailing, o el test no prueba nada")
+    assert not any(f.get("trail_mult") for f in sin["databank"])
+
+
+def test_sin_trailing_NO_apaga_la_distancia_del_stop(df):
+    """Es otra cosa que `evolve_exits=False`, y la diferencia importa.
+
+    Aquel apaga también el stop, que es un gen central: el minero lo busca
+    justamente para que el umbral signifique lo mismo en cualquier mercado.
+    Confundirlos dejaría todas las estrategias con el stop de fábrica.
+    """
+    r = mine(df, DRIVERS, FILTERS, max_candidates=40, min_trades=1, seed=9,
+             sin_trailing=True)
+    distancias = {f.get("stop_mult") for f in r["databank"]}
+    assert len(distancias) > 1, (
+        f"todas salieron con el mismo stop ({distancias}): se apagó el gen")
