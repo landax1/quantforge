@@ -2716,9 +2716,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         migajas: el reparto dependería del orden de promoción, que es azar.
         Repartir por el tope deja a los cinco iguales desde el principio.
         """
+        from botiquant.vivo import claves
+        from botiquant.vivo.adaptador import Binance
         from botiquant.vivo.piloto import PILOTO
         from botiquant.vivo.runner import PRACTICA, Bot
-        from botiquant.vivo.adaptador import Binance
 
         p = _orq().params
         porcion = round(0.85 / max(int(p.max_en_practica), 1), 4)
@@ -2748,7 +2749,31 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         if orq.ORQUESTADOR is None:
             def validar(ids):
                 for sid in ids:
-                    validar_estrategia(sid, {}, _PedidoLocal())
+                    try:
+                        validar_estrategia(sid, {}, _PedidoLocal())
+                    except HTTPException as exc:
+                        # UNA ESTRATEGIA SIN HISTORICO TRABABA EL CICLO PARA
+                        # SIEMPRE. Validar fallaba, el estado seguia en
+                        # "nueva", y la vuelta siguiente la elegia de nuevo:
+                        # el ciclo no llegaba nunca a promover ni a minar.
+                        #
+                        # Pasa al borrar un instrumento desde Datos, que es una
+                        # accion normal. Se retira con el motivo adentro —el
+                        # cementerio existe justamente para no volver a
+                        # encender lo que ya se sabe que no sirve— y el ciclo
+                        # sigue con las que si se pueden probar.
+                        if exc.status_code != 404:
+                            raise
+                        actual = est.normalizar(
+                            db.get_strategy(sid, None).get("estado"))
+                        db.mover_estado(sid, est.mover(
+                            actual, est.RETIRADA,
+                            motivo="se borró el histórico con el que se "
+                                   "encontró, así que no se puede volver a "
+                                   "probar"), None)
+
+            #: Por que no arranco cada uno, para que se pueda ver.
+            _fallos_encendido: list[str] = []
 
             def promover(ids):
                 """Mueve el estado Y ENCIENDE, que es lo que faltaba.
@@ -2780,7 +2805,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                         # anota y sigue. El motivo mas comun es benigno —ya hay
                         # un bot en ese simbolo— y el ciclo lo reintenta solo
                         # en la vuelta siguiente con otra estrategia.
-                        print(f"[ciclo] no se pudo encender {sid}: {exc}")
+                        #
+                        # VA AL REGISTRO DEL CICLO Y NO A UN `print`. La
+                        # aplicacion de escritorio no tiene consola: un print
+                        # ahi no lo lee NADIE, y el sintoma es un ciclo que
+                        # dice haber promovido cinco y no tiene ninguno
+                        # operando, sin ningun lugar donde mirar por que.
+                        _fallos_encendido.append(
+                            f"{fila.get('name') or sid}: {exc}")
+                if _fallos_encendido:
+                    # Se levanta DESPUES de intentar con todos: cortar en el
+                    # primero dejaria a los demas sin siquiera intentarlo.
+                    fallos, _fallos_encendido[:] = list(_fallos_encendido), []
+                    raise RuntimeError("no arrancaron: " + " · ".join(fallos))
 
             def minar(_ids):
                 """Busca mas estrategias, con los parametros del ciclo.
