@@ -206,6 +206,18 @@ class JobManager:
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
 
+    def hay_corriendo(self, kind: str) -> bool:
+        """Si ya hay un trabajo de ese tipo en marcha.
+
+        LO NECESITA EL CICLO. Una vuelta suya dura un minuto y un minado dura
+        varios, y el minado sólo deja rastro en la base CUANDO TERMINA — así
+        que sin esto el ciclo vería "hace horas que no se mina" en cada vuelta
+        y lanzaría uno nuevo cada minuto hasta llenar la cola.
+        """
+        with self._lock:
+            return any(j.kind == kind and j.status == "running"
+                       for j in self._jobs.values())
+
     def _trim(self) -> None:
         finished = [j for j in self._jobs.values() if j.status != "running"]
         while len(self._jobs) > self._max_jobs and finished:

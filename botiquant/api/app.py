@@ -2674,6 +2674,73 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 # decía que había lugar cuando ya estaban todos ocupados.
                 "en_practica": PILOTO.cuantos}
 
+    def _ds_de(ds_id: str | None) -> dict[str, Any] | None:
+        if not ds_id:
+            return None
+        try:
+            return db.get_dataset(str(ds_id), None)
+        except (KeyError, sqlite3.Error):
+            return None
+
+    def _elegir_instrumento(p) -> dict[str, Any] | None:
+        """Sobre cuál minar esta vuelta.
+
+        EL QUE MENOS ESTRATEGIAS TIENE, y no uno al azar ni siempre el mismo.
+        El ciclo ya evita promover tres del mismo instrumento —serían una
+        apuesta con tres nombres— así que minar siempre sobre el mismo llena el
+        banco de candidatas que después no va a poder promover.
+
+        Sólo perpetuos: el ciclo enciende en Binance demo, y minar un CFD para
+        dejarlo sin encender es gastar el tiempo de búsqueda en algo que
+        despues necesita a una persona.
+        """
+        elegidos = [str(x) for x in (p.instrumentos or [])]
+        candidatos = [d for d in db.list_datasets(None)
+                      if d.get("source") == "binance"
+                      and (not elegidos or d["id"] in elegidos)]
+        if not candidatos:
+            return None
+        cuantas: dict[str, int] = {}
+        for f in db.list_strategies(None):
+            dsid = (f.get("meta") or {}).get("dataset_id")
+            if dsid:
+                cuantas[str(dsid)] = cuantas.get(str(dsid), 0) + 1
+        candidatos.sort(key=lambda d: (cuantas.get(d["id"], 0), d["name"]))
+        return candidatos[0]
+
+    def _encender_del_ciclo(fila: dict[str, Any], meta: dict[str, Any]) -> None:
+        """Pone a operar una estrategia recién promovida. Binance demo, siempre.
+
+        LA PORCION SALE DEL TOPE DEL CICLO Y NO DE LO QUE QUEDE LIBRE. Con "lo
+        que quede", el primero se llevaría casi todo y el quinto operaría con
+        migajas: el reparto dependería del orden de promoción, que es azar.
+        Repartir por el tope deja a los cinco iguales desde el principio.
+        """
+        from botiquant.vivo.piloto import PILOTO
+        from botiquant.vivo.runner import PRACTICA, Bot
+        from botiquant.vivo.adaptador import Binance
+
+        p = _orq().params
+        porcion = round(0.85 / max(int(p.max_en_practica), 1), 4)
+
+        api_key, secret = claves.leer(workdir / "claves", "binance", "practica")
+        doc = export_bingx_objeto({
+            "spec": fila["spec"], "name": fila.get("name") or fila["id"],
+            "dataset_id": meta.get("dataset_id"),
+            "timeframe": meta.get("timeframe") or "1h",
+            "settings": {"commission_pct": meta.get("commission") or 0.04},
+            "metrics": meta.get("metrics"), "oos": meta.get("oos"),
+        }, _PedidoLocal())
+        sid = fila["id"]
+
+        def anotar(f: dict[str, Any]) -> None:
+            if f.get("accion") in ("abrir", "cerrar"):
+                db.anotar_operacion(sid, f)
+
+        PILOTO.encender(Bot(
+            doc=doc, adaptador=Binance(api_key, secret), modo=PRACTICA,
+            porcion=porcion, oyente=anotar))
+
     def _orq():
         """El ciclo del proceso, armado la primera vez que se lo pide."""
         from botiquant import ciclo as cic, estados as est, orquestador as orq
@@ -2684,17 +2751,71 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                     validar_estrategia(sid, {}, _PedidoLocal())
 
             def promover(ids):
+                """Mueve el estado Y ENCIENDE, que es lo que faltaba.
+
+                Mover el estado a "practica" y no encender dejaba el ciclo a
+                mitad de camino: decia que habia promovido cinco y no operaba
+                ninguna. El estado dice donde ESTA; encenderla es lo que la
+                pone a operar, y son dos cosas distintas que aca van juntas
+                porque promover significa justamente eso.
+
+                SOLO EN BINANCE DEMO. El adaptador no tiene forma de apuntar a
+                la cuenta real, asi que el ciclo no puede mover plata de verdad
+                ni equivocandose. Para CFDs no enciende: MetaTrader necesita
+                que una persona compile y arranque el EA.
+                """
                 for sid in ids:
-                    actual = est.normalizar(db.get_strategy(sid, None).get("estado"))
+                    fila = db.get_strategy(sid, None)
+                    actual = est.normalizar(fila.get("estado"))
                     db.mover_estado(sid, est.mover(actual, est.PRACTICA), None)
+
+                    meta = fila.get("meta") or {}
+                    ds = _ds_de(meta.get("dataset_id"))
+                    if not ds or ds.get("source") != "binance":
+                        continue                    # un CFD lo enciende alguien
+                    try:
+                        _encender_del_ciclo(fila, meta)
+                    except Exception as exc:        # noqa: BLE001
+                        # Que uno no arranque no puede frenar al ciclo: se
+                        # anota y sigue. El motivo mas comun es benigno —ya hay
+                        # un bot en ese simbolo— y el ciclo lo reintenta solo
+                        # en la vuelta siguiente con otra estrategia.
+                        print(f"[ciclo] no se pudo encender {sid}: {exc}")
+
+            def minar(_ids):
+                """Busca mas estrategias, con los parametros del ciclo.
+
+                NO LANZA DOS A LA VEZ. Una vuelta del ciclo dura un minuto y un
+                minado dura varios, y el minado solo deja rastro en la base
+                cuando TERMINA: sin la guarda, el ciclo veria "hace horas que
+                no se mina" en cada vuelta y encolaria uno por minuto.
+                """
+                if jobs.hay_corriendo("mine"):
+                    return
+                p = _orq().params
+                ds = _elegir_instrumento(p)
+                if not ds:
+                    return
+                start_mine(_PedidoLocal(), {
+                    "dataset_id": ds["id"], "timeframe": ds.get("timeframe") or "1h",
+                    "max_candidates": int(p.candidatas_por_vuelta),
+                    "target_keep": 5, "min_trades": 60,
+                    "oos_pct": float(p.reservar_pct), "exigir_oos": True,
+                    "min_pf": 1.15,
+                    # SOLO LO QUE EL BOT PUEDE ENCENDER. Minar con trailing y
+                    # descubrirlo al promover seria dejar al ciclo eligiendo
+                    # entre estrategias que no va a poder usar.
+                    "sin_trailing": True,
+                })
 
             orq.ORQUESTADOR = orq.Orquestador(
                 leer_estado=_leer_para_el_ciclo,
-                # MINAR y RETIRAR no estan conectados todavia, y eso es
-                # deliberado: sin ellos el ciclo no hace nada irreversible.
-                # Una accion sin quien la haga se anota con su error en vez de
-                # decir que la hizo, asi que se ve en el registro que falta.
-                acciones={cic.VALIDAR: validar, cic.PROMOVER: promover})
+                # RETIRAR sigue sin conectar, y es deliberado: el ciclo sale
+                # con `retirar_solo` apagado, asi que dice a quien sacaria sin
+                # sacarlo. Conectarlo antes de que alguien haya visto el
+                # semaforo cambiar de color varias veces seria decidir por el.
+                acciones={cic.VALIDAR: validar, cic.PROMOVER: promover,
+                          cic.MINAR: minar})
         return orq.ORQUESTADOR
 
     class _PedidoLocal:

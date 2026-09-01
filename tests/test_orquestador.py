@@ -284,3 +284,70 @@ def test_la_api_tampoco_deja_promover_a_produccion(tmp_path):
         r = c.post("/api/ciclo/params",
                    json={"encendido": False, "promover_hasta": "produccion"})
         assert r.json()["params"]["promover_hasta"] == "practica"
+
+
+# ================= el ciclo mina solo y enciende de verdad
+
+def _cablear(tmp_path):
+    """Levanta la app, que es lo que arma el ciclo con sus acciones."""
+    from fastapi.testclient import TestClient
+
+    from botiquant import orquestador as orq
+    from botiquant.api.app import create_app
+
+    orq.ORQUESTADOR = None
+    with TestClient(create_app(workdir=tmp_path / "ws")) as c:
+        c.get("/api/ciclo")          # arma el orquestador
+        return orq.ORQUESTADOR
+
+
+def test_MINAR_ya_tiene_quien_lo_haga(tmp_path):
+    """Estaba sin conectar mientras el ciclo no podía hacer nada
+    irreversible. Sin esto decide "toca minar" en cada vuelta, anota que no hay
+    quién lo haga, y nunca busca nada — o sea que el ciclo no cierra."""
+    from botiquant import ciclo as cic
+
+    o = _cablear(tmp_path)
+    assert o is not None, "la app no armó el ciclo"
+    assert cic.MINAR in o.acciones
+
+
+def test_RETIRAR_sigue_SIN_conectar(tmp_path):
+    """Y es deliberado, no un olvido.
+
+    El ciclo sale con `retirar_solo` apagado: dice a quién sacaría sin sacarlo.
+    Conectarlo antes de que alguien haya visto el semáforo cambiar de color
+    varias veces sería decidir por esa persona — y es la dirección cara del
+    error, porque retiraría estrategias buenas sin que nadie se entere."""
+    from botiquant import ciclo as cic
+
+    o = _cablear(tmp_path)
+    assert cic.RETIRAR not in o.acciones
+
+
+def test_no_se_lanzan_dos_minados_a_la_vez():
+    """Una vuelta del ciclo dura un minuto y un minado dura varios, y el
+    minado sólo deja rastro en la base CUANDO TERMINA.
+
+    Sin la guarda, el ciclo vería "hace horas que no se mina" en cada vuelta y
+    encolaría uno por minuto hasta llenar la cola de trabajos."""
+    import threading
+    import time
+
+    from botiquant.core.jobs import JobManager
+
+    jm = JobManager()
+    arranco = threading.Event()
+    seguir = threading.Event()
+
+    def largo(progress):
+        arranco.set()
+        seguir.wait(5)
+        return "listo"
+
+    jm.submit("mine", largo)
+    assert arranco.wait(3), "el trabajo no arrancó"
+    assert jm.hay_corriendo("mine") is True
+    assert jm.hay_corriendo("download") is False, "no puede confundir tipos"
+    seguir.set()
+    time.sleep(0.3)
