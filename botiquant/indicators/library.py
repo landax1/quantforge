@@ -308,6 +308,102 @@ class VolumeSMA(Indicator):
 
 
 @register
+class Cuerpo(Indicator):
+    """Qué parte de la vela es cuerpo y no mecha, de 0 a 100.
+
+    ==================================================================
+    RESPONDE UNA PREGUNTA DISTINTA DE `ClosePosition`, Y POR ESO EXISTE.
+    ==================================================================
+
+    `ClosePosition` dice QUIEN ganó el pulso —cerró arriba o abajo—. Esto dice
+    CUANTO se peleó: 100 es una vela que abrió en un extremo y cerró en el
+    otro sin dudar; 10 es una vela que recorrió todo el rango y volvió, o sea
+    que nadie se quedó con nada.
+
+    Las dos juntas separan casos que el cierre solo confunde: una vela que
+    cierra arriba con cuerpo grande es convicción, y una que cierra arriba con
+    cuerpo mínimo es un rebote en el último minuto. Operarlas igual es operar
+    dos cosas distintas con la misma regla.
+
+    NORMALIZADO POR SU PROPIO RANGO, así que significa lo mismo en Bitcoin y
+    en Cardano — la regla que cumplen todos los filtros de contexto.
+    """
+
+    name = "Cuerpo"
+    label = "Body vs wick (%)"
+    category = "vela"
+    params = ()
+
+    @classmethod
+    def compute(cls, df: pd.DataFrame, **p: float) -> dict[str, np.ndarray]:
+        rango = (df["high"] - df["low"]).astype("float64")
+        cuerpo = (df["close"] - df["open"]).abs().astype("float64")
+        # Una vela sin rango —posible en horas muertas— es 0: no hubo pelea.
+        # Dejarla en NaN cortaría la condición entera, como en ClosePosition.
+        v = np.where(rango > 0, cuerpo / rango.replace(0, np.nan) * 100.0, 0.0)
+        return {"value": _arr(pd.Series(v, index=df.index))}
+
+
+@register
+class Mecha(Indicator):
+    """Cuánto rechazo hubo arriba y abajo, cada uno de 0 a 100.
+
+    LA MECHA ES LO QUE EL CIERRE BORRA. Una vela que subió, tocó un techo y
+    volvió deja una mecha superior larga: el precio ESTUVO ahí y no lo
+    aguantó. Mirando sólo el cierre esa vela es idéntica a una que nunca subió.
+
+    `arriba` es la mecha superior sobre el rango total; `abajo`, la inferior.
+    Una mecha inferior larga en una caída es la firma clásica de compradores
+    apareciendo, y es justamente la información que un backtest de cierres no
+    puede ver.
+
+    NO DICE SI ESO ES BUENA O MALA SEÑAL: lo decide la búsqueda, probándolo.
+    Por eso salen los dos lados y no el que a alguien le parezca el correcto.
+    """
+
+    name = "Mecha"
+    label = "Wick rejection (%)"
+    category = "vela"
+    params = ()
+    outputs = ("arriba", "abajo")
+
+    @classmethod
+    def compute(cls, df: pd.DataFrame, **p: float) -> dict[str, np.ndarray]:
+        rango = (df["high"] - df["low"]).astype("float64").replace(0, np.nan)
+        techo = df[["open", "close"]].max(axis=1)
+        piso = df[["open", "close"]].min(axis=1)
+        arriba = (df["high"] - techo) / rango * 100.0
+        abajo = (piso - df["low"]) / rango * 100.0
+        return {"arriba": _arr(arriba.fillna(0.0)),
+                "abajo": _arr(abajo.fillna(0.0))}
+
+
+@register
+class VelaAdentro(Indicator):
+    """Si la vela quedó ENTERA adentro de la anterior. 100 sí, 0 no.
+
+    Es contracción: el mercado dejó de explorar y se apretó contra lo que ya
+    había. Después de varias seguidas, el rango se comprime y lo que suele
+    seguir es una expansión — pero hacia dónde no lo dice esto, y por eso es
+    un filtro y no un disparador.
+
+    Se compara contra la vela ANTERIOR y no contra la actual: usar la actual
+    haría la condición cierta por construcción.
+    """
+
+    name = "VelaAdentro"
+    label = "Inside bar"
+    category = "vela"
+    params = ()
+
+    @classmethod
+    def compute(cls, df: pd.DataFrame, **p: float) -> dict[str, np.ndarray]:
+        adentro = ((df["high"] <= df["high"].shift(1))
+                   & (df["low"] >= df["low"].shift(1)))
+        return {"value": _arr(adentro.astype("float64") * 100.0)}
+
+
+@register
 class FundingPct(Indicator):
     """Dónde está el funding de ahora dentro de su propio rango reciente, 0..100.
 

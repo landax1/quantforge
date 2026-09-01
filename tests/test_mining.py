@@ -9,8 +9,28 @@ import pytest
 from botiquant.generator.templates import drivers, filters
 from botiquant.mining.miner import _CRIT_BY_KEY, mine
 
-DRIVERS = [d.id for d in drivers()]
-FILTERS = [f.id for f in filters()]
+# LOS BLOQUES VAN FIJOS Y NO "TODOS LOS QUE HAYA".
+#
+# Con `drivers()` y `filters()` enteros, agregar un bloque cambia qué
+# estrategias encuentra la busqueda — y entonces cambia lo que estos tests
+# miden, sin que nadie lo haya pedido. Paso de verdad al sumar los bloques de
+# vela: un test del techo de rendimiento empezo a fallar porque el mejor
+# candidato era otro, no porque el calculo estuviera mal.
+#
+# Los tests que SI tienen que enterarse de un bloque nuevo son los de la
+# biblioteca; estos miden el motor de busqueda y quieren un piso estable.
+DRIVERS = ["ema_cross", "price_ema", "donchian_break", "rsi_reversal",
+           "macd_cross", "momentum_sign"]
+FILTERS = ["adx_filter", "ema_trend_filter", "rsi_zone_filter",
+           "atr_rising_filter"]
+
+#: Que los ids fijados de arriba sigan existiendo. Sin esto, renombrar un
+#: bloque dejaria a estos tests corriendo sobre una lista mas corta en
+#: silencio, que es peor que fallar.
+_TODOS = {b.id for b in (*drivers(), *filters())}
+assert set(DRIVERS) | set(FILTERS) <= _TODOS, (
+    f"bloques fijados que ya no existen: "
+    f"{sorted((set(DRIVERS) | set(FILTERS)) - _TODOS)}")
 
 
 def test_mine_reproducible_with_seed(df):

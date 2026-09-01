@@ -211,6 +211,61 @@ def _vol_f(g: dict[str, float]):
     return c, list(c)
 
 
+# --------------------------------------------------------- lo que pasa ADENTRO
+#
+# LA MECHA ES LO QUE EL CIERRE BORRA. Una vela que subio, toco un techo y
+# volvio deja una mecha larga: el precio ESTUVO ahi y no lo aguanto. Mirando
+# solo el cierre esa vela es identica a una que nunca subio.
+#
+# Los tres van normalizados por el rango de la propia vela, asi que el mismo
+# umbral significa lo mismo en Bitcoin y en Cardano.
+
+
+@template("cuerpo_decidido_filter", "Decisive candle (big body)", "filter", "vela",
+          (Gene("pct", 60, 40, 85, 5),))
+def _cuerpo_grande(g: dict[str, float]):
+    """Sólo cuando la vela se definió, en vez de ir y volver.
+
+    Una vela que cierra arriba con cuerpo grande es convicción; una que cierra
+    arriba con cuerpo mínimo es un rebote del último minuto. El cierre solo las
+    confunde, y operarlas igual es operar dos cosas distintas con una regla.
+    """
+    c = [cond(ind("Cuerpo"), ">", const(g["pct"]))]
+    return c, list(c)
+
+
+@template("mecha_abajo_filter", "Rejection from below", "filter", "vela",
+          (Gene("pct", 40, 25, 70, 5),))
+def _mecha_abajo(g: dict[str, float]):
+    """Mecha inferior larga: el precio bajó y lo compraron.
+
+    Si eso es buena o mala señal no lo decide este archivo — lo decide la
+    búsqueda, probándolo — y por eso existen los dos lados.
+    """
+    c = [cond(ind("Mecha", output="abajo"), ">", const(g["pct"]))]
+    return c, list(c)
+
+
+@template("mecha_arriba_filter", "Rejection from above", "filter", "vela",
+          (Gene("pct", 40, 25, 70, 5),))
+def _mecha_arriba(g: dict[str, float]):
+    """La contraria. Ver `mecha_abajo_filter`."""
+    c = [cond(ind("Mecha", output="arriba"), ">", const(g["pct"]))]
+    return c, list(c)
+
+
+@template("vela_adentro_filter", "Inside bar (range contracting)", "filter", "vela",
+          ())
+def _vela_adentro(g: dict[str, float]):
+    """La vela quedó entera adentro de la anterior: el mercado se apretó.
+
+    Es un filtro y no un disparador: dice que el rango se comprime, no hacia
+    dónde va a salir.
+    """
+    c = [cond(ind("VelaAdentro"), ">", const(50))]
+    return c, list(c)
+
+
 # ------------------------------------------------------- el posicionamiento
 #
 # LOS UNICOS BLOQUES QUE NO MIRAN EL PRECIO. El funding lo paga el lado que
