@@ -2120,8 +2120,16 @@ function panelBot(e, hayClave) {
      por la FUENTE del dataset y no por el nombre, que alguien puede cambiar. */
   const cripto = new Set((S.datasets || [])
     .filter(d => d.source === "binance").map(d => d.id));
+  /* Y TAMPOCO SE OFRECEN LAS QUE EL BOT SE NIEGA A OPERAR.
+     Una estrategia con stop dinamico (trailing) se rechaza al encender: el
+     motor mueve el stop cada vela y el bot deja UNA orden puesta en el
+     exchange, asi que operaria algo distinto de lo que se midio. El rechazo
+     esta bien; ofrecerla no. Suelta se veia como un error al apretar Start, y
+     adentro de un conjunto era peor: encendia dos, fallaba en la tercera y
+     dejaba el conjunto a medias. */
   const operables = (S.saved || []).filter(
-    x => cripto.has((x.meta || {}).dataset_id));
+    x => cripto.has((x.meta || {}).dataset_id)
+      && !(((x.spec || {}).risk || {}).trail_atr > 0));
   const vuelos = e.vuelos || [];
   const libre = typeof e.porcion_libre === "number" ? e.porcion_libre : 1;
   /* HAY LUGAR SI SOBRA CUPO Y SOBRA CUENTA. Ofrecer el formulario sin una de
@@ -2226,6 +2234,18 @@ function panelBot(e, hayClave) {
               (x.meta || {}).score != null ? " · score " + Math.round(x.meta.score) : ""}</span>
           </label>`;
         }).join("")}
+      </div>
+      <!-- SU PROPIO EXCHANGE Y NO EL DEL FORMULARIO DE ARRIBA. Heredarlo
+           parecia ahorrar un control y era un error: ese selector arranca en
+           BingX, asi que un conjunto armado sin tocarlo se mandaba a un
+           exchange sin clave y fallaba tres veces seguidas con un 400 que la
+           pantalla no explicaba. Se elige acá, como todo lo demás. -->
+      <div class="fld-pair mt">
+        <label class="fld"><span>${esc(t("bot.casa"))}</span>
+          <select id="conj-casa">
+            <option value="binance">${esc(t("bot.casa_binance"))}</option>
+            <option value="bingx">${esc(t("bot.casa_bingx"))}</option>
+          </select></label>
       </div>
       <div class="controls mt">
         <button class="btn ghost" id="conj-armar">${esc(t("conj.armar"))}</button>
@@ -2500,7 +2520,7 @@ const vistaBot = async (main, hayClave) => {
       const btnEnc = $("#conj-encender", main);
       btnEnc.onclick = async () => {
         btnEnc.disabled = true;
-        const casa = ($("#bot-casa", main) || {}).value || "binance";
+        const casa = ($("#conj-casa", main) || {}).value || "binance";
         let prendidos = 0;
         try {
           for (const d of plan.detalle) {
@@ -2522,6 +2542,10 @@ const vistaBot = async (main, hayClave) => {
           toast(t("conj.encendido", { n: prendidos }), "ok");
         } catch (e) {
           toast(t("conj.fallo", { n: prendidos, err: e.message }), "err");
+          /* El motivo entero al registro: el aviso de pantalla se corta y
+             estos errores -clave que falta, porcion que no entra, simbolo
+             repetido- son justo los que hay que leer completos. */
+          console.error("[conjunto] se cortó en el bot", prendidos + 1, e);
         }
         await navigate("operar");
       };
