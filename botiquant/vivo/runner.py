@@ -66,6 +66,28 @@ class Bot:
     detenido: bool = False
     motivo_detencion: str = ""
 
+    #: Qué fracción de la cuenta maneja este bot. 1.0 es la cuenta entera.
+    #:
+    #: ==================================================================
+    #: SIN ESTO, DOS BOTS ARRIESGAN EL DOBLE DE LO QUE CREE EL USUARIO.
+    #: ==================================================================
+    #:
+    #: `adaptador.capital()` devuelve el saldo de la CUENTA, y el riesgo por
+    #: operación se calcula sobre lo que devuelva. Con un bot da igual. Con
+    #: cinco, cada uno se cree dueño del 100% y entre todos arriesgan cinco
+    #: veces lo pedido — que es exactamente el error que el exportador de
+    #: portafolio ya evitaba para los EA de MetaTrader, y que acá faltaba.
+    #:
+    #: LA PORCION SE FIJA AL ENCENDER Y NO SE MUEVE. Repartir en partes
+    #: iguales sobre los que esten corriendo seria mas prolijo en un papel,
+    #: pero significa que encender un bot nuevo le cambia el tamaño a los que
+    #: ya tienen una posición abierta: el stop quedó calculado sobre una
+    #: cuenta que ya no es la suya. Se fija una vez y se respeta.
+    #:
+    #: Se aplica TAMBIEN en simulacro, para que el simulacro prediga lo que
+    #: va a hacer la práctica en vez de otra cosa.
+    porcion: float = 1.0
+
     #: A quién avisarle cada vez que se anota algo. Opcional.
     #:
     #: ES UN CALLABLE Y NO UNA BASE DE DATOS, a propósito: `vivo/` no sabe que
@@ -108,6 +130,17 @@ class Bot:
                 "todavía no sabe moverlo en el exchange. Operaría con un stop "
                 "fijo, que no es lo que se midió. Usá una estrategia sin "
                 "trailing, o exportala a TradingView, que sí lo reproduce.")
+
+        # UNA PORCION IMPOSIBLE SE RECHAZA ACA Y NO SE CORRIGE EN SILENCIO.
+        # Un cero apagaría el bot sin decirlo —dimensionaría sobre cero y no
+        # abriría nunca, pareciendo que la estrategia no da señales— y algo
+        # mayor que uno haría que un solo bot arriesgue sobre una cuenta que
+        # no existe.
+        if not 0 < float(self.porcion) <= 1:
+            raise ValueError(
+                f"La porción de la cuenta tiene que estar entre 0 y 1, y llegó "
+                f"{self.porcion}. Con 0 el bot no abriría nunca y parecería "
+                f"que la estrategia no da señales.")
 
     # ------------------------------------------------------------- lo básico
     @property
@@ -165,6 +198,8 @@ class Bot:
             except Exception as exc:                      # noqa: BLE001
                 return self._anotar(Decision(
                     motivo=f"no se pudo leer el saldo, no se opera: {exc}"))
+        # SU PORCION Y NO LA CUENTA ENTERA. Ver `Bot.porcion`.
+        capital *= self.porcion
 
         d = decidir(df, self.spec, posicion=pos.lado, capital=capital,
                     precio=float(df["close"].iloc[-1]))

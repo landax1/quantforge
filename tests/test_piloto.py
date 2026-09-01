@@ -71,7 +71,7 @@ def _doc(timeframe="1h"):
     }
 
 
-def _bot(ex=None, modo=SIMULACRO, posicion_propia=False):
+def _bot(ex=None, modo=SIMULACRO, posicion_propia=False, porcion=1.0):
     """Un bot listo para correr.
 
     `posicion_propia` importa mas de lo que parece: sin eso, un exchange con
@@ -79,7 +79,8 @@ def _bot(ex=None, modo=SIMULACRO, posicion_propia=False):
     detiene SOLO en la primera vuelta. Las pruebas del panico pasaban por eso
     y no porque el panico funcionara — verificado rompiendolo a proposito.
     """
-    b = Bot(doc=_doc(), adaptador=ex or _Exchange(), modo=modo)
+    b = Bot(doc=_doc(), adaptador=ex or _Exchange(), modo=modo,
+            porcion=porcion)
     if posicion_propia:
         b.estado.posicion_propia = True
     return b
@@ -370,3 +371,45 @@ def test_un_error_que_no_previmos_si_guarda_el_traceback(piloto):
         time.sleep(0.05)
     assert "Traceback" in piloto.estado()["error"]
     assert "algo raro" in piloto.estado()["error"]
+
+
+# ================================ cada bot sobre SU porcion de la cuenta
+
+def test_el_bot_dimensiona_sobre_SU_PORCION(monkeypatch):
+    """SIN ESTO, CINCO BOTS ARRIESGAN CINCO VECES LO PEDIDO.
+
+    `adaptador.capital()` devuelve el saldo de la CUENTA y el riesgo por
+    operación se calcula sobre lo que devuelva. Con un bot da igual; con cinco,
+    cada uno se cree dueño del 100%. Es el mismo error que el exportador de
+    portafolio ya evitaba para los EA de MetaTrader y que acá faltaba.
+    """
+    from botiquant.vivo.runner import Bot
+
+    vistos = []
+
+    class _Nucleo:
+        @staticmethod
+        def espiar(df, spec, *, posicion, capital, precio):
+            vistos.append(capital)
+            from botiquant.vivo.nucleo import Decision
+            return Decision(motivo="sin señal")
+
+    bot = _bot(porcion=0.25)
+    monkeypatch.setattr("botiquant.vivo.runner.decidir", _Nucleo.espiar)
+    bot.paso()
+    assert vistos and vistos[0] == pytest.approx(1000.0 * 0.25), (
+        f"dimensionó sobre {vistos} en vez de sobre su cuarta parte")
+
+
+def test_una_porcion_imposible_se_RECHAZA(monkeypatch):
+    """Un cero apagaría el bot sin decirlo: dimensionaría sobre cero, no
+    abriría nunca, y parecería que la estrategia no da señales."""
+    for mala in (0.0, -0.5, 1.5):
+        with pytest.raises(ValueError, match="porción"):
+            _bot(porcion=mala)
+
+
+def test_sin_porcion_es_la_cuenta_entera(monkeypatch):
+    """Compatibilidad: un bot de antes no puede achicarse por actualizar."""
+    from botiquant.vivo.runner import Bot
+    assert Bot.__dataclass_fields__["porcion"].default == 1.0
