@@ -554,3 +554,28 @@ def test_un_vuelo_que_termino_sin_error_no_ensucia_la_lista(piloto):
     piloto.apagar()
     piloto.encender(_bot_de("ETH-USDT", porcion=0.3))
     assert [v["simbolo"] for v in piloto.estado()["vuelos"]] == ["ETH-USDT"]
+
+
+def test_se_niega_a_encender_con_un_indicador_QUE_NO_CONOCE():
+    """SIN ESTO EL BOT NO SE NIEGA: ARRANCA Y SE MUERE EN LA PRIMERA VUELTA.
+
+    PASO DE VERDAD: una estrategia minada con un indicador nuevo se encendió
+    contra un proceso que todavía no lo conocía. El error llegó como un
+    traceback en el registro —"Unknown indicator: Mecha"— con el bot ya
+    apagado y la pantalla diciendo que estaba encendido.
+
+    Es el caso de actualizar la aplicación: una estrategia guardada puede
+    nombrar un bloque que se renombró o se quitó. Que falle al ENCENDER, con el
+    nombre adentro del mensaje, es la diferencia entre arreglarlo y adivinarlo.
+    """
+    doc = _doc()
+    doc["estrategia"]["entry_long"] = [{
+        "left": {"type": "indicator", "name": "NoExisteJamas", "params": {}},
+        "op": ">", "right": {"type": "const", "value": 1}}]
+    with pytest.raises(ValueError, match="no conoce"):
+        Bot(doc=doc, adaptador=_Exchange(), modo=SIMULACRO)
+
+
+def test_los_indicadores_que_SI_existen_no_molestan():
+    """El control no puede rechazar una estrategia legítima."""
+    Bot(doc=_doc(), adaptador=_Exchange(), modo=SIMULACRO)

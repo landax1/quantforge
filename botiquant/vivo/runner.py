@@ -34,6 +34,7 @@ from botiquant.core.models import StrategySpec
 from botiquant.reports.bingx import leer_bingx
 from botiquant.vivo.adaptador import Posicion
 from botiquant.vivo.guardas import Estado, anotar_resultado, revisar
+from botiquant.indicators.base import REGISTRY
 from botiquant.vivo.nucleo import (ABRIR_CORTO, ABRIR_LARGO, CERRAR, DURACION,
                                    Decision, decidir, solo_cerradas)
 
@@ -130,6 +131,32 @@ class Bot:
                 "todavía no sabe moverlo en el exchange. Operaría con un stop "
                 "fijo, que no es lo que se midió. Usá una estrategia sin "
                 "trailing, o exportala a TradingView, que sí lo reproduce.")
+
+        # QUE TODOS LOS INDICADORES QUE PIDE LA ESTRATEGIA EXISTAN.
+        #
+        # ==================================================================
+        # SIN ESTO EL BOT NO SE NIEGA A ARRANCAR: ARRANCA Y SE MUERE EN LA
+        # PRIMERA VUELTA.
+        # ==================================================================
+        #
+        # PASO DE VERDAD: una estrategia minada con un indicador nuevo se
+        # encendió contra un proceso que todavía no lo conocía, y el error
+        # llegó como un traceback en el registro —"Unknown indicator: Mecha"—
+        # con el bot ya apagado y la pantalla diciendo que estaba encendido.
+        #
+        # Es el caso de actualizar la aplicación: una estrategia guardada
+        # puede nombrar un bloque que se renombró o se quitó. Que falle al
+        # ENCENDER, con el nombre adentro del mensaje, es la diferencia entre
+        # arreglarlo y adivinarlo.
+        faltan = sorted({o.name for c in (*self.spec.entry_long,
+                                          *self.spec.entry_short)
+                         for o in (c.left, c.right)
+                         if o.type == "indicator" and o.name not in REGISTRY})
+        if faltan:
+            raise ValueError(
+                f"Esta estrategia usa indicadores que esta versión no conoce: "
+                f"{', '.join(faltan)}. Suele pasar al abrir una estrategia "
+                f"guardada con otra versión de la aplicación.")
 
         # UNA PORCION IMPOSIBLE SE RECHAZA ACA Y NO SE CORRIGE EN SILENCIO.
         # Un cero apagaría el bot sin decirlo —dimensionaría sobre cero y no
