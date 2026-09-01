@@ -677,6 +677,19 @@ class Database:
             f["contexto"] = json.loads(f.get("contexto") or "{}")
         return filas
 
+    def ids_banco_de(self, corrida_id: str, user_id: str | None = None) -> list[str]:
+        """Los ids de las filas que dejó una corrida, en su orden de puesto.
+
+        Es lo que el ciclo necesita para guardar lo que acaba de minar sin
+        pasar por la pantalla: mina, archiva, y con estos ids las manda a Mis
+        estrategias como nuevas.
+        """
+        cond, args = self._de(user_id, "user_id")
+        filas = self._rows(
+            f"SELECT id FROM banco WHERE corrida_id=?{cond} ORDER BY puesto ASC",
+            (corrida_id,) + args)
+        return [str(f["id"]) for f in filas]
+
     def borrar_banco(self, ids: list[str], user_id: str | None = None) -> int:
         if not ids:
             return 0

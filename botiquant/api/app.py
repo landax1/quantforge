@@ -1108,6 +1108,16 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             )
             out["range"] = used_range
             out["corrida_id"] = archivar(out)
+            # EL CICLO PIDE QUE LO ENCONTRADO QUEDE EN MIS ESTRATEGIAS, como
+            # nuevas, para validarlas y promoverlas en las vueltas siguientes.
+            # Sin esto minaba para el banco y nada más. Un fallo al guardar no
+            # tira abajo el minado: la corrida ya está archivada.
+            if payload.get("guardar_al_terminar") and out["corrida_id"]:
+                try:
+                    filas = db.get_banco(db.ids_banco_de(out["corrida_id"], dueno), dueno)
+                    out["guardadas"] = _guardar_filas_del_banco(filas, dueno)
+                except Exception:                           # noqa: BLE001
+                    traceback.print_exc()
             return out
         return {"job_id": jobs.submit_streaming("mine", work, dueno)}
 
@@ -1961,21 +1971,17 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         return {"por_estado": estados.resumen(db.list_strategies(duenio(request))),
                 "orden": estados.ORDEN, "cementerio": estados.RETIRADA}
 
-    @app.post("/api/banco/guardar")
-    def guardar_del_banco(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
-        """Copia filas del banco a Mis estrategias.
+    def _guardar_filas_del_banco(filas: list[dict[str, Any]],
+                                 dueno: str | None) -> list[dict[str, Any]]:
+        """Copia filas del banco a Mis estrategias, como nuevas.
 
-        Se arma del lado del servidor porque el contexto de una fila vive en su
-        corrida, no en la pantalla: guardar mirando la configuración actual le
-        pegaría a una estrategia de EURUSD los costos que hoy están cargados
-        para el S&P, y el backtest de mañana no se parecería en nada.
+        Es UNA sola función para el botón y para el ciclo. Hasta acá sólo
+        existía el botón: el ciclo minaba, archivaba la corrida en el banco y
+        ahí se quedaba — nada la pasaba a Mis estrategias, así que el ciclo
+        sólo llegaba a validar y promover lo que una persona guardó a mano.
+        Un "sistema interminable" que no se alimenta de lo que encuentra.
         """
-        ids = [str(x) for x in (payload.get("ids") or [])]
-        dueno = duenio(request)
-        filas = db.get_banco(ids, dueno)
-        if not filas:
-            raise HTTPException(404, "Esas estrategias ya no están en el banco.")
-        guardadas = []
+        guardadas: list[dict[str, Any]] = []
         for f in filas:
             fila, ctx = f["fila"], f["contexto"]
             ajustes = ctx.get("settings") or {}
@@ -2010,7 +2016,23 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 f["nombre"], fila.get("spec") or {},
                 notes="", meta=meta, user_id=dueno)
             guardadas.append({"id": sid, "name": f["nombre"]})
-        return {"guardadas": guardadas}
+        return guardadas
+
+    @app.post("/api/banco/guardar")
+    def guardar_del_banco(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
+        """Copia filas del banco a Mis estrategias.
+
+        Se arma del lado del servidor porque el contexto de una fila vive en su
+        corrida, no en la pantalla: guardar mirando la configuración actual le
+        pegaría a una estrategia de EURUSD los costos que hoy están cargados
+        para el S&P, y el backtest de mañana no se parecería en nada.
+        """
+        ids = [str(x) for x in (payload.get("ids") or [])]
+        dueno = duenio(request)
+        filas = db.get_banco(ids, dueno)
+        if not filas:
+            raise HTTPException(404, "Esas estrategias ya no están en el banco.")
+        return {"guardadas": _guardar_filas_del_banco(filas, dueno)}
 
     # --------------------------------------------------------------- results
     @app.get("/api/results")
@@ -2861,6 +2883,9 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                     # descubrirlo al promover seria dejar al ciclo eligiendo
                     # entre estrategias que no va a poder usar.
                     "sin_trailing": True,
+                    # Y QUE QUEDEN GUARDADAS: es lo que las hace visibles para
+                    # la vuelta siguiente, que valida lo "nuevo".
+                    "guardar_al_terminar": True,
                 })
 
             orq.ORQUESTADOR = orq.Orquestador(

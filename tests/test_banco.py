@@ -445,3 +445,46 @@ def test_encontradas_distingue_lo_que_borraste_de_lo_que_nunca_hubo(client):
 
 def test_guardar_algo_que_ya_no_esta_avisa(client):
     assert client.post("/api/banco/guardar", json={"ids": ["no-existe"]}).status_code == 404
+
+
+def test_el_ciclo_puede_pedir_que_lo_minado_quede_guardado(client):
+    """El ciclo minaba para el banco y nada más: sin esto, sólo llegaba a
+    validar y promover lo que una persona guardó a mano. Con la marca, lo que
+    queda en el banco queda también en Mis estrategias, como nuevo."""
+    ds = client.post("/api/datasets/sample",
+                     json={"symbol": "EURUSD", "bars": 1200}).json()["id"]
+    jid = client.post("/api/mine", json={
+        "dataset_id": ds, "target_keep": 2, "max_candidates": 120,
+        "min_trades": 3, "seed": 5, "timeframe": "1h",
+        "settings": {"spread": 0.0002, "slippage": 0.0},
+        "guardar_al_terminar": True,
+    }).json()["job_id"]
+    for _ in range(600):
+        job = client.get(f"/api/jobs/{jid}").json()
+        if job["status"] != "running":
+            break
+        time.sleep(0.1)
+    assert job["status"] == "done", job.get("error")
+
+    banco = client.get("/api/banco").json()
+    guardadas = client.get("/api/strategies").json()
+    assert banco and len(guardadas) == len(banco)
+    assert {g["estado"] for g in guardadas} == {"nueva"}
+    assert guardadas[0]["meta"]["dataset_name"].startswith("EURUSD")
+
+
+def test_sin_la_marca_lo_minado_no_se_guarda_solo(client):
+    """El botón sigue siendo el que guarda cuando mina una persona."""
+    ds = client.post("/api/datasets/sample",
+                     json={"symbol": "EURUSD", "bars": 1200}).json()["id"]
+    jid = client.post("/api/mine", json={
+        "dataset_id": ds, "target_keep": 2, "max_candidates": 120,
+        "min_trades": 3, "seed": 5,
+        "settings": {"spread": 0.0002, "slippage": 0.0},
+    }).json()["job_id"]
+    for _ in range(600):
+        if client.get(f"/api/jobs/{jid}").json()["status"] != "running":
+            break
+        time.sleep(0.1)
+    assert client.get("/api/banco").json()
+    assert client.get("/api/strategies").json() == []
