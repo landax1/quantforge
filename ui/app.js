@@ -2117,7 +2117,15 @@ function proximaVela(tf) {
                 "1h": 3600, "4h": 14400, "1d": 86400 }[tf] || 3600;
   const ahora = Date.now() / 1000;
   const prox = new Date((Math.floor(ahora / seg) + 1) * seg * 1000);
-  return prox.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return prox.toLocaleTimeString(localeNum(), HORA());
+}
+
+/* La hora, atada al idioma y no al navegador: en español se lee "20:00" y
+   en inglés "08:00 PM". El locale solo no alcanza —Chrome pone "p. m."
+   también en es-AR— así que el ciclo de horas se pide explícito. */
+function HORA(mas) {
+  return Object.assign({ hour: "2-digit", minute: "2-digit",
+                         hour12: idioma() !== "es" }, mas || {});
 }
 
 /* LA ZONA DE VUELOS, SEPARADA DEL RESTO DEL PANEL. Es lo unico que cambia
@@ -2723,8 +2731,8 @@ const vistaTablero = async (main, hayClave) => {
       ${(d.cerradas || []).length ? `
       <div class="conj-detalle mt">
         ${d.cerradas.slice(0, 20).map(c => `<div class="bot-fila">
-          <span class="bot-hora">${esc(new Date(c.cuando).toLocaleString([], {
-            month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }))}</span>
+          <span class="bot-hora">${esc(new Date(c.cuando).toLocaleString(localeNum(),
+            HORA({ month: "2-digit", day: "2-digit" })))}</span>
           <!-- La clave se escribe ENTERA y no se arma concatenando: armada,
                el examen de textos no puede saber cuáles se piden, y una que
                falte se dibuja en crudo en la pantalla sin que nada avise. -->
@@ -3845,7 +3853,7 @@ function cuando(iso) {
   const hoy = new Date();
   const ayer = new Date(hoy); ayer.setDate(hoy.getDate() - 1);
   const dia = x => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
-  const hora = d.toLocaleTimeString(localeNum(), { hour: "2-digit", minute: "2-digit" });
+  const hora = d.toLocaleTimeString(localeNum(), HORA());
   if (dia(d) === dia(hoy)) return t("time.today", { hora });
   if (dia(d) === dia(ayer)) return t("time.yesterday", { hora });
   return d.toLocaleDateString(localeNum(), d.getFullYear() === hoy.getFullYear()
