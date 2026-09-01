@@ -2747,6 +2747,184 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         from botiquant.vivo.piloto import PILOTO
         return PILOTO.estado()
 
+    @app.get("/api/cuenta/rendimiento")
+    def cuenta_rendimiento() -> dict[str, Any]:
+        """Lo que la CUENTA hizo, no lo que los bots recuerdan.
+
+        ==================================================================
+        SE LE PREGUNTA AL EXCHANGE. Es la misma regla que la posición: lo que
+        el bot recuerda se pierde al cerrar la aplicación, no incluye lo que
+        alguien haya hecho a mano desde Binance, y no sabe de comisiones.
+        ==================================================================
+
+        EL RESULTADO VA PARTIDO POR CONCEPTO y no como un solo número, porque
+        un solo número esconde la única pregunta que importa: si la estrategia
+        no sirve, o si sirve y los costos se la comen. Medido en esta misma
+        cuenta demo: -0,049 de PNL contra -0,220 de comisiones — el costo pesó
+        cuatro veces y media más que la pérdida operativa. Sumado da "pierde",
+        que manda a cambiar la estrategia cuando lo que hay que cambiar es
+        cuánto opera.
+
+        Sólo demo, como todo lo de Binance en esta versión.
+        """
+        _solo_escritorio()
+        from botiquant.data import binance_trade as bt
+        from botiquant.vivo import claves
+
+        try:
+            api_key, secret = claves.leer(workdir / "claves", "binance", "practica")
+        except claves.ClaveError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+        base = bt.BASE_PRUEBA
+        try:
+            saldo = bt.saldo(api_key, secret, base=base)
+            abiertas = bt.posiciones(api_key, secret, base=base)
+            movs = bt.movimientos(api_key, secret, base=base)
+        except bt.BinanceError as exc:
+            raise HTTPException(502, exc.del_exchange) from exc
+
+        por_concepto: dict[str, float] = {}
+        simbolos: set[str] = set()
+        for m in movs:
+            tipo = str(m.get("incomeType") or "")
+            # El depósito inicial no es resultado: es el punto de partida.
+            # Sumarlo haría que la cuenta parezca ganadora por haber recibido
+            # su propio dinero.
+            if tipo == "TRANSFER":
+                continue
+            por_concepto[tipo] = round(
+                por_concepto.get(tipo, 0.0) + float(m.get("income") or 0.0), 8)
+            if m.get("symbol"):
+                simbolos.add(str(m["symbol"]))
+
+        pnl = por_concepto.get("REALIZED_PNL", 0.0)
+        comision = por_concepto.get("COMMISSION", 0.0)
+        fondeo = por_concepto.get("FUNDING_FEE", 0.0)
+
+        cerradas: list[dict[str, Any]] = []
+        for sim in sorted(simbolos)[:6]:
+            try:
+                cerradas.extend(bt.cerradas(sim, api_key, secret, limite=50,
+                                            base=base))
+            except bt.BinanceError:
+                continue
+        cerradas.sort(key=lambda x: x["cuando"], reverse=True)
+
+        ganadoras = [c for c in cerradas if c["pnl"] > 0]
+        con_pnl = [c for c in cerradas if c["pnl"] != 0]
+
+        return {
+            "saldo": saldo,
+            "posiciones": abiertas,
+            "pnl_abierto": round(sum(p["pnl_abierto"] for p in abiertas), 4),
+            "resultado": {
+                "pnl": round(pnl, 4),
+                "comision": round(comision, 4),
+                "funding": round(fondeo, 4),
+                # La suma va aparte y NO reemplaza a las partes: es lo que
+                # efectivamente cambió el saldo.
+                "neto": round(pnl + comision + fondeo, 4),
+            },
+            "cerradas": cerradas[:40],
+            "cuantas_cerradas": len(con_pnl),
+            "win_rate_pct": (round(100.0 * len(ganadoras) / len(con_pnl), 1)
+                             if con_pnl else None),
+        }
+
+    @app.post("/api/bot/plan-conjunto")
+    def bot_plan_conjunto(payload: dict[str, Any]) -> dict[str, Any]:
+        """Cómo quedaría el conjunto, SIN encender nada.
+
+        Decidir separado de hacer, como el ciclo: se puede mirar el plan, no
+        gustar, y cerrar la pantalla sin que haya pasado nada. El botón de
+        encender viene después y es otro pedido.
+
+        LAS EXPECTATIVAS SALEN DEL BACKTEST DE CADA UNA, Y SE DICE ASI. No son
+        una promesa: son lo que esas estrategias hicieron sobre su histórico,
+        agregado con la única aritmética defendible:
+
+          · operaciones por mes: se SUMAN. La frecuencia no depende de la
+            porción — la porción cambia cuánto se arriesga, no cuándo entra.
+          · retorno anual esperado: Σ (porción × CAGR). Cada una compone
+            sobre su pedazo, así que el conjunto suma a prorrata.
+          · win rate: promedio PONDERADO POR FRECUENCIA. Un promedio simple
+            dejaría que una estrategia de 2 operaciones al mes pese igual que
+            una de 40 en un número que describe "lo que se ve al operar".
+
+        Lo que NO se calcula: el drawdown del conjunto. Sumarlo supone que
+        caen todas juntas (falso si diversifican) y promediarlo supone que
+        nunca coinciden (falso también). Se muestra el peor individual, con su
+        nombre, y listo — inventar un número intermedio sería precisión falsa.
+        """
+        _solo_escritorio()
+        from botiquant.reports import portafolio as port
+
+        ids = [str(x) for x in (payload.get("ids") or [])]
+        if len(ids) < 2:
+            raise HTTPException(400, "Un conjunto son al menos dos estrategias.")
+        if len(ids) > 8:
+            raise HTTPException(400, "Ocho es el tope de bots a la vez.")
+
+        filas = []
+        for sid in ids:
+            try:
+                filas.append(db.get_strategy(sid, None))
+            except KeyError:
+                raise HTTPException(404, f"La estrategia {sid} ya no está.")
+
+        try:
+            port.exigir_un_solo_mundo(filas)
+        except port.MundosMezclados as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+        usar_pct = float(payload.get("usar_pct") or 90.0)
+        reparto = port.repartir(filas, usar_pct=usar_pct)
+
+        # -------------------------------------------- las expectativas
+        ops_mes = 0.0
+        retorno = 0.0
+        wr_num = 0.0
+        peor_dd = None
+        detalle = []
+        for f in filas:
+            meta = f.get("meta") or {}
+            m = meta.get("metrics") or {}
+            porc = float(reparto.porciones.get(str(f["id"])) or 0.0)
+            tpm = float(m.get("trades_per_month") or 0.0)
+            cagr = float(m.get("cagr_pct") or 0.0)
+            wr = float(m.get("win_rate_pct") or 0.0)
+            dd = float(m.get("max_drawdown_pct") or 0.0)
+            ops_mes += tpm
+            retorno += (porc / 100.0) * cagr
+            wr_num += wr * tpm
+            if peor_dd is None or dd > peor_dd[1]:
+                peor_dd = (str(f.get("name") or f["id"]), dd)
+            detalle.append({
+                "id": f["id"], "nombre": f.get("name") or "",
+                "instrumento": str(meta.get("dataset_name") or ""),
+                "timeframe": str(meta.get("timeframe") or ""),
+                "porcion_pct": porc,
+                "ops_mes": tpm, "cagr_pct": cagr, "win_rate_pct": wr,
+                "dd_pct": dd, "score": meta.get("score"),
+                "pf": m.get("profit_factor"),
+            })
+
+        return {
+            "detalle": detalle,
+            "porciones": reparto.porciones,
+            "avisos": [{"clave": a.clave, "texto": a.texto}
+                       for a in reparto.avisos],
+            "esperado": {
+                "ops_mes": round(ops_mes, 1),
+                "retorno_anual_pct": round(retorno, 2),
+                "win_rate_pct": (round(wr_num / ops_mes, 1) if ops_mes else None),
+                "peor_dd": ({"nombre": peor_dd[0], "dd_pct": peor_dd[1]}
+                            if peor_dd else None),
+            },
+            "usar_pct": usar_pct,
+        }
+
     @app.post("/api/bot/encender")
     def bot_encender(payload: dict[str, Any]) -> dict[str, Any]:
         """Arranca un bot desde un archivo de enlace.

@@ -1276,6 +1276,67 @@ const STR = {
      nota al pie: si estuviera abajo, alguien carga la clave, ve "configurada"
      y da por hecho que puede operar en real. */
   /* El exchange se ELIGE. Ver el comentario del select en app.js. */
+  /* EL TABLERO. El resultado va PARTIDO por concepto: un numero solo esconde
+     si la estrategia no sirve o si sirve y los costos se la comen. */
+  "op.tab_tablero": ["Performance", "Rendimiento"],
+  "tab.titulo": ["What the account actually did", "Lo que la cuenta hizo de verdad"],
+  "tab.sub": [
+    "Straight from Binance demo, not from what the bots remember: the bot's log is lost when the app closes and knows nothing about fees.",
+    "Directo de Binance demo, no de lo que los bots recuerdan: el registro del bot se pierde al cerrar la app y no sabe de comisiones."],
+  "tab.sin_clave": ["No demo key loaded", "No hay clave demo cargada"],
+  "tab.sin_clave_sub": [
+    "Load the Binance demo key in the Exchange keys tab and this fills in on its own.",
+    "Cargá la clave demo de Binance en la pestaña de Claves y esto se llena solo."],
+  "tab.cargando": ["Asking the exchange…", "Preguntándole al exchange…"],
+  "tab.saldo": ["Balance", "Saldo"],
+  "tab.neto": ["Net result", "Resultado neto"],
+  "tab.cerradas": ["Closed trades", "Operaciones cerradas"],
+  "tab.wr": ["Win rate", "Win rate"],
+  "tab.pnl": ["Trading P&L", "P&L de las operaciones"],
+  "tab.comision": ["Fees", "Comisiones"],
+  "tab.funding": ["Funding", "Funding"],
+  "tab.parte_nota": [
+    "Split on purpose: P&L can be positive and the account still down because fees ate it. One single number would say \"losing\" and send you to change the strategy, when what to change is how often it trades.",
+    "Partido a propósito: el P&L puede estar en positivo y la cuenta en negativo porque las comisiones se lo comieron. Un número solo diría \"pierde\" y mandaría a cambiar la estrategia, cuando lo que hay que cambiar es cuánto opera."],
+  "tab.abiertas": ["Open positions", "Posiciones abiertas"],
+  "tab.sin_abiertas": ["Nothing open right now.", "Ahora mismo no hay nada abierto."],
+  "tab.largo": ["long", "largo"],
+  "tab.corto": ["short", "corto"],
+  "tab.desde_precio": ["in at {p}", "entró a {p}"],
+  "tab.marca": ["mark {p}", "marca {p}"],
+  "tab.ejecuciones": ["Fills", "Ejecuciones"],
+  "tab.ejecuciones_nota": [
+    "One trade can be several fills: a market order fills against several levels of the book and the exchange reports one row each.",
+    "Una operación puede ser varias ejecuciones: una orden a mercado se llena contra varios niveles del libro y el exchange devuelve una fila por llenado."],
+  "tab.sin_ejecuciones": ["Nothing traded yet.", "Todavía no se operó nada."],
+  "tab.compra": ["buy", "compra"],
+  "tab.venta": ["sell", "venta"],
+  "tab.com_corta": ["fee", "com."],
+
+  /* EL CONJUNTO. Las expectativas se rotulan como lo que son: lo que esas
+     estrategias hicieron en SU backtest, agregado. Nunca una promesa. */
+  "conj.titulo": ["Run a set", "Armar un conjunto"],
+  "conj.sub": [
+    "Pick several, see the plan -shares, expectations, warnings- and only then start them together.",
+    "Elegí varias, mirá el plan —porciones, expectativas, avisos— y recién ahí encendelas juntas."],
+  "conj.armar": ["Preview the plan", "Armar el plan"],
+  "conj.encender": ["Start the set (demo)", "Encender el conjunto (demo)"],
+  "conj.elegi": ["Pick at least two strategies", "Elegí al menos dos estrategias"],
+  "conj.retorno": ["Expected yearly return", "Retorno anual esperado"],
+  "conj.ops": ["Trades per month", "Operaciones por mes"],
+  "conj.wr": ["Expected win rate", "Win rate esperado"],
+  "conj.dd": ["Worst individual drawdown", "Peor caída individual"],
+  "conj.fuente": [
+    "From each strategy's backtest, aggregated. An expectation, not a promise: the traffic light will say if it stops being true.",
+    "Del backtest de cada una, agregado. Una expectativa, no una promesa: el semáforo va a avisar si deja de cumplirse."],
+  "conj.ops_cortas": ["{n} ops/mo", "{n} ops/mes"],
+  "conj.encendido": ["{n} bots running", "{n} bots encendidos"],
+  "conj.fallo": [
+    "Started {n} and then one failed: {err}. The ones already running stay on.",
+    "Encendió {n} y uno falló: {err}. Los que ya arrancaron siguen encendidos."],
+  "bot.esperado_mes": ["≈{n} trades/mo per its backtest", "≈{n} ops/mes según su backtest"],
+  "bot.proxima": ["next candle ~{h}", "próxima vela ~{h}"],
+
   /* VARIOS BOTS. El rótulo dice CUANTOS y no "encendido": con cinco
      corriendo, "encendido" no dice si están los cinco o quedó uno. */
   "bot.n_operando": ["{n} operating", "{n} operando"],

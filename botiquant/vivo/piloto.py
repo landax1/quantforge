@@ -142,6 +142,11 @@ class Piloto:
             "motivo_detencion": b.motivo_detencion,
             "arrancado": v.arrancado,
             "error": v.error,
+            # CUANTO SE ESPERA QUE OPERE, según su propio backtest. Es lo que
+            # convierte "hace una hora que no hace nada" de una duda en un
+            # dato: una estrategia de once operaciones al mes entra cada dos o
+            # tres días, y verla callada una tarde es lo normal, no un error.
+            "esperado_mes": self._esperado_mes(b),
             # Las últimas vueltas, de la más nueva a la más vieja: es como se
             # lee un registro cuando uno quiere saber qué acaba de pasar.
             "registro": list(reversed(b.registro[-40:])),
@@ -157,6 +162,17 @@ class Piloto:
             # frecuencia se estabiliza en semanas y el rendimiento en meses.
             "semaforo": self._semaforo(b),
         }
+
+    @staticmethod
+    def _esperado_mes(b: Bot) -> float | None:
+        m = b.doc.get("respaldo") or {}
+        tpm = m.get("trades_per_month")
+        if tpm:
+            return round(float(tpm), 1)
+        trades, years = m.get("trades"), m.get("years")
+        if trades and years:
+            return round(float(trades) / (float(years) * 12.0), 1)
+        return None
 
     def _vigilar(self, b: Bot, v: Vuelo) -> dict[str, Any]:
         r = vigilante.revisar(b.doc.get("respaldo") or {}, b.registro,

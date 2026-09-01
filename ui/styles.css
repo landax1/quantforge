@@ -3275,3 +3275,25 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
    la clave— y ponerlo al lado de uno solo sugeriria que el problema es ese. */
 .bot-porque { margin-top: 8px; font-size: 12px; color: var(--warn);
   line-height: 1.5; }
+
+
+/* ------------------------------------------------------------- el conjunto
+   Separado del formulario de arriba por una linea, como los vuelos entre si:
+   es otra manera de encender, no un paso mas del mismo formulario. Las fichas
+   de expectativa van como texto grande sobre rotulo chico -el patron del
+   campeon del minado- y no como tarjetas con borde: cuatro bordes mas en un
+   panel que ya tiene tarjetas seria ruido. */
+.conj { border-top: 1px solid var(--border); padding-top: 16px; }
+.conj-lista { display: flex; flex-direction: column; gap: 4px; }
+.conj-item {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+  border-radius: var(--r-sm); cursor: pointer;
+}
+.conj-item:hover { background: var(--bg-soft); }
+.conj-nom { flex: 1; }
+.conj-met { color: var(--text-dim); font-size: 12px; }
+.conj-stats { display: flex; flex-wrap: wrap; gap: 16px; }
+.conj-stat span { display: block; font-size: 11px; color: var(--text-dim);
+  text-transform: uppercase; letter-spacing: .06em; }
+.conj-stat b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.conj-detalle { display: flex; flex-direction: column; gap: 2px; }

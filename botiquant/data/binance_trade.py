@@ -289,6 +289,89 @@ def posicion(simbolo: str, api_key: str, secret: str,
     return {"lado": lado, "cantidad": abs(total), "precio_entrada": entrada}
 
 
+def posiciones(api_key: str, secret: str,
+               base: str = BASE_PRUEBA) -> list[dict[str, Any]]:
+    """TODAS las posiciones abiertas de la cuenta, no las de un símbolo.
+
+    Es lo que hace falta para un tablero: con varios bots, preguntar símbolo
+    por símbolo son varias llamadas y una foto que no es simultánea — una
+    posición podría abrirse entre la primera y la última y el total no cerrar
+    con nada.
+
+    Y ES LA CUENTA LA QUE MANDA, no lo que los bots recuerden. Una posición
+    abierta a mano desde Binance aparece acá igual, que es justamente lo que
+    uno quiere ver en un tablero: qué hay, no qué debería haber.
+    """
+    d = _pedir("/fapi/v2/positionRisk", {}, api_key=api_key, secret=secret,
+               base=base) or []
+    salida = []
+    for p in d:
+        cant = float(p.get("positionAmt") or 0.0)
+        if not cant:
+            continue
+        salida.append({
+            "simbolo": p.get("symbol") or "",
+            "lado": 1 if cant > 0 else -1,
+            "cantidad": abs(cant),
+            "precio_entrada": float(p.get("entryPrice") or 0.0),
+            "precio_marca": float(p.get("markPrice") or 0.0),
+            "pnl_abierto": float(p.get("unRealizedProfit") or 0.0),
+            "liquidacion": float(p.get("liquidationPrice") or 0.0),
+            "apalancamiento": float(p.get("leverage") or 0.0),
+        })
+    return salida
+
+
+def movimientos(api_key: str, secret: str, *, desde_ms: int | None = None,
+                limite: int = 1000,
+                base: str = BASE_PRUEBA) -> list[dict[str, Any]]:
+    """De qué se compone el resultado de la cuenta, partido por concepto.
+
+    ==================================================================
+    ESTE ES EL UNICO ENDPOINT QUE SEPARA LA VENTAJA DE LOS COSTOS.
+    ==================================================================
+
+    Binance devuelve el PNL realizado, la comisión y el funding como filas
+    distintas, y esa separación es la que convierte un tablero en información:
+    una estrategia puede tener el PNL en positivo y la cuenta en negativo
+    porque las comisiones se lo comieron, y sumando un solo número eso no se
+    ve — se ve "pierde", que manda a cambiar la estrategia cuando lo que hay
+    que cambiar es cuánto opera.
+
+    El signo viene de Binance: la comisión siempre negativa, el funding a
+    favor o en contra según de qué lado estaba la posición.
+    """
+    p: dict[str, Any] = {"limit": int(min(max(limite, 1), 1000))}
+    if desde_ms:
+        p["startTime"] = int(desde_ms)
+    return _pedir("/fapi/v1/income", p, api_key=api_key, secret=secret,
+                  base=base) or []
+
+
+def cerradas(simbolo: str, api_key: str, secret: str, *, limite: int = 100,
+             base: str = BASE_PRUEBA) -> list[dict[str, Any]]:
+    """Las ejecuciones de ese símbolo, de la más nueva a la más vieja.
+
+    UNA OPERACION PUEDE SER VARIAS EJECUCIONES: una orden a mercado grande se
+    llena contra varios niveles del libro y Binance devuelve una fila por
+    llenado. No se agrupan acá —agrupar exige decidir qué es "la misma
+    operación", y eso depende de la estrategia— pero el tablero lo dice para
+    que nadie lea diez filas como diez operaciones.
+    """
+    d = _pedir("/fapi/v1/userTrades", {"symbol": simbolo, "limit": int(limite)},
+               api_key=api_key, secret=secret, base=base) or []
+    return [{
+        "simbolo": t.get("symbol") or "",
+        "cuando": int(t.get("time") or 0),
+        "lado": "compra" if t.get("buyer") else "venta",
+        "cantidad": float(t.get("qty") or 0.0),
+        "precio": float(t.get("price") or 0.0),
+        "pnl": float(t.get("realizedPnl") or 0.0),
+        "comision": float(t.get("commission") or 0.0),
+        "orden": t.get("orderId"),
+    } for t in reversed(d)]
+
+
 def ordenes_abiertas(simbolo: str, api_key: str, secret: str,
                      base: str = BASE_PRUEBA) -> list[dict[str, Any]]:
     """Las órdenes que siguen vivas en ese símbolo. El stop, entre ellas.

@@ -40,10 +40,14 @@ def paquete(tmp_path, monkeypatch):
 class _StoreFalso:
     def __init__(self):
         self.puestos = []
+        self.fundings = {}
 
     def add(self, nombre, df, source="upload", user_id=None):
         self.puestos.append((nombre, len(df), source))
         return {"id": str(len(self.puestos))}
+
+    def guardar_funding(self, ds_id, serie):
+        self.fundings[ds_id] = len(serie)
 
 
 def test_an_empty_workspace_gets_the_bundled_instruments(paquete):
@@ -102,17 +106,30 @@ def test_a_corrupt_manifest_is_not_fatal(paquete):
     assert semilla.disponible() == []
 
 
-def test_the_real_build_ships_the_four_instruments():
+def test_the_real_build_ships_both_worlds():
     """Contra la semilla de verdad: si alguien la borra o la rompe, la
-    aplicación empaquetada volvería a abrir vacía."""
+    aplicación empaquetada volvería a abrir vacía.
+
+    Eran cuatro CFD; ahora van también los perpetuos: una aplicación que
+    puede operar un exchange en demo pero abre sin un solo perpetuo hace
+    que el primer encendido cueste una descarga. Los perpetuos llevan
+    fuente "binance" —el filtro de operables la exige— y su archivo de
+    funding."""
     entradas = semilla.disponible()
     if not entradas:
         pytest.skip("este árbol no tiene la semilla generada")
 
-    assert len(entradas) == 4
     nombres = " ".join(e["nombre"].upper() for e in entradas)
     for esperado in ("EURUSD", "SP500", "XAUUSD", "BTCUSD"):
-        assert esperado in nombres, f"falta {esperado}"
+        assert esperado in nombres, f"falta el CFD {esperado}"
+
+    perpetuos = [e for e in entradas if e.get("source") == "binance"]
+    if perpetuos:      # un árbol con la semilla vieja no es un error
+        assert len(perpetuos) >= 10, "la tanda de perpetuos quedó a medias"
+        sin_funding = [e["nombre"] for e in perpetuos if not e.get("funding")]
+        assert not sin_funding, (
+            f"perpetuos sembrados sin funding: {sin_funding}. Minarían "
+            f"con números mejores que los reales.")
 
 
 def test_a_fresh_install_opens_with_instruments(tmp_path, monkeypatch):
@@ -136,8 +153,18 @@ def test_a_fresh_install_opens_with_instruments(tmp_path, monkeypatch):
     with TestClient(appmod.create_app(workdir=tmp_path)) as c:
         datos = c.get("/api/datasets").json()
 
-    assert len(datos) == 4, "la aplicación abriría vacía"
-    assert all(d["rows"] > 50_000 for d in datos), "faltan años de historia"
+    # SE CUENTA CONTRA EL MANIFIESTO Y NO CONTRA UN NUMERO CLAVADO.
+    # Eran cuatro CFD; ahora van tambien los perpetuos, y agregar uno no
+    # puede romper el unico test que prueba el arranque de punta a punta.
+    # Lo que importa no es cuantos son sino que entren TODOS los que el
+    # paquete dice traer.
+    assert len(datos) == len(semilla.disponible()), (
+        "la aplicación no levantó todo lo que el paquete trae")
+    assert datos, "la aplicación abriría vacía"
+    # Los perpetuos mas nuevos cotizan desde 2023, asi que el piso de
+    # historia es mas bajo que el de los CFD: lo que se defiende es que
+    # ninguno entre recortado, no que todos tengan veinte años.
+    assert all(d["rows"] > 25_000 for d in datos), "faltan años de historia"
 
 
 def test_a_second_start_does_not_duplicate(tmp_path, monkeypatch):
@@ -158,4 +185,37 @@ def test_a_second_start_does_not_duplicate(tmp_path, monkeypatch):
     with TestClient(appmod.create_app(workdir=tmp_path)) as c:
         segundo = len(c.get("/api/datasets").json())
 
-    assert primero == segundo == 4
+    assert primero == segundo == len(semilla.disponible())
+
+
+def test_un_perpetuo_sembrado_lleva_su_funding(paquete, tmp_path):
+    """SIN ESTO, UN INSTRUMENTO SEMBRADO MINARIA CON NUMEROS MEJORES QUE LOS
+    REALES: el motor cobra el funding sobre la posición abierta, y un perpetuo
+    sin su archivo de tasas es un perpetuo gratis. Además los bloques de
+    funding quedarían descartados con aviso, en el único lugar donde el
+    usuario no hizo nada raro.
+    """
+    idx = pd.date_range("2020-01-01", periods=100, freq="8h")
+    pd.DataFrame({"funding": 0.0001}, index=idx).to_csv(
+        paquete / "uno.funding.csv", index_label="time")
+    manifiesto = json.loads((paquete / semilla.MANIFIESTO).read_text())
+    manifiesto[0]["funding"] = "uno.funding.csv"
+    manifiesto[0]["source"] = "binance"
+    (paquete / semilla.MANIFIESTO).write_text(json.dumps(manifiesto))
+
+    st = _StoreFalso()
+    assert semilla.sembrar(st, ya_hay=0) == 2
+    # el primero lleva funding y fuente binance; el segundo no tiene y no pasa nada
+    assert st.fundings == {"1": 100}
+    assert st.puestos[0][2] == "binance", (
+        "la fuente tiene que ser binance: el filtro de operables la exige")
+
+
+def test_un_funding_roto_no_impide_sembrar_las_velas(paquete):
+    (paquete / "uno.funding.csv").write_text("basura sin columnas")
+    manifiesto = json.loads((paquete / semilla.MANIFIESTO).read_text())
+    manifiesto[0]["funding"] = "uno.funding.csv"
+    (paquete / semilla.MANIFIESTO).write_text(json.dumps(manifiesto))
+    st = _StoreFalso()
+    assert semilla.sembrar(st, ya_hay=0) == 2
+    assert st.fundings == {}

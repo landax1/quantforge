@@ -75,8 +75,22 @@ def sembrar(store, ya_hay: int, progreso=None) -> int:
             continue
         if df.empty:
             continue
-        store.add(str(e.get("nombre") or origen.stem), df,
-                  source=str(e.get("source") or "semilla"))
+        puesto = store.add(str(e.get("nombre") or origen.stem), df,
+                           source=str(e.get("source") or "semilla"))
+        # EL FUNDING VIAJA CON EL PERPETUO. Sin esto, un instrumento sembrado
+        # minaria sin costo de funding —numeros mejores que los reales— y los
+        # bloques de funding quedarian descartados con aviso. El CFD no trae
+        # este campo y no entra aca.
+        f_archivo = str(e.get("funding") or "")
+        if f_archivo:
+            try:
+                tasas = pd.read_csv(base / f_archivo, index_col="time",
+                                    parse_dates=["time"])["funding"]
+                store.guardar_funding(str((puesto or {}).get("id") or ""), tasas)
+            except (ValueError, OSError, KeyError):
+                # Un funding roto no puede impedir sembrar las velas: la
+                # aplicacion abre igual y el aviso de "sin funding" lo dice.
+                pass
         puestos += 1
         if progreso:
             progreso((i + 1) / len(entradas), str(e.get("nombre", "")))

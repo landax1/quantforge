@@ -2013,7 +2013,9 @@ function tarjetaVuelo(v) {
       <span><b>${esc(v.nombre || "—")}</b> · ${esc(v.simbolo || "")} ${esc(v.timeframe || "")}</span>
       <span class="bot-modo bot-modo-${esc(v.modo || "")}">${esc(rotuloModo(v.modo))}</span>
     </div>
-    <p class="help-note">${esc(t("bot.maneja", { pct: Math.round((v.porcion || 1) * 100) }))}</p>
+    <p class="help-note">${esc(t("bot.maneja", { pct: Math.round((v.porcion || 1) * 100) }))}${
+      v.esperado_mes ? " · " + esc(t("bot.esperado_mes", { n: v.esperado_mes })) : ""}${
+      v.encendido && v.timeframe ? " · " + esc(t("bot.proxima", { h: proximaVela(v.timeframe) })) : ""}</p>
 
     ${(v.vigilante || {}).estado === "amarillo" ? `<div class="bot-alerta mt">
       <span class="g-ic">${icono("alerta")}</span>
@@ -2041,6 +2043,17 @@ function tarjetaVuelo(v) {
       <button class="btn danger" data-panico="${esc(v.simbolo)}">${esc(t("bot.panico"))}</button>
     </div>` : ""}
   </div>`;
+}
+
+/* Cuándo cierra la próxima vela de ese timeframe, en hora local. Es lo que
+   convierte "hace rato que no hace nada" de una duda en un dato: el bot
+   decide UNA vez por vela, y acá dice cuándo es la próxima. */
+function proximaVela(tf) {
+  const seg = { "1m": 60, "5m": 300, "15m": 900, "30m": 1800,
+                "1h": 3600, "4h": 14400, "1d": 86400 }[tf] || 3600;
+  const ahora = Date.now() / 1000;
+  const prox = new Date((Math.floor(ahora / seg) + 1) * seg * 1000);
+  return prox.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 /* LA ZONA DE VUELOS, SEPARADA DEL RESTO DEL PANEL. Es lo unico que cambia
@@ -2187,7 +2200,70 @@ function panelBot(e, hayClave) {
     <div class="controls mt">
       <button class="btn" id="bot-encender">${esc(t("bot.encender"))}</button>
     </div>`}`}
+
+    ${operables.length >= 2 && hayLugar ? `
+    <!-- EL CONJUNTO. Elegir varias, ver el PLAN antes de tocar nada -mismo
+         principio que el ciclo: decidir separado de hacer- y recien ahi
+         encender. Las expectativas salen del backtest de cada una y la
+         pantalla lo dice: son una expectativa, no una promesa. -->
+    <div class="conj mt" id="conjunto">
+      <div class="ex-head">
+        <div>
+          <b>${esc(t("conj.titulo"))}</b>
+          <p class="help-note">${esc(t("conj.sub"))}</p>
+        </div>
+      </div>
+      <div class="conj-lista mt">
+        ${operables.map(x => {
+          const m = ((x.meta || {}).metrics) || {};
+          return `<label class="conj-item">
+            <input type="checkbox" data-conj="${esc(x.id)}">
+            <span class="conj-nom"><b>${esc(x.name)}</b> · ${
+              esc(String((x.meta || {}).dataset_name || "").split(" ")[0])} ${
+              esc((x.meta || {}).timeframe || "")}</span>
+            <span class="conj-met">${m.trades_per_month
+              ? esc(t("conj.ops_cortas", { n: fmtNum(m.trades_per_month, 1) })) : ""}${
+              (x.meta || {}).score != null ? " · score " + Math.round(x.meta.score) : ""}</span>
+          </label>`;
+        }).join("")}
+      </div>
+      <div class="controls mt">
+        <button class="btn ghost" id="conj-armar">${esc(t("conj.armar"))}</button>
+      </div>
+      <div id="conj-plan" hidden></div>
+    </div>` : ""}
   </div>`;
+}
+
+/* El plan dibujado: las cuatro expectativas como fichas, el detalle por bot,
+   y los avisos del reparto. */
+function planConjuntoHTML(plan) {
+  const e = plan.esperado || {};
+  const ficha = (rot, valor) => `<div class="conj-stat">
+    <span>${esc(rot)}</span><b>${valor}</b></div>`;
+  return `
+    <div class="conj-stats mt">
+      ${ficha(t("conj.retorno"), (e.retorno_anual_pct >= 0 ? "+" : "")
+              + fmtNum(e.retorno_anual_pct, 1) + "%")}
+      ${ficha(t("conj.ops"), fmtNum(e.ops_mes, 1))}
+      ${e.win_rate_pct != null ? ficha(t("conj.wr"), fmtNum(e.win_rate_pct, 1) + "%") : ""}
+      ${e.peor_dd ? ficha(t("conj.dd"), fmtNum(e.peor_dd.dd_pct, 0) + "% · " + esc(e.peor_dd.nombre)) : ""}
+    </div>
+    <p class="help-note">${esc(t("conj.fuente"))}</p>
+    <div class="conj-detalle mt">
+      ${(plan.detalle || []).map(d => `
+        <div class="bot-fila">
+          <span class="bot-que"><b>${esc(d.nombre)}</b> · ${esc(d.instrumento.split(" ")[0])}</span>
+          <span>${Math.round(d.porcion_pct)}%</span>
+          <span class="bot-det">PF ${fmtNum(d.pf, 2)} · ${fmtNum(d.ops_mes, 1)} ops/mes · DD ${fmtNum(d.dd_pct, 0)}%</span>
+        </div>`).join("")}
+    </div>
+    ${(plan.avisos || []).map(a => `<div class="bot-alerta mt">
+      <span class="g-ic">${icono("alerta")}</span><span>${esc(a.texto)}</span>
+    </div>`).join("")}
+    <div class="controls mt">
+      <button class="btn" id="conj-encender">${esc(t("conj.encender"))}</button>
+    </div>`;
 }
 
 
@@ -2213,7 +2289,8 @@ function panelBot(e, hayClave) {
 
    El bot es la vista de arranque porque es la que se abre seguido. */
 PAGES.operar = async (main) => {
-  const vista = S.vistaOperar === "claves" ? "claves" : "bot";
+  const vista = ["claves", "tablero"].includes(S.vistaOperar)
+    ? S.vistaOperar : "bot";
   const estado = await api.get("/api/exchanges");
   /* POR EXCHANGE Y ENTORNO, no sólo por entorno. Indexado por entorno solo,
      la fila de Binance práctica PISABA a la de BingX práctica: la tarjeta de
@@ -2238,6 +2315,8 @@ PAGES.operar = async (main) => {
   main.innerHTML = `<div class="vistas" role="tablist">
       <button role="tab" data-vista="bot" aria-selected="${vista === "bot"}"
         class="${vista === "bot" ? "on" : ""}">${esc(t("op.tab_bot"))}</button>
+      <button role="tab" data-vista="tablero" aria-selected="${vista === "tablero"}"
+        class="${vista === "tablero" ? "on" : ""}">${esc(t("op.tab_tablero"))}</button>
       <button role="tab" data-vista="claves" aria-selected="${vista === "claves"}"
         class="${vista === "claves" ? "on" : ""}">${esc(t("op.tab_claves"))}${
         sinClaves ? `<span class="vista-punto" role="img"
@@ -2252,7 +2331,9 @@ PAGES.operar = async (main) => {
   });
 
   const host = $("#vista-host", main);
-  await (vista === "claves" ? vistaClaves(host, por) : vistaBot(host, hayClave));
+  await (vista === "claves" ? vistaClaves(host, por)
+         : vista === "tablero" ? vistaTablero(host, hayClave)
+         : vistaBot(host, hayClave));
   acomodarVistas(main, host);
 };
 
@@ -2399,6 +2480,55 @@ const vistaBot = async (main, hayClave) => {
 
   atarVuelos(main);
 
+  /* -------- el conjunto: armar el plan, mirarlo, y recién ahí encender */
+  const btnArmar = $("#conj-armar", main);
+  if (btnArmar) btnArmar.onclick = async () => {
+    const ids = $$("[data-conj]", main).filter(x => x.checked).map(x => x.dataset.conj);
+    if (ids.length < 2) return toast(t("conj.elegi"), "err");
+    btnArmar.disabled = true;
+    try {
+      const plan = await api.post("/api/bot/plan-conjunto", { ids, usar_pct: 90 });
+      const caja = $("#conj-plan", main);
+      caja.hidden = false;
+      caja.innerHTML = planConjuntoHTML(plan);
+      /* ENCENDER ES UN BUCLE DEL LADO DEL CLIENTE, a propósito: cada encendido
+         pasa por las MISMAS puertas que uno solo -cantera, clave, porción,
+         símbolo repetido- y un endpoint "enciende todo" tendría que
+         reimplementarlas o saltearlas. Si uno falla, se dice cuál y los ya
+         encendidos QUEDAN encendidos: apagarlos por un error del quinto sería
+         decidir por el usuario. */
+      const btnEnc = $("#conj-encender", main);
+      btnEnc.onclick = async () => {
+        btnEnc.disabled = true;
+        const casa = ($("#bot-casa", main) || {}).value || "binance";
+        let prendidos = 0;
+        try {
+          for (const d of plan.detalle) {
+            const fila = (S.saved || []).find(x => x.id === d.id);
+            const archivo = await api.post("/api/export/bingx/objeto", {
+              spec: fila.spec, name: fila.name,
+              dataset_id: (fila.meta || {}).dataset_id,
+              timeframe: (fila.meta || {}).timeframe,
+              settings: { commission_pct: (fila.meta || {}).commission },
+              metrics: (fila.meta || {}).metrics, oos: (fila.meta || {}).oos,
+            });
+            await api.post("/api/bot/encender", {
+              bot: archivo, modo: "practica", exchange: casa,
+              estrategia_id: d.id,
+              porcion: (plan.porciones[d.id] || 0) / 100,
+            });
+            prendidos += 1;
+          }
+          toast(t("conj.encendido", { n: prendidos }), "ok");
+        } catch (e) {
+          toast(t("conj.fallo", { n: prendidos, err: e.message }), "err");
+        }
+        await navigate("operar");
+      };
+    } catch (e) { toast(e.message, "err"); }
+    btnArmar.disabled = false;
+  };
+
   /* LA ZONA DE VUELOS VIVE SOLA. Sin esto la pantalla es una foto: el bot
      opera, el registro crece, el semáforo cambia — y el usuario mira un panel
      congelado hasta que recarga a mano. Se redibuja SOLO la zona de vuelos;
@@ -2416,6 +2546,111 @@ const vistaBot = async (main, hayClave) => {
     } catch (err) { /* la próxima vuelta lo reintenta */ }
   }, 30000);
 
+};
+
+
+/* ---- vista: el tablero ----
+
+   LO QUE LA CUENTA HIZO, NO LO QUE LOS BOTS RECUERDAN. Es la misma regla que
+   la posicion: el registro del bot se pierde al cerrar la aplicacion, no sabe
+   de comisiones, y no incluye lo que alguien haya hecho a mano desde Binance.
+
+   EL RESULTADO VA PARTIDO y no como un solo numero. Un numero solo esconde la
+   unica pregunta que importa -si la estrategia no sirve, o si sirve y los
+   costos se la comen- y manda a cambiar lo que no habia que cambiar. */
+const vistaTablero = async (main, hayClave) => {
+  main.innerHTML = pageHead(t("tab.titulo"), esc(t("tab.sub")));
+  if (!hayClave.binance.practica) {
+    main.innerHTML += `<div class="card"><div class="empty-state">
+      <b>${esc(t("tab.sin_clave"))}</b>
+      <p class="mt">${esc(t("tab.sin_clave_sub"))}</p></div></div>`;
+    return;
+  }
+
+  const caja = document.createElement("div");
+  caja.id = "tab-caja";
+  caja.innerHTML = `<div class="card"><p class="help-note">${esc(t("tab.cargando"))}</p></div>`;
+  main.appendChild(caja);
+
+  const pintar = async () => {
+    let d;
+    try {
+      d = await api.get("/api/cuenta/rendimiento");
+    } catch (e) {
+      caja.innerHTML = `<div class="card"><div class="bot-alerta">
+        <span class="g-ic">${icono("alerta")}</span>
+        <span>${esc(e.message)}</span></div></div>`;
+      return;
+    }
+    const r = d.resultado || {};
+    const signo = n => (n > 0 ? "pos" : n < 0 ? "neg" : "");
+    const dinero = n => (n > 0 ? "+" : "") + fmtNum(n, 4) + " USDT";
+    const ficha = (rot, val, cls) => `<div class="conj-stat">
+      <span>${esc(rot)}</span><b class="${cls || ""}">${val}</b></div>`;
+
+    caja.innerHTML = `
+    <div class="card">
+      <div class="conj-stats">
+        ${ficha(t("tab.saldo"), fmtNum(d.saldo, 2) + " USDT")}
+        ${ficha(t("tab.neto"), dinero(r.neto), signo(r.neto))}
+        ${d.cuantas_cerradas ? ficha(t("tab.cerradas"), fmtInt(d.cuantas_cerradas)) : ""}
+        ${d.win_rate_pct != null ? ficha(t("tab.wr"), fmtNum(d.win_rate_pct, 1) + "%") : ""}
+      </div>
+
+      <!-- LAS TRES PARTES. Es lo que hace util al tablero: el PNL puede estar
+           en positivo y la cuenta en negativo porque la comision se lo comio,
+           y eso con un solo numero no se ve. -->
+      <div class="conj-stats mt">
+        ${ficha(t("tab.pnl"), dinero(r.pnl), signo(r.pnl))}
+        ${ficha(t("tab.comision"), dinero(r.comision), signo(r.comision))}
+        ${ficha(t("tab.funding"), dinero(r.funding), signo(r.funding))}
+      </div>
+      <p class="help-note">${esc(t("tab.parte_nota"))}</p>
+    </div>
+
+    <div class="card mt">
+      <b>${esc(t("tab.abiertas"))}</b>
+      ${(d.posiciones || []).length ? `
+      <div class="conj-detalle mt">
+        ${d.posiciones.map(p => `<div class="bot-fila">
+          <span class="bot-que"><b>${esc(p.simbolo)}</b> ${
+            esc(p.lado > 0 ? t("tab.largo") : t("tab.corto"))} ${fmtNum(p.cantidad, 4)}</span>
+          <span class="bot-det">${esc(t("tab.desde_precio", {
+            p: fmtNum(p.precio_entrada, 2) }))} · ${esc(t("tab.marca", {
+            p: fmtNum(p.precio_marca, 2) }))}</span>
+          <span class="${signo(p.pnl_abierto)}">${dinero(p.pnl_abierto)}</span>
+        </div>`).join("")}
+      </div>` : `<p class="help-note mt">${esc(t("tab.sin_abiertas"))}</p>`}
+    </div>
+
+    <div class="card mt">
+      <b>${esc(t("tab.ejecuciones"))}</b>
+      <p class="help-note">${esc(t("tab.ejecuciones_nota"))}</p>
+      ${(d.cerradas || []).length ? `
+      <div class="conj-detalle mt">
+        ${d.cerradas.slice(0, 20).map(c => `<div class="bot-fila">
+          <span class="bot-hora">${esc(new Date(c.cuando).toLocaleString([], {
+            month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }))}</span>
+          <!-- La clave se escribe ENTERA y no se arma concatenando: armada,
+               el examen de textos no puede saber cuáles se piden, y una que
+               falte se dibuja en crudo en la pantalla sin que nada avise. -->
+          <span class="bot-que"><b>${esc(c.simbolo)}</b> ${
+            esc(c.lado === "compra" ? t("tab.compra") : t("tab.venta"))} ${
+            fmtNum(c.cantidad, 4)} @ ${fmtNum(c.precio, 2)}</span>
+          <span class="bot-det ${signo(c.pnl)}">${c.pnl ? dinero(c.pnl) : "—"}</span>
+          <span class="bot-det">${esc(t("tab.com_corta"))} ${fmtNum(-c.comision, 4)}</span>
+        </div>`).join("")}
+      </div>` : `<p class="help-note mt">${esc(t("tab.sin_ejecuciones"))}</p>`}
+    </div>`;
+  };
+
+  await pintar();
+  /* Se refresca solo mientras la pestania este abierta: un tablero que hay
+     que recargar a mano deja de ser un tablero. */
+  const tic = setInterval(() => {
+    if (!document.body.contains(caja)) { clearInterval(tic); return; }
+    pintar();
+  }, 30000);
 };
 
 
