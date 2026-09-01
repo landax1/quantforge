@@ -2043,6 +2043,62 @@ function tarjetaVuelo(v) {
   </div>`;
 }
 
+/* LA ZONA DE VUELOS, SEPARADA DEL RESTO DEL PANEL. Es lo unico que cambia
+   mientras el bot opera, asi que es lo unico que el refresco redibuja: el
+   formulario de abajo —con lo que el usuario haya elegido a medio armar— no
+   se toca nunca. */
+function zonaVuelos(e) {
+  const vuelos = e.vuelos || [];
+  const libre = typeof e.porcion_libre === "number" ? e.porcion_libre : 1;
+  return `
+    ${vuelos.map(tarjetaVuelo).join("")}
+    ${vuelos.length ? `
+    <p class="help-note mt">${esc(t("bot.reparto", {
+      usado: Math.round((e.porcion_usada || 0) * 100),
+      libre: Math.round(libre * 100) }))}</p>
+    ${e.cuantos > 1 ? `<div class="controls mt">
+      <button class="btn ghost" id="bot-apagar-todos">${esc(t("bot.apagar_todos"))}</button>
+    </div>` : ""}
+    <p class="help-note mt">${esc(t("bot.apagar_nota"))}</p>` : ""}`;
+}
+
+function atarVuelos(main) {
+  $$("[data-apagar]", main).forEach(b => {
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        await api.post("/api/bot/apagar", { simbolo: b.dataset.apagar });
+        toast(t("bot.apagado"), "ok");
+        await navigate("operar");
+      } catch (e) { toast(e.message, "err"); }
+      b.disabled = false;
+    };
+  });
+  $$("[data-panico]", main).forEach(b => {
+    b.onclick = async () => {
+      if (!confirm(t("bot.panico_seguro"))) return;
+      b.disabled = true;
+      try {
+        const r = await api.post("/api/bot/panico", { simbolo: b.dataset.panico });
+        toast(t("bot.panico_hecho"), "ok");
+        await navigate("operar");
+        if (r && r.cerrado) console.info("[bot] pánico:", r.cerrado);
+      } catch (e) { toast(e.message, "err"); }
+      b.disabled = false;
+    };
+  });
+  const todos = $("#bot-apagar-todos", main);
+  if (todos) todos.onclick = async () => {
+    todos.disabled = true;
+    try {
+      await api.post("/api/bot/apagar", {});
+      toast(t("bot.apagado"), "ok");
+      await navigate("operar");
+    } catch (e) { toast(e.message, "err"); }
+    todos.disabled = false;
+  };
+}
+
 function panelBot(e, hayClave) {
   const on = e.encendido;
   /* SOLO las estrategias minadas sobre un perpetuo. Un exchange de cripto no
@@ -2071,16 +2127,7 @@ function panelBot(e, hayClave) {
         esc(on ? t("bot.n_operando", { n: e.cuantos }) : t("bot.off"))}</span>
     </div>
 
-    ${vuelos.map(tarjetaVuelo).join("")}
-
-    ${vuelos.length ? `
-    <p class="help-note mt">${esc(t("bot.reparto", {
-      usado: Math.round((e.porcion_usada || 0) * 100),
-      libre: Math.round(libre * 100) }))}</p>
-    ${e.cuantos > 1 ? `<div class="controls mt">
-      <button class="btn ghost" id="bot-apagar-todos">${esc(t("bot.apagar_todos"))}</button>
-    </div>` : ""}
-    <p class="help-note mt">${esc(t("bot.apagar_nota"))}</p>` : ""}
+    <div id="bot-zona-vuelos">${zonaVuelos(e)}</div>
 
     ${!hayLugar ? `
     <div class="empty-state mt">
@@ -2168,15 +2215,25 @@ function panelBot(e, hayClave) {
 PAGES.operar = async (main) => {
   const vista = S.vistaOperar === "claves" ? "claves" : "bot";
   const estado = await api.get("/api/exchanges");
+  /* POR EXCHANGE Y ENTORNO, no sólo por entorno. Indexado por entorno solo,
+     la fila de Binance práctica PISABA a la de BingX práctica: la tarjeta de
+     BingX mostraba la clave del otro como propia, y el selector de modo creía
+     que había clave donde no la había. Con un solo exchange el atajo era
+     inocuo; con dos era una mentira en pantalla. */
   const por = {};
-  estado.forEach(x => { por[x.entorno] = x; });
-  const hayClave = { practica: !!(por.practica || {}).configurada,
-                     real: !!(por.real || {}).configurada };
+  estado.forEach(x => { por[`${x.exchange}-${x.entorno}`] = x; });
+  const hayClave = {
+    bingx: { practica: !!(por["bingx-practica"] || {}).configurada,
+             real: !!(por["bingx-real"] || {}).configurada },
+    binance: { practica: !!(por["binance-practica"] || {}).configurada,
+               real: false },     // Binance no tiene real: sólo demo
+  };
   /* Un punto en la pestania cuando no hay NINGUNA clave cargada. Sin eso,
      alguien que entra por primera vez cae en la vista del bot, no puede
      encender nada mas alla del simulacro y no tiene por que adivinar que lo
      que le falta vive en la otra pestania. */
-  const sinClaves = !hayClave.practica && !hayClave.real;
+  const sinClaves = !Object.values(hayClave)
+    .some(x => x.practica || x.real);
 
   main.innerHTML = `<div class="vistas" role="tablist">
       <button role="tab" data-vista="bot" aria-selected="${vista === "bot"}"
@@ -2235,7 +2292,9 @@ const vistaBot = async (main, hayClave) => {
     [...selModo.options].forEach(o => {
       if (!o.value) return;
       const p = puertas[o.value] || {};
-      const faltaClave = o.value !== "simulacro" && !hayClave[o.value];
+      const casaSel = ($("#bot-casa", main) || {}).value || "bingx";
+      const faltaClave = o.value !== "simulacro"
+        && !(hayClave[casaSel] || {})[o.value];
       // Sin estrategia elegida no se bloquea nada: sería decir que no antes
       // de que haya algo sobre lo que decidir.
       o.disabled = !!fila && (faltaClave || (p.pasa === false));
@@ -2286,7 +2345,7 @@ const vistaBot = async (main, hayClave) => {
 
   if (selCual) selCual.onchange = revisarDestinos;
   if (selModo) selModo.onchange = revisarDestinos;
-  if (selCasa) selCasa.onchange = revisarCasa;
+  if (selCasa) selCasa.onchange = revisarCasa;   // revisarCasa llama a revisarDestinos
   revisarCasa();
 
   const irClaves = $("#bot-ir-claves", main);
@@ -2338,42 +2397,24 @@ const vistaBot = async (main, hayClave) => {
     btnEncender.disabled = false;
   };
 
-  $$("[data-apagar]", main).forEach(b => {
-    b.onclick = async () => {
-      b.disabled = true;
-      try {
-        await api.post("/api/bot/apagar", { simbolo: b.dataset.apagar });
-        toast(t("bot.apagado"), "ok");
-        await navigate("operar");
-      } catch (e) { toast(e.message, "err"); }
-      b.disabled = false;
-    };
-  });
+  atarVuelos(main);
 
-  $$("[data-panico]", main).forEach(b => {
-    b.onclick = async () => {
-      if (!confirm(t("bot.panico_seguro"))) return;
-      b.disabled = true;
-      try {
-        const r = await api.post("/api/bot/panico", { simbolo: b.dataset.panico });
-        toast(t("bot.panico_hecho"), "ok");
-        await navigate("operar");
-        if (r && r.cerrado) console.info("[bot] pánico:", r.cerrado);
-      } catch (e) { toast(e.message, "err"); }
-      b.disabled = false;
-    };
-  });
-
-  const btnApagar = $("#bot-apagar-todos", main);
-  if (btnApagar) btnApagar.onclick = async () => {
-    btnApagar.disabled = true;
+  /* LA ZONA DE VUELOS VIVE SOLA. Sin esto la pantalla es una foto: el bot
+     opera, el registro crece, el semáforo cambia — y el usuario mira un panel
+     congelado hasta que recarga a mano. Se redibuja SOLO la zona de vuelos;
+     el formulario, con lo que haya elegido a medio armar, no se toca. Treinta
+     segundos: el bot decide una vez por vela, más seguido es tráfico sin
+     información. */
+  const refresco = setInterval(async () => {
+    const zona = $("#bot-zona-vuelos", main);
+    if (!zona || !document.body.contains(zona)) { clearInterval(refresco); return; }
     try {
-      await api.post("/api/bot/apagar", {});
-      toast(t("bot.apagado"), "ok");
-      await navigate("operar");
-    } catch (e) { toast(e.message, "err"); }
-    btnApagar.disabled = false;
-  };
+      const e = await api.get("/api/bot");
+      if (!(e.vuelos || []).length) return;
+      zona.innerHTML = zonaVuelos(e);
+      atarVuelos(main);
+    } catch (err) { /* la próxima vuelta lo reintenta */ }
+  }, 30000);
 
 };
 
@@ -2392,7 +2433,7 @@ const vistaClaves = async (main, por) => {
      llamadas —guardar, probar, borrar— manda la clave de Binance al archivo
      de BingX sin que nada avise. */
   const tarjeta = (entorno, casa = "bingx", cabecera = null, extra = "") => {
-    const e = (casa === "bingx" ? por : {})[entorno] || { configurada: false };
+    const e = por[`${casa}-${entorno}`] || { configurada: false };
     const real = entorno === "real";
     return `
     <div class="card ex-card${real ? " ex-real" : ""}">

@@ -1266,9 +1266,11 @@ const STR = {
   "op.tab_bot": ["Bot", "Bot"],
   "op.tab_claves": ["Exchange keys", "Claves"],
   "op.sin_claves": ["No key loaded yet", "Todavía no cargaste ninguna clave"],
+  /* Decía "un bot por vez sobre una cuenta", que fue cierto hasta que el
+     piloto aprendió a sostener varios. La regla real es POR SIMBOLO. */
   "op.sub_bot": [
-    "One bot at a time on one account: two of them would fight over the same position.",
-    "Un bot por vez sobre una cuenta: dos se pelearían por la misma posición."],
+    "One bot per symbol: several can run at once, each sized on its own share of the account.",
+    "Un bot por símbolo: pueden correr varios a la vez, cada uno dimensionado sobre su porción de la cuenta."],
   "op.ir_claves": ["Load a key", "Cargar una clave"],
   /* Binance va SOLO en demo, y el rotulo lo dice en el titulo y no en una
      nota al pie: si estuviera abajo, alguien carga la clave, ve "configurada"
