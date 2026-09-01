@@ -282,7 +282,22 @@ const INST_FAMILIA = {
    Cada tarjeta dice qué busca Y QUÉ CUESTA. Todas cuestan algo: acertar más
    seguido significa ganar menos por acierto, y caer poco significa rendir
    menos. Callar la contrapartida sería vender lo que la portada dice no
-   vender. */
+   vender.
+
+   Y CADA UNA TRAE SU FORMA DE PORTAFOLIO —cuántos bots y cuánto de la cuenta
+   se pone a trabajar—, que es la parte que faltaba. Una receta decía dónde
+   buscar y se callaba qué hacer con lo encontrado, así que el usuario que
+   menos sabe terminaba encendiendo una sola estrategia al 100% de la cuenta:
+   la configuración más riesgosa posible, elegida por omisión.
+
+   LA RECETA TRAE CRITERIOS Y NO ESTRATEGIAS, y esa diferencia decide si esto
+   sirve o miente. Un paquete de estrategias ya elegidas sería una promesa
+   sobre resultados —lo que este proyecto ya sacó de la pantalla una vez— y
+   además se agotaría solo: si todos corren las mismas cinco, deja de haber
+   ventaja. MEDIDO acá: tres corridas con semillas distintas dieron 101
+   estrategias y CERO repetidas. Dos personas con la misma receta obtienen
+   portafolios disjuntos, y eso es lo que hace que la receta se pueda
+   repartir. */
 const RECETAS = () => [
   {
     id: "fondeo", ico: "diana",
@@ -319,6 +334,25 @@ const RECETAS = () => [
        mercados y poner un número sería inventarlo. Promete lo que sí cumple en
        los dos, que es la caída chica — y que además es la regla que de verdad
        elimina gente en un desafío. */
+    /* CINCO BOTS Y 80% DE LA CUENTA. Un desafío se pierde por la caída
+       diaria, así que lo que hay que comprar es que no caigan todos a la vez:
+       cinco instrumentos distintos y un colchón del 20% para que dos
+       posiciones en contra no toquen el límite. */
+    cartera: { bots: 5, usarPct: 80 },
+    /* CUATRO BOTS Y 70%. La que menos tolera un susto: pocas operaciones
+       grandes significa que cada una pesa, y el colchón más ancho de las
+       cuatro es lo que evita que una mala racha obligue a cerrar en el peor
+       momento. */
+    cartera: { bots: 4, usarPct: 70 },
+    /* SEIS BOTS Y 90%. Acertar seguido significa ganar poco por acierto,
+       así que el resultado sale de la cantidad: con pocos bots la ventaja por
+       operación no alcanza a moverse del ruido. */
+    cartera: { bots: 6, usarPct: 90 },
+    /* CINCO BOTS Y 75%. La caída del conjunto no es la suma de las
+       individuales —eso supondría que caen todas juntas— pero tampoco el
+       promedio. Repartir en cinco instrumentos es lo que de verdad la baja, y
+       por eso ésta es la receta donde más importa no concentrar. */
+    cartera: { bots: 5, usarPct: 75 },
     cfg: {
       timeframe: "30m", direction: "both", maxFilters: 1,
       anios: 4, maxCandidates: 1400,

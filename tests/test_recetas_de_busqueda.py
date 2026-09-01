@@ -310,3 +310,35 @@ def test_el_rendimiento_pedido_no_puede_ser_un_numero_fijo():
         "EURUSD eso pide por encima de su techo y devuelve cero")
     assert not re.search(r"minCagr: [\d.]+", cfg), (
         "quedó también un minCagr fijo, que pisaría al múltiplo")
+
+
+def test_cada_receta_dice_su_forma_de_PORTAFOLIO():
+    """UNA RECETA QUE SE CALLA ESTO DEJA AL USUARIO EN LA PEOR CONFIGURACION.
+
+    Decía dónde buscar y nada sobre qué hacer con lo encontrado, así que quien
+    menos sabe terminaba encendiendo UNA sola estrategia al 100% de la cuenta
+    —la configuración más riesgosa posible— elegida por omisión y no a
+    propósito.
+
+    Va afuera de `cfg` porque `aplicarReceta` copia `cfg` tal cual a las
+    perillas del minado, y esto no es una perilla del minado.
+    """
+    bloque = APP[APP.index("const RECETAS"):]
+    bloque = bloque[:bloque.index(chr(10) + "};")]
+    carteras = re.findall(r"cartera: \{ bots: (\d+), usarPct: (\d+) \}", bloque)
+    ids = re.findall(r'id: "(\w+)"', bloque)
+    assert len(carteras) == len(ids), (
+        f"{len(ids)} recetas y {len(carteras)} carteras: alguna se calla qué "
+        f"hacer con lo que encuentra")
+
+    for bots, usar in carteras:
+        bots, usar = int(bots), int(usar)
+        assert bots >= 2, "un solo bot no es un portafolio"
+        # Nunca la cuenta entera: dos posiciones moviéndose en contra a la vez
+        # necesitan aire.
+        assert 50 <= usar <= 90, f"usarPct fuera de rango: {usar}"
+        # Con porciones diminutas el mínimo del exchange manda sobre lo que la
+        # estrategia quiere arriesgar, y opera más grande de lo pedido.
+        assert usar / bots >= 5, (
+            f"cada bot manejaría {usar / bots:.1f}% y el mínimo del exchange "
+            f"pasaría por encima de la estrategia")
