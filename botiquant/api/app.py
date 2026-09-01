@@ -2953,10 +2953,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             raise HTTPException(400, str(exc)) from exc
 
         base = bt.BASE_PRUEBA
+        # LOS PEDIDOS VAN A LA VEZ, no uno detras del otro. Cada uno tarda
+        # alrededor de un segundo contra la demo y no dependen entre si:
+        # en fila, la pantalla decia "preguntando al exchange" cinco
+        # segundos; en paralelo tarda lo que el mas lento.
+        from concurrent.futures import ThreadPoolExecutor
         try:
-            saldo = bt.saldo(api_key, secret, base=base)
-            abiertas = bt.posiciones(api_key, secret, base=base)
-            movs = bt.movimientos(api_key, secret, base=base)
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                f_saldo = pool.submit(bt.saldo, api_key, secret, base=base)
+                f_abiertas = pool.submit(bt.posiciones, api_key, secret, base=base)
+                f_movs = pool.submit(bt.movimientos, api_key, secret, base=base)
+                saldo = f_saldo.result()
+                abiertas = f_abiertas.result()
+                movs = f_movs.result()
         except bt.BinanceError as exc:
             raise HTTPException(502, exc.del_exchange) from exc
 
@@ -2978,13 +2987,18 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         comision = por_concepto.get("COMMISSION", 0.0)
         fondeo = por_concepto.get("FUNDING_FEE", 0.0)
 
-        cerradas: list[dict[str, Any]] = []
-        for sim in sorted(simbolos)[:6]:
+        def _cerradas_de(sim: str) -> list[dict[str, Any]]:
             try:
-                cerradas.extend(bt.cerradas(sim, api_key, secret, limite=50,
-                                            base=base))
+                return bt.cerradas(sim, api_key, secret, limite=50, base=base)
             except bt.BinanceError:
-                continue
+                return []
+
+        # Un pedido por simbolo, tambien a la vez: con seis simbolos operados
+        # eran seis segundos mas de espera en fila.
+        cerradas: list[dict[str, Any]] = []
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            for lote in pool.map(_cerradas_de, sorted(simbolos)[:6]):
+                cerradas.extend(lote)
         cerradas.sort(key=lambda x: x["cuando"], reverse=True)
 
         ganadoras = [c for c in cerradas if c["pnl"] > 0]
