@@ -27,9 +27,27 @@ LOS PASOS VAN DE MENOS A MAS RIESGO, y se corta en el primero que falle:
     4. ¿en qué modo está la cuenta?            decide cómo se cierra
     5. ¿se leen las posiciones?                lee, no opera
 
-NINGUN PASO MANDA UNA ORDEN. Lo que este comprobador NO puede verificar es la
-forma exacta del pedido de una orden, y eso queda dicho al final en vez de
-darlo por bueno.
+LOS PASOS 1 A 5 NO MANDAN NINGUNA ORDEN.
+
+===========================================================================
+EL PASO 6 SI: ABRE, PROTEGE Y CIERRA
+===========================================================================
+
+Corre con `--operar`, y POR OMISION CONTRA EL TESTNET, donde el dinero es falso
+y equivocarse no cuesta nada. Para hacerlo en la cuenta real hay que agregar
+`--real` a propósito, y ademas escribir una palabra a mano antes de cada orden.
+
+Es la ida y vuelta mas chica que el exchange acepta, y comprueba las tres cosas
+que no se pueden comprobar sin operar:
+
+  · que la orden entre, y a cuanto entro;
+  · QUE EL STOP QUEDE REGISTRADO EN BINANCE, preguntando por las ordenes
+    abiertas. Que `proteger` no falle solo dice que el pedido se acepto;
+  · que la orden de cierre CIERRE, y no abra el lado contrario — que es lo que
+    pasaba en BingX cuando faltaba `reduceOnly`.
+
+El stop va 5% abajo y el objetivo 10% arriba: la prueba es que queden anotados,
+no que se disparen.
 """
 
 from __future__ import annotations
@@ -37,15 +55,19 @@ from __future__ import annotations
 import os
 import pathlib
 import sys
+from decimal import ROUND_UP, Decimal
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 from botiquant.data.binance_trade import (BASE_PRUEBA, BASE_REAL,  # noqa: E402
-                                          BinanceError, contrato,
-                                          cuenta_minima, modo_posicion, ping,
-                                          posicion, saldo)
+                                          BinanceError, _pedir, abrir,
+                                          cancelar_todo, cerrar,
+                                          condicionales_abiertas, contrato,
+                                          cuenta_minima, detalle_orden,
+                                          modo_posicion, ordenes_abiertas,
+                                          ping, posicion, proteger, saldo)
 
-BIEN, MAL, INFO = "  [ok]", "  [x] ", "  ->  "
+BIEN, MAL, INFO, OJO = "  [ok]", "  [x] ", "  ->  ", "  !!  "
 
 
 def _linea(marca: str, texto: str) -> None:
@@ -63,8 +85,160 @@ def _clave() -> tuple[str, str]:
             os.environ.get("BINANCE_SECRET", "").strip())
 
 
+def _precio(simbolo: str, base: str) -> float:
+    return float(_pedir("/fapi/v1/ticker/price", {"symbol": simbolo},
+                        base=base)["price"])
+
+
+def _cantidad_minima(precio: float, c: dict) -> float:
+    """La orden mas chica que el exchange acepta, redondeada HACIA ARRIBA.
+
+    Al reves que al operar, y a proposito: dimensionando por riesgo se redondea
+    hacia abajo para no arriesgar de mas, pero aca se busca el minimo VALIDO y
+    hacia abajo quedaria justo por debajo.
+
+    Se miran LOS DOS minimos —cantidad y nocional— porque son limites distintos
+    y pasar uno no dice nada del otro.
+    """
+    paso = Decimal(str(c["paso"] or 0))
+    por_cantidad = Decimal(str(c["minimo"]))
+    por_nocional = (Decimal(str(c["minimo_nocional"])) / Decimal(str(precio))
+                    if c.get("minimo_nocional") else Decimal(0))
+    n = max(por_cantidad, por_nocional)
+    if paso > 0:
+        n = (n / paso).to_integral_value(rounding=ROUND_UP) * paso
+    return float(n)
+
+
+def _confirmar(palabra: str, texto: str) -> bool:
+    print()
+    print(texto)
+    try:
+        return input(f"  Escribi {palabra} para seguir (cualquier otra cosa "
+                     f"cancela): ").strip() == palabra
+    except EOFError:
+        print("  (sin terminal interactiva: cancelado)")
+        return False
+
+
+def _ida_y_vuelta(simbolo: str, clave: str, secreto: str, modo: str,
+                  c: dict, base: str, real: bool) -> int:
+    """El unico paso que manda ordenes. Ver el encabezado del archivo."""
+    precio = _precio(simbolo, base)
+    qty = _cantidad_minima(precio, c)
+    stop, objetivo = precio * 0.95, precio * 1.10
+
+    print()
+    print("=" * 70)
+    print("  ESTO MANDA ORDENES " + ("REALES, CON PLATA REAL" if real
+                                     else "en el TESTNET (dinero falso)"))
+    print("=" * 70)
+    print(f"    simbolo   {simbolo}   a {precio:,.2f}")
+    print(f"    compra    {qty:g}  =  {qty * precio:,.2f} USDT de nocional")
+    print(f"    stop      {stop:,.2f}   (5% abajo: NO se va a disparar)")
+    print(f"    objetivo  {objetivo:,.2f}  (10% arriba: NO se va a disparar)")
+
+    if not _confirmar("OPERAR", "  Mando la orden de apertura?"):
+        _linea(INFO, "cancelado, no se mando nada")
+        return 0
+
+    try:
+        r = abrir(simbolo, 1, qty, precio=precio, api_key=clave,
+                  secret=secreto, modo=modo, contrato_=c, base=base)
+    except BinanceError as exc:
+        _linea(MAL, f"la apertura fallo: {exc}")
+        _linea(INFO, "No quedo nada abierto. -2019 es margen, -4164 es el "
+                     "nocional minimo, -4061 es el modo de posicion.")
+        return 1
+    # LA RESPUESTA NO TRAE EL PRECIO: medido, `avgPrice` viene en None aunque
+    # la orden se haya llenado entera. Se pregunta aparte.
+    orden_id = r.get("orderId")
+    entrada = float(r.get("avgPrice") or 0.0)
+    if not entrada:
+        try:
+            d = detalle_orden(simbolo, orden_id, api_key=clave, secret=secreto,
+                              base=base)
+            entrada = d["precio"]
+        except BinanceError as exc:
+            _linea(OJO, f"no se pudo leer a cuanto entro: {exc}")
+    _linea(BIEN, f"orden ejecutada · id {orden_id} · entro "
+                 f"{r.get('executedQty')} a {entrada:,.2f}")
+
+    # EN BINANCE PROTEGER ES UNA SEGUNDA LLAMADA, y entre la de arriba y esta
+    # la posicion esta abierta y sin stop. Es la ventana que en Bybit no
+    # existe, porque alla la proteccion viaja adentro de la entrada.
+    try:
+        proteger(simbolo, 1, stop=stop, objetivo=objetivo, api_key=clave,
+                 secret=secreto, modo=modo, base=base)
+        _linea(BIEN, "pedido de stop y objetivo aceptado")
+    except BinanceError as exc:
+        _linea(MAL, f"NO SE PUDO PROTEGER: {exc}")
+        _linea(OJO, "HAY UNA POSICION ABIERTA Y SIN STOP. Se ofrece cerrarla "
+                    "abajo; si algo falla, cerrala desde Binance.")
+
+    # SE PREGUNTA EN openAlgoOrders Y NO EN openOrders. Las condicionales se
+    # mudaron al Algo Service y el endpoint viejo devuelve una lista VACIA
+    # aunque el stop este puesto: preguntar ahi seria una alarma falsa
+    # permanente. Medido el 31/8/2026.
+    try:
+        cond = condicionales_abiertas(simbolo, clave, secreto, base=base)
+    except BinanceError as exc:
+        cond = []
+        _linea(OJO, f"no se pudieron leer las condicionales: {exc}")
+    disparos = {o["tipo"]: o["disparo"] for o in cond}
+    if "STOP_MARKET" in disparos:
+        _linea(BIEN, f"EL STOP QUEDO REGISTRADO EN BINANCE: "
+                     f"{disparos['STOP_MARKET']:,.2f}")
+        _linea(INFO, "Esto es lo que hace que apagar la aplicacion no "
+                     "desproteja la posicion.")
+    else:
+        _linea(MAL, "LA POSICION ESTA ABIERTA Y SIN STOP REGISTRADO.")
+        _linea(OJO, "El pedido puede haberse aceptado igual. No operes hasta "
+                    "entender por que la orden no esta.")
+    if "TAKE_PROFIT_MARKET" in disparos:
+        _linea(BIEN, f"objetivo registrado: {disparos['TAKE_PROFIT_MARKET']:,.2f}")
+
+    p = posicion(simbolo, clave, secreto, base=base)
+    _linea(BIEN, f"posicion: {p['cantidad']:g} desde {p['precio_entrada']:,.2f}")
+
+    if not _confirmar("CERRAR", "  Cierro la posicion?"):
+        _linea(OJO, "QUEDA UNA POSICION ABIERTA. Cerrala vos desde Binance.")
+        return 1
+    try:
+        cerrar(simbolo, p["lado"] or 1, p["cantidad"] or qty, api_key=clave,
+               secret=secreto, modo=modo, contrato_=c, base=base)
+    except BinanceError as exc:
+        _linea(MAL, f"el cierre fallo: {exc}")
+        _linea(OJO, "QUEDA UNA POSICION ABIERTA. Cerrala vos desde Binance.")
+        return 1
+
+    # LO QUE IMPORTA NO ES QUE LA ORDEN SE ACEPTE SINO QUE LA POSICION SE HAYA
+    # IDO. En BingX la orden de cierre se aceptaba y abria el lado contrario.
+    final = posicion(simbolo, clave, secreto, base=base)
+    if final["lado"]:
+        _linea(MAL, f"SIGUE HABIENDO POSICION: {final['lado']:+d} "
+                    f"{final['cantidad']:g}. La orden de cierre no cerro.")
+        _linea(OJO, "Si el lado cambio de signo, la orden ABRIO el contrario "
+                    "en vez de cerrar: significa que `reduceOnly` no llego.")
+        return 1
+    _linea(BIEN, "la posicion se cerro: la cuenta quedo plana")
+
+    # DESPUES de cerrar y nunca antes: cancelar con la posicion abierta la
+    # dejaria desprotegida.
+    try:
+        cancelar_todo(simbolo, clave, secreto, base=base)
+        quedan = (ordenes_abiertas(simbolo, clave, secreto, base=base)
+                  + condicionales_abiertas(simbolo, clave, secreto, base=base))
+        _linea(BIEN, "ordenes pendientes canceladas" if not quedan else
+                     f"OJO: quedan {len(quedan)} ordenes vivas")
+    except BinanceError as exc:
+        _linea(OJO, f"no se pudo limpiar las ordenes pendientes: {exc}")
+    return 0
+
+
 def main() -> int:
     real = "--real" in sys.argv
+    operar = "--operar" in sys.argv
     base = BASE_REAL if real else BASE_PRUEBA
     simbolo = "BTCUSDT"
 
@@ -171,10 +345,15 @@ def main() -> int:
         except Exception:                                     # noqa: BLE001
             pass
 
+    if operar:
+        return _ida_y_vuelta(simbolo, clave, secreto, modo, c, base, real)
+
     print()
-    print("  Lo que esto NO comprobó: mandar una orden. La forma exacta del")
-    print("  pedido de orden no se puede verificar sin operar, así que ese paso")
-    print("  se prueba en el testnet desde la aplicación y no desde acá.")
+    print("  Lo que esto NO comprobo: mandar una orden. Para probar el camino")
+    print("  entero —abrir, que el stop quede puesto, cerrar— en el testnet,")
+    print("  donde el dinero es falso y no cuesta nada:")
+    print()
+    print("      python comprobar_binance.py --operar")
     print()
     return 0
 

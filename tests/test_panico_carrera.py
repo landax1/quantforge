@@ -100,8 +100,9 @@ def test_el_panico_frena_aunque_el_hilo_siga_trabado():
 
     # ahora se destraba la vuelta que venía en camino
     a.soltar.set()
-    if p.hilo:
-        p.hilo.join(timeout=10)
+    for v in p.vuelos.values():
+        if v.hilo:
+            v.hilo.join(timeout=10)
 
     # LA ASERCIÓN QUE IMPORTA VA PRIMERO. Si se rompe el arreglo, tiene que
     # romperse ESTA y no una sobre una marca interna: lo que hace daño es la
@@ -123,8 +124,9 @@ def test_frenar_no_depende_de_que_el_hilo_conteste():
     p.panico()
     assert b.detenido is True, "frenado sin esperar al hilo"
     a.soltar.set()
-    if p.hilo:
-        p.hilo.join(timeout=10)
+    for v in p.vuelos.values():
+        if v.hilo:
+            v.hilo.join(timeout=10)
 
 
 def test_sin_bot_el_panico_no_revienta():

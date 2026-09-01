@@ -141,3 +141,50 @@ def revisar(registro: list[dict[str, Any]], respaldo: dict[str, Any]) -> Veredic
         f"quedó en el {pct} de su ventaja ({pf_vivo:.2f} contra {pf_base:.2f})",
         "Pasalo a simulacro hasta que vuelva a demostrar que sirve. Treinta "
         "operaciones limpias, como cuando entró.", **base)
+
+
+# ------------------------------------------------------------- la memoria
+
+def actualizar(previa: dict[str, Any] | None, v: Veredicto, *,
+               cuando: str = "") -> dict[str, Any]:
+    """Lo que el semáforo RECUERDA entre vueltas. Sin esto no se retira nada.
+
+    ==================================================================
+    UN VEREDICTO SUELTO NO ALCANZA PARA DECIDIR: HACE FALTA UNA RACHA.
+    ==================================================================
+
+    `revisar` mira el momento y dice un color. Pero un naranja aislado puede
+    ser una mala semana, y por eso el ciclo espera varias vueltas antes de
+    sacar nada. Alguien tiene que contarlas, y ese alguien es esto.
+
+    LAS CUATRO REGLAS, y la única que borra es la del verde:
+
+        naranja   suma una vuelta. Es la que puede terminar en retiro.
+        verde     RESETEA a cero. Volvió a rendir: la racha anterior ya no
+                  describe a esta estrategia.
+        amarillo  no suma y no borra. El semáforo dice de sí mismo que un
+                  amarillo "puede ser mala suerte todavía": sumarlo retiraría
+                  por ruido, y borrarlo dejaría que una caída real se limpie
+                  sola cada vez que rebota un poco.
+        callado   igual que el amarillo, y por otro motivo: no hay con qué
+                  opinar. No opinar no es una opinión buena.
+
+    SOLO EL VERDE BORRA, Y ES A PROPOSITO. Para limpiar la cuenta hay que
+    demostrar que volvió a rendir, no simplemente dejar de estar mal.
+    """
+    previa = previa or {}
+    vueltas = int(previa.get("vueltas_naranja") or 0)
+    if v.estado == NARANJA:
+        vueltas += 1
+    elif v.estado == VERDE:
+        vueltas = 0
+
+    return {
+        "color": v.estado,
+        "vueltas_naranja": vueltas,
+        "cerradas": v.cerradas,
+        "motivo": v.motivo,
+        "recomendacion": v.recomendacion,
+        "conserva": v.conserva,
+        "actualizado": cuando,
+    }

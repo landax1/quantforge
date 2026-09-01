@@ -44,8 +44,17 @@ ES_WINDOWS = sys.platform == "win32"
 
 #: Lo que se puede configurar. Se valida contra esta lista porque el nombre
 #: viaja hasta un nombre de archivo.
-EXCHANGES = ("bingx",)
+EXCHANGES = ("bingx", "binance")
 ENTORNOS = ("practica", "real")
+
+#: Exchanges que SOLO admiten el entorno de practica.
+#:
+#: No es una preferencia: el adaptador de Binance no tiene forma de apuntar a
+#: la cuenta real —no acepta una base— asi que una clave real de Binance seria
+#: una clave que no puede usar nadie. Guardarla igual dejaria en pantalla un
+#: "configurada" que promete algo que no existe, y ese es el tipo de mentira
+#: que despues alguien toma por cierta.
+SOLO_PRACTICA = ("binance",)
 
 
 class ClaveError(RuntimeError):
@@ -121,6 +130,14 @@ def _ruta(carpeta: Path, exchange: str, entorno: str) -> Path:
         raise ClaveError(f"Exchange desconocido: {exchange}")
     if entorno not in ENTORNOS:
         raise ClaveError(f"Entorno desconocido: {entorno}")
+    # SE CORTA ACA Y NO EN CADA LLAMADOR: guardar, leer, borrar y describir
+    # pasan todos por esta funcion, asi que la regla no se puede saltear
+    # olvidandose de repetirla en uno de los cuatro.
+    if exchange in SOLO_PRACTICA and entorno != "practica":
+        raise ClaveError(
+            f"{exchange} esta habilitado solo en practica. La aplicacion no "
+            f"tiene forma de operar en real con este exchange, asi que una "
+            f"clave real no la podria usar nadie.")
     return Path(carpeta) / f"claves-{exchange}-{entorno}.bin"
 
 
@@ -194,4 +211,6 @@ def borrar(carpeta: Path, exchange: str, entorno: str) -> bool:
 
 def listar(carpeta: Path) -> list[dict[str, Any]]:
     """El estado de todas las combinaciones, sin ningún secreto adentro."""
-    return [describir(carpeta, ex, en) for ex in EXCHANGES for en in ENTORNOS]
+    return [describir(carpeta, ex, en)
+            for ex in EXCHANGES for en in ENTORNOS
+            if not (ex in SOLO_PRACTICA and en != "practica")]

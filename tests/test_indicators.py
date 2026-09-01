@@ -19,10 +19,18 @@ def test_registry_complete():
 @pytest.mark.parametrize("name", sorted(REGISTRY))
 def test_outputs_aligned_and_finite_tail(df, name):
     cls = REGISTRY[name]
-    out = cls.compute(df, **{p.name: p.default for p in cls.params})
+    # EL FUNDING NO ES UNA COLUMNA DE TODOS LOS HISTORICOS. Lo cobran los
+    # perpetuos y un CFD no lo tiene, así que el marco de prueba —que es de
+    # precio— no lo trae. Se agrega acá y no en el marco compartido para que
+    # los demás indicadores se sigan probando sobre lo mismo de siempre.
+    marco = df
+    if "funding" in getattr(cls, "category", ""):
+        marco = df.copy()
+        marco["funding"] = np.linspace(-0.001, 0.001, len(df))
+    out = cls.compute(marco, **{p.name: p.default for p in cls.params})
     assert set(out) == set(cls.outputs)
     for key, arr in out.items():
-        assert len(arr) == len(df), f"{name}.{key} misaligned"
+        assert len(arr) == len(marco), f"{name}.{key} misaligned"
         # after warm-up the tail must be finite
         tail = arr[-100:]
         assert np.isfinite(tail).all(), f"{name}.{key} has NaN in tail"

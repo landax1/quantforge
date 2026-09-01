@@ -100,7 +100,10 @@ def test_el_menu_tiene_cinco_secciones():
     todavía no entiende la aplicación.
     """
     paginas = re.findall(r'data-page="([^"]+)"', INDEX)
-    assert paginas == ["data", "mining", "saved", "exchanges", "consejos"], (
+    # "operar" y no "exchanges": la sección dejó de llamarse por la casa y pasó
+    # a llamarse por lo que uno va a hacer ahí. El nombre viejo describía la
+    # plomería —un exchange— y el nuevo describe la intención.
+    assert paginas == ["data", "mining", "saved", "operar", "consejos"], (
         f"el menú cambió sin querer: {paginas}")
 
 
@@ -111,14 +114,21 @@ def test_el_databank_vive_adentro_de_minado():
 
 
 def test_lo_avanzado_esta_apagado_pero_entero():
-    """Walk-forward, Monte Carlo y portafolio no se borraron: se apagaron.
+    """Walk-forward y Monte Carlo YA NO SE ESCONDEN, y las piezas siguen enteras.
 
-    Un interruptor y no bloques comentados, porque el código comentado se pudre
-    y el código con tests corriendo no. Si esta prueba falla porque AVANZADO
-    pasó a true, es una decisión de producto — cambiala a propósito."""
-    assert "const AVANZADO = false;" in APP, (
-        "AVANZADO cambió de valor o de nombre")
-    # y lo que el interruptor apaga sigue existiendo, con su backend
+    El interruptor `AVANZADO` se quitó a propósito: escondía tres cosas
+    distintas —uno que esconde una cosa se puede razonar, uno que esconde tres
+    se vuelve un cajón— y el portafolio salió de ahí porque es un objetivo del
+    producto y no una herramienta. Lo que quedó se encendió, porque el motivo
+    de apagarlo —no agregar una pantalla más— se cumplía igual: vive adentro de
+    una estrategia ya guardada, así que quien no guarda nada no lo ve nunca.
+
+    Lo que este test defiende ahora es que no VUELVA un interruptor que esconda
+    varias cosas a la vez, y que las piezas sigan existiendo con su backend.
+    """
+    assert "const AVANZADO" not in APP, (
+        "volvió un interruptor que esconde varias cosas a la vez")
+    # y las piezas siguen existiendo, con su backend
     for pieza in ("panelPrueba", "abrirPortafolio", "estadoChip", "probarEstrategia"):
         assert pieza in APP, f"{pieza} se borró en vez de apagarse"
     api = (Path(__file__).resolve().parents[1] / "botiquant" / "api" / "app.py"
@@ -179,9 +189,19 @@ def test_reservar_un_tramo_vive_donde_se_elige_la_data():
     assert primer_paso < oos < segundo_paso, (
         "el interruptor de tramo reservado se fue del paso donde se elige la data")
 
-    # y el texto no puede mandar al paso 1 estando en el paso 1
-    assert "step 1" not in DICC and "paso 1" not in DICC, (
-        "la explicación sigue mandando al paso 1, y ahora ESTÁ en el paso 1")
+    # y el texto DEL INTERRUPTOR no puede mandar al paso 1 estando en el paso 1
+    #
+    # SE MIRA SOLO SU PROPIA EXPLICACION Y NO EL DICCIONARIO ENTERO. Hay un
+    # aviso legítimo que sí manda al paso 1 —`acc.necesita_reserva`— y lo hace
+    # desde OTRO panel: el de los filtros de aceptación, que está más abajo y
+    # necesita que el tramo reservado esté prendido. Ese sí tiene que decir
+    # dónde se prende. La regla era "no te mandes a vos mismo", no "que la
+    # palabra no aparezca".
+    propias = [v for k, v in re.findall(r'"(oos\.[^"]+)":\s*\[([^\]]*)\]', DICC)]
+    for texto in propias:
+        assert "step 1" not in texto and "paso 1" not in texto, (
+            f"la explicación del interruptor manda al paso 1, y ESTÁ en el "
+            f"paso 1: {texto[:80]}")
 
 
 def test_los_consejos_estan_completos():

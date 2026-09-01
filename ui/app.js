@@ -733,10 +733,21 @@ function varaAplicada(snap) {
     partes.push(`${esc(cr.label.replace(/ [≥≤]$/, ""))} ${cr.label.slice(-1)}
                  <b>${fmtNum(v, cr.step < 1 ? 2 : 0)}${cr.unit}</b>`);
   }
+  /* LOS BLOQUES QUE NO SE PUDIERON USAR, dichos acá y no callados.
+
+     El funding lo cobran los perpetuos; un CFD no lo tiene. Pedirlo igual es
+     legítimo —"todos los bloques" es una elección razonable— pero si se
+     descartan sin avisar, la corrida sale con menos herramientas de las que
+     uno cree que pidió y no hay forma de notarlo. */
+  const fuera = snap.sin_funding || [];
+  const nota = fuera.length
+    ? `<div class="vara floja">${esc(t("vara.sin_funding", { n: fuera.length }))}</div>`
+    : "";
+
   if (partes.length > 1) {
-    return `<div class="vara">${t("vara.required")}: ${partes.join(" · ")}</div>`;
+    return `<div class="vara">${t("vara.required")}: ${partes.join(" · ")}</div>${nota}`;
   }
-  return `<div class="vara floja">${t("vara.none", { unico: partes[0] })}</div>`;
+  return `<div class="vara floja">${t("vara.none", { unico: partes[0] })}</div>${nota}`;
 }
 
 function acceptPayload() {
@@ -1990,6 +2001,104 @@ function rotuloModo(modo) {
   return t("bot.modo_simulacro");
 }
 
+
+/* UN BOT EN EL AIRE. Cada uno con su estado y sus botones: apagar "el bot"
+   cuando hay cinco no significa nada, y un botón que apaga algo distinto de lo
+   que uno está mirando es peor que no tenerlo. */
+function tarjetaVuelo(v) {
+  const detenido = v.detenido || v.error;
+  return `
+  <div class="bot-vuelo${v.encendido ? " vivo" : ""}">
+    <div class="bot-linea">
+      <span><b>${esc(v.nombre || "—")}</b> · ${esc(v.simbolo || "")} ${esc(v.timeframe || "")}</span>
+      <span class="bot-modo bot-modo-${esc(v.modo || "")}">${esc(rotuloModo(v.modo))}</span>
+    </div>
+    <p class="help-note">${esc(t("bot.maneja", { pct: Math.round((v.porcion || 1) * 100) }))}</p>
+
+    ${(v.vigilante || {}).estado === "amarillo" ? `<div class="bot-alerta mt">
+      <span class="g-ic">${icono("alerta")}</span>
+      <span><b>${esc(t("bot.vig_titulo"))}</b> ${esc(v.vigilante.razon)}</span>
+    </div>` : ""}
+
+    ${detenido ? `<div class="bot-alerta mt">
+      <span class="g-ic">${icono("alerta")}</span>
+      <span>${esc(v.motivo_detencion || v.error || "")}</span>
+    </div>` : ""}
+
+    ${(v.registro || []).length ? `
+    <div class="bot-registro mt">
+      ${v.registro.slice(0, 5).map(f => `
+        <div class="bot-fila">
+          <span class="bot-hora">${esc(String(f.cuando || "").slice(11, 19))}</span>
+          <span class="bot-que">${esc(rotuloAccion(f.accion))}</span>
+          <span class="bot-det">${esc(f.bloqueado || f.error || f.motivo || "")}</span>
+        </div>`).join("")}
+    </div>` : ""}
+
+    ${v.encendido ? `
+    <div class="controls mt">
+      <button class="btn ghost" data-apagar="${esc(v.simbolo)}">${esc(t("bot.apagar"))}</button>
+      <button class="btn danger" data-panico="${esc(v.simbolo)}">${esc(t("bot.panico"))}</button>
+    </div>` : ""}
+  </div>`;
+}
+
+/* LA ZONA DE VUELOS, SEPARADA DEL RESTO DEL PANEL. Es lo unico que cambia
+   mientras el bot opera, asi que es lo unico que el refresco redibuja: el
+   formulario de abajo —con lo que el usuario haya elegido a medio armar— no
+   se toca nunca. */
+function zonaVuelos(e) {
+  const vuelos = e.vuelos || [];
+  const libre = typeof e.porcion_libre === "number" ? e.porcion_libre : 1;
+  return `
+    ${vuelos.map(tarjetaVuelo).join("")}
+    ${vuelos.length ? `
+    <p class="help-note mt">${esc(t("bot.reparto", {
+      usado: Math.round((e.porcion_usada || 0) * 100),
+      libre: Math.round(libre * 100) }))}</p>
+    ${e.cuantos > 1 ? `<div class="controls mt">
+      <button class="btn ghost" id="bot-apagar-todos">${esc(t("bot.apagar_todos"))}</button>
+    </div>` : ""}
+    <p class="help-note mt">${esc(t("bot.apagar_nota"))}</p>` : ""}`;
+}
+
+function atarVuelos(main) {
+  $$("[data-apagar]", main).forEach(b => {
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        await api.post("/api/bot/apagar", { simbolo: b.dataset.apagar });
+        toast(t("bot.apagado"), "ok");
+        await navigate("operar");
+      } catch (e) { toast(e.message, "err"); }
+      b.disabled = false;
+    };
+  });
+  $$("[data-panico]", main).forEach(b => {
+    b.onclick = async () => {
+      if (!confirm(t("bot.panico_seguro"))) return;
+      b.disabled = true;
+      try {
+        const r = await api.post("/api/bot/panico", { simbolo: b.dataset.panico });
+        toast(t("bot.panico_hecho"), "ok");
+        await navigate("operar");
+        if (r && r.cerrado) console.info("[bot] pánico:", r.cerrado);
+      } catch (e) { toast(e.message, "err"); }
+      b.disabled = false;
+    };
+  });
+  const todos = $("#bot-apagar-todos", main);
+  if (todos) todos.onclick = async () => {
+    todos.disabled = true;
+    try {
+      await api.post("/api/bot/apagar", {});
+      toast(t("bot.apagado"), "ok");
+      await navigate("operar");
+    } catch (e) { toast(e.message, "err"); }
+    todos.disabled = false;
+  };
+}
+
 function panelBot(e, hayClave) {
   const on = e.encendido;
   /* SOLO las estrategias minadas sobre un perpetuo. Un exchange de cripto no
@@ -2000,7 +2109,13 @@ function panelBot(e, hayClave) {
     .filter(d => d.source === "binance").map(d => d.id));
   const operables = (S.saved || []).filter(
     x => cripto.has((x.meta || {}).dataset_id));
-  const detenido = e.detenido || e.error;
+  const vuelos = e.vuelos || [];
+  const libre = typeof e.porcion_libre === "number" ? e.porcion_libre : 1;
+  /* HAY LUGAR SI SOBRA CUPO Y SOBRA CUENTA. Ofrecer el formulario sin una de
+     las dos cosas es dejar que alguien arme un bot entero para que el servidor
+     lo rechace al final. */
+  const hayLugar = vuelos.filter(v => v.encendido).length < (e.maximo || 8)
+                   && libre > 0.001;
   return `
   <div class="card bot-card${on ? " bot-on" : ""}">
     <div class="ex-head">
@@ -2009,32 +2124,16 @@ function panelBot(e, hayClave) {
         <p class="help-note">${esc(t("bot.sub"))}</p>
       </div>
       <span class="ex-estado ${on ? "on" : ""}">${
-        esc(on ? t("bot.on") : (detenido ? t("bot.detenido") : t("bot.off")))}</span>
+        esc(on ? t("bot.n_operando", { n: e.cuantos }) : t("bot.off"))}</span>
     </div>
 
-    ${e.hay_bot ? `
-    <div class="bot-linea mt">
-      <span><b>${esc(e.nombre || "—")}</b> · ${esc(e.simbolo || "")} ${esc(e.timeframe || "")}</span>
-      <span class="bot-modo bot-modo-${esc(e.modo || "")}">${
-        esc(rotuloModo(e.modo))}</span>
-    </div>` : ""}
+    <div id="bot-zona-vuelos">${zonaVuelos(e)}</div>
 
-    ${(e.vigilante || {}).estado === "amarillo" ? `<div class="bot-alerta mt">
-      <span class="g-ic">${icono("alerta")}</span>
-      <span><b>${esc(t("bot.vig_titulo"))}</b> ${esc(e.vigilante.razon)}</span>
-    </div>` : ""}
-
-    ${detenido ? `<div class="bot-alerta mt">
-      <span class="g-ic">${icono("alerta")}</span>
-      <span>${esc(e.motivo_detencion || e.error || "")}</span>
-    </div>` : ""}
-
-    ${on ? `
-    <div class="controls mt">
-      <button class="btn ghost" id="bot-apagar">${esc(t("bot.apagar"))}</button>
-      <button class="btn danger" id="bot-panico">${esc(t("bot.panico"))}</button>
-    </div>
-    <p class="help-note mt">${esc(t("bot.apagar_nota"))}</p>` : `
+    ${!hayLugar ? `
+    <div class="empty-state mt">
+      <b>${esc(t("bot.sin_lugar"))}</b>
+      <p class="mt">${esc(t("bot.sin_lugar_sub"))}</p>
+    </div>` : `
     ${!operables.length ? `
     <div class="empty-state mt">
       <b>${esc(t("bot.sin_cripto"))}</b>
@@ -2054,6 +2153,22 @@ function panelBot(e, hayClave) {
     </div>
     <p class="help-note">${esc(t("bot.tope_nota"))}</p>
     <div class="fld-pair mt">
+      <!-- QUE PORCION DE LA CUENTA. Se ofrece lo que queda libre, no el 100%:
+           el default tiene que ser algo que entre. -->
+      <label class="fld"><span>${esc(t("bot.porcion"))}</span>
+        <input type="number" id="bot-porcion" min="1" max="100" step="1"
+               value="${Math.round(libre * 100)}"></label>
+    </div>
+    <p class="help-note">${esc(t("bot.porcion_nota"))}</p>
+    <div class="fld-pair mt">
+      <!-- EN QUE CASA. Se elige y no se deduce del simbolo: BingX pide
+           BTC-USDT y Binance BTCUSDT, y adivinar por el guion convertiria un
+           error de tipeo en una orden al exchange equivocado. -->
+      <label class="fld"><span>${esc(t("bot.casa"))}</span>
+        <select id="bot-casa">
+          <option value="bingx">${esc(t("bot.casa_bingx"))}</option>
+          <option value="binance">${esc(t("bot.casa_binance"))}</option>
+        </select></label>
       <label class="fld"><span>${esc(t("bot.modo"))}</span>
         <select id="bot-modo">
           <option value="">${esc(t("bot.elegir"))}</option>
@@ -2062,6 +2177,7 @@ function panelBot(e, hayClave) {
           <option value="real">${esc(t("bot.modo_real"))}</option>
         </select></label>
     </div>
+    <p class="help-note" id="bot-casa-nota" hidden></p>
     <p class="bot-porque" id="bot-porque" hidden></p>
     <!-- Lo esconde y lo muestra revisarDestinos: sale SOLO cuando lo que
          falta es la clave. El motivo de arriba puede venir de la cantera, y
@@ -2071,16 +2187,6 @@ function panelBot(e, hayClave) {
     <div class="controls mt">
       <button class="btn" id="bot-encender">${esc(t("bot.encender"))}</button>
     </div>`}`}
-
-    ${(e.registro || []).length ? `
-    <div class="bot-registro mt">
-      ${e.registro.slice(0, 8).map(f => `
-        <div class="bot-fila">
-          <span class="bot-hora">${esc(String(f.cuando || "").slice(11, 19))}</span>
-          <span class="bot-que">${esc(rotuloAccion(f.accion))}</span>
-          <span class="bot-det">${esc(f.bloqueado || f.error || f.motivo || "")}</span>
-        </div>`).join("")}
-    </div>` : ""}
   </div>`;
 }
 
@@ -2109,15 +2215,25 @@ function panelBot(e, hayClave) {
 PAGES.operar = async (main) => {
   const vista = S.vistaOperar === "claves" ? "claves" : "bot";
   const estado = await api.get("/api/exchanges");
+  /* POR EXCHANGE Y ENTORNO, no sólo por entorno. Indexado por entorno solo,
+     la fila de Binance práctica PISABA a la de BingX práctica: la tarjeta de
+     BingX mostraba la clave del otro como propia, y el selector de modo creía
+     que había clave donde no la había. Con un solo exchange el atajo era
+     inocuo; con dos era una mentira en pantalla. */
   const por = {};
-  estado.forEach(x => { por[x.entorno] = x; });
-  const hayClave = { practica: !!(por.practica || {}).configurada,
-                     real: !!(por.real || {}).configurada };
+  estado.forEach(x => { por[`${x.exchange}-${x.entorno}`] = x; });
+  const hayClave = {
+    bingx: { practica: !!(por["bingx-practica"] || {}).configurada,
+             real: !!(por["bingx-real"] || {}).configurada },
+    binance: { practica: !!(por["binance-practica"] || {}).configurada,
+               real: false },     // Binance no tiene real: sólo demo
+  };
   /* Un punto en la pestania cuando no hay NINGUNA clave cargada. Sin eso,
      alguien que entra por primera vez cae en la vista del bot, no puede
      encender nada mas alla del simulacro y no tiene por que adivinar que lo
      que le falta vive en la otra pestania. */
-  const sinClaves = !hayClave.practica && !hayClave.real;
+  const sinClaves = !Object.values(hayClave)
+    .some(x => x.practica || x.real);
 
   main.innerHTML = `<div class="vistas" role="tablist">
       <button role="tab" data-vista="bot" aria-selected="${vista === "bot"}"
@@ -2176,7 +2292,9 @@ const vistaBot = async (main, hayClave) => {
     [...selModo.options].forEach(o => {
       if (!o.value) return;
       const p = puertas[o.value] || {};
-      const faltaClave = o.value !== "simulacro" && !hayClave[o.value];
+      const casaSel = ($("#bot-casa", main) || {}).value || "bingx";
+      const faltaClave = o.value !== "simulacro"
+        && !(hayClave[casaSel] || {})[o.value];
       // Sin estrategia elegida no se bloquea nada: sería decir que no antes
       // de que haya algo sobre lo que decidir.
       o.disabled = !!fila && (faltaClave || (p.pasa === false));
@@ -2203,9 +2321,32 @@ const vistaBot = async (main, hayClave) => {
 
   const selCual = $("#bot-cual", main);
   const selModo = $("#bot-modo", main);
+  const selCasa = $("#bot-casa", main);
+
+  /* CON BINANCE, "REAL" NO EXISTE — y se saca de la lista en vez de dejarlo
+     y avisar despues. Una opcion que se puede elegir y despues falla ensenia
+     que la pantalla miente; una que no esta dice la verdad sin texto. */
+  const revisarCasa = () => {
+    const casa = selCasa ? selCasa.value : "bingx";
+    const soloDemo = casa === "binance";
+    const opReal = selModo ? $("option[value='real']", selModo) : null;
+    if (opReal) {
+      opReal.hidden = soloDemo;
+      opReal.disabled = soloDemo;
+      if (soloDemo && selModo.value === "real") selModo.value = "";
+    }
+    const nota = $("#bot-casa-nota", main);
+    if (nota) {
+      nota.hidden = !soloDemo;
+      nota.textContent = soloDemo ? t("bot.casa_binance_nota") : "";
+    }
+    revisarDestinos();
+  };
+
   if (selCual) selCual.onchange = revisarDestinos;
   if (selModo) selModo.onchange = revisarDestinos;
-  revisarDestinos();
+  if (selCasa) selCasa.onchange = revisarCasa;   // revisarCasa llama a revisarDestinos
+  revisarCasa();
 
   const irClaves = $("#bot-ir-claves", main);
   if (irClaves) irClaves.onclick = () => navigate("operar", "claves");
@@ -2237,37 +2378,44 @@ const vistaBot = async (main, hayClave) => {
         oos: (fila.meta || {}).oos,
       });
       const tope = parseFloat(($("#bot-tope", main) || {}).value) || 0;
+      const casa = ($("#bot-casa", main) || {}).value || "bingx";
+      const pct = parseFloat(($("#bot-porcion", main) || {}).value);
       await api.post("/api/bot/encender",
-                     { bot: archivo, modo, perdida_maxima: tope });
+                     { bot: archivo, modo, exchange: casa,
+                       /* SIN ESTO LO OPERADO NO SE GUARDA, y el semaforo no
+                          puede opinar manana sobre lo de hoy: el registro del
+                          bot vive en memoria y se pierde al cerrar la app. */
+                       estrategia_id: id,
+                       /* En fracción y no en porcentaje: el backend razona
+                          sobre 0..1 y traducir en dos lugares es cómo se
+                          termina arriesgando cien veces lo pedido. */
+                       porcion: Number.isFinite(pct) && pct > 0 ? pct / 100 : 1,
+                       perdida_maxima: tope });
       toast(t("bot.encendido"), "ok");
       await navigate("operar");
     } catch (e) { toast(e.message, "err"); }
     btnEncender.disabled = false;
   };
 
-  const btnApagar = $("#bot-apagar", main);
-  if (btnApagar) btnApagar.onclick = async () => {
-    btnApagar.disabled = true;
-    try {
-      await api.post("/api/bot/apagar", {});
-      toast(t("bot.apagado"), "ok");
-      await navigate("operar");
-    } catch (e) { toast(e.message, "err"); }
-    btnApagar.disabled = false;
-  };
+  atarVuelos(main);
 
-  const btnPanico = $("#bot-panico", main);
-  if (btnPanico) btnPanico.onclick = async () => {
-    if (!confirm(t("bot.panico_seguro"))) return;
-    btnPanico.disabled = true;
+  /* LA ZONA DE VUELOS VIVE SOLA. Sin esto la pantalla es una foto: el bot
+     opera, el registro crece, el semáforo cambia — y el usuario mira un panel
+     congelado hasta que recarga a mano. Se redibuja SOLO la zona de vuelos;
+     el formulario, con lo que haya elegido a medio armar, no se toca. Treinta
+     segundos: el bot decide una vez por vela, más seguido es tráfico sin
+     información. */
+  const refresco = setInterval(async () => {
+    const zona = $("#bot-zona-vuelos", main);
+    if (!zona || !document.body.contains(zona)) { clearInterval(refresco); return; }
     try {
-      const r = await api.post("/api/bot/panico", {});
-      toast(t("bot.panico_hecho"), "ok");
-      await navigate("operar");
-      if (r && r.cerrado) console.info("[bot] pánico:", r.cerrado);
-    } catch (e) { toast(e.message, "err"); }
-    btnPanico.disabled = false;
-  };
+      const e = await api.get("/api/bot");
+      if (!(e.vuelos || []).length) return;
+      zona.innerHTML = zonaVuelos(e);
+      atarVuelos(main);
+    } catch (err) { /* la próxima vuelta lo reintenta */ }
+  }, 30000);
+
 };
 
 
@@ -2280,41 +2428,58 @@ const vistaBot = async (main, hayClave) => {
    tarjetas separadas y no un interruptor, para que operar con plata de verdad
    pida cargar otra clave a proposito. */
 const vistaClaves = async (main, por) => {
-  const tarjeta = (entorno) => {
-    const e = por[entorno] || { configurada: false };
+  /* `casa` es el exchange. Mientras hubo uno solo estaba escrito a mano en
+     cada URL; con dos, olvidarse de cambiarlo en una sola de las tres
+     llamadas —guardar, probar, borrar— manda la clave de Binance al archivo
+     de BingX sin que nada avise. */
+  const tarjeta = (entorno, casa = "bingx", cabecera = null, extra = "") => {
+    const e = por[`${casa}-${entorno}`] || { configurada: false };
     const real = entorno === "real";
     return `
     <div class="card ex-card${real ? " ex-real" : ""}">
       <div class="ex-head">
         <div>
-          <b>${esc(t(real ? "ex.real" : "ex.practica"))}</b>
-          <p class="help-note">${esc(t(real ? "ex.real_sub" : "ex.practica_sub"))}</p>
+          <b>${esc(cabecera ? t(cabecera + "_t") : t(real ? "ex.real" : "ex.practica"))}</b>
+          <p class="help-note">${esc(cabecera ? t(cabecera + "_sub") : t(real ? "ex.real_sub" : "ex.practica_sub"))}</p>
         </div>
         <span class="ex-estado ${e.configurada ? "on" : ""}">${
           esc(e.configurada
               ? (e.ilegible ? t("ex.ilegible") : t("ex.cargada", { cola: e.termina_en || "" }))
               : t("ex.vacia"))}</span>
       </div>
+      ${extra}
       <div class="fld-pair mt">
         <label class="fld"><span>${esc(t("ex.api_key"))}</span>
           <input type="text" autocomplete="off" spellcheck="false"
-                 data-ex="key" data-entorno="${entorno}"
+                 data-ex="key" data-casa="${casa}" data-entorno="${entorno}"
                  placeholder="${e.configurada ? "········" + esc(e.termina_en || "") : ""}"></label>
         <label class="fld"><span>${esc(t("ex.secret"))}</span>
           <input type="password" autocomplete="off" spellcheck="false"
-                 data-ex="secret" data-entorno="${entorno}"
+                 data-ex="secret" data-casa="${casa}" data-entorno="${entorno}"
                  placeholder="${e.configurada ? "········" : ""}"></label>
       </div>
       <div class="controls mt">
-        <button class="btn" data-ex-guardar="${entorno}">${esc(t("ex.guardar"))}</button>
-        <button class="btn ghost" data-ex-probar="${entorno}" ${e.configurada ? "" : "disabled"}
+        <button class="btn" data-ex-guardar="${entorno}" data-casa="${casa}">${esc(t("ex.guardar"))}</button>
+        <button class="btn ghost" data-ex-probar="${entorno}" data-casa="${casa}" ${e.configurada ? "" : "disabled"}
           >${esc(t("ex.probar"))}</button>
-        <button class="linkbtn" data-ex-borrar="${entorno}" ${e.configurada ? "" : "hidden"}
+        <button class="linkbtn" data-ex-borrar="${entorno}" data-casa="${casa}" ${e.configurada ? "" : "hidden"}
           >${esc(t("ex.borrar"))}</button>
       </div>
-      <div class="ex-pasos" id="ex-pasos-${entorno}" hidden></div>
+      <div class="ex-pasos" id="ex-pasos-${casa}-${entorno}" hidden></div>
     </div>`;
   };
+
+  /* LOS DOS ENLACES DE BINANCE. Van por el servidor y no como <a href>: el
+     escritorio es una sola ventana sin barra de direcciones, asi que navegar
+     adentro dejaria al usuario en Binance sin forma de volver. */
+  const enlacesBinance = `
+    <div class="controls mt">
+      <button class="btn ghost" data-enlace="binance_clave"
+        >${esc(t("ex.bn_crear"))}</button>
+      <button class="btn ghost" data-enlace="binance_demo"
+        >${esc(t("ex.bn_ver"))}</button>
+    </div>
+    <p class="help-note">${esc(t("ex.bn_nota"))}</p>`;
 
   main.innerHTML = pageHead(t("op.tab_claves"), esc(t("ex.sub"))) + `
     <div class="card ex-aviso">
@@ -2325,10 +2490,11 @@ const vistaClaves = async (main, por) => {
       </ul>
     </div>
     ${tarjeta("practica")}
-    ${tarjeta("real")}`;
+    ${tarjeta("real")}
+    ${tarjeta("practica", "binance", "ex.bn", enlacesBinance)}`;
 
-  const campo = (entorno, cual) =>
-    $(`[data-ex="${cual}"][data-entorno="${entorno}"]`, main);
+  const campo = (casa, entorno, cual) =>
+    $(`[data-ex="${cual}"][data-casa="${casa}"][data-entorno="${entorno}"]`, main);
 
   /* Los nombres de los pasos se escriben ENTEROS y no se arman concatenando
      el prefijo con el nombre del paso. Armados así, el examen de textos no
@@ -2343,8 +2509,8 @@ const vistaClaves = async (main, por) => {
     posiciones: t("ex.paso_posiciones"),
   });
 
-  const pintarPasos = (entorno, r) => {
-    const caja = $(`#ex-pasos-${entorno}`, main);
+  const pintarPasos = (casa, entorno, r) => {
+    const caja = $(`#ex-pasos-${casa}-${entorno}`, main);
     const nombres = NOMBRE_PASO();
     caja.hidden = false;
     caja.innerHTML = r.pasos.map(p => `
@@ -2358,18 +2524,19 @@ const vistaClaves = async (main, por) => {
   $$("[data-ex-guardar]", main).forEach(b => {
     b.onclick = async () => {
       const entorno = b.dataset.exGuardar;
-      const key = campo(entorno, "key").value.trim();
-      const secret = campo(entorno, "secret").value.trim();
+      const casa = b.dataset.casa;
+      const key = campo(casa, entorno, "key").value.trim();
+      const secret = campo(casa, entorno, "secret").value.trim();
       if (!key || !secret) return toast(t("ex.faltan"), "err");
       b.disabled = true;
       try {
-        await api.post(`/api/exchanges/bingx/${entorno}`,
+        await api.post(`/api/exchanges/${casa}/${entorno}`,
                        { api_key: key, secret });
         /* Los campos se vacian apenas se guardo. Una clave que queda a la
            vista en un input se ve en una captura de pantalla, en un video de
            YouTube y en cualquiera que pase por atras. */
-        campo(entorno, "key").value = "";
-        campo(entorno, "secret").value = "";
+        campo(casa, entorno, "key").value = "";
+        campo(casa, entorno, "secret").value = "";
         toast(t("ex.guardada"), "ok");
         await navigate("operar");
       } catch (e) { toast(e.message, "err"); }
@@ -2380,21 +2547,30 @@ const vistaClaves = async (main, por) => {
   $$("[data-ex-probar]", main).forEach(b => {
     b.onclick = async () => {
       const entorno = b.dataset.exProbar;
+      const casa = b.dataset.casa;
       b.disabled = true;
       try {
-        pintarPasos(entorno,
-                    await api.post(`/api/exchanges/bingx/${entorno}/comprobar`, {}));
+        pintarPasos(casa, entorno,
+                    await api.post(`/api/exchanges/${casa}/${entorno}/comprobar`, {}));
       } catch (e) { toast(e.message, "err"); }
       b.disabled = false;
+    };
+  });
+
+  $$("[data-enlace]", main).forEach(b => {
+    b.onclick = async () => {
+      try { await api.post("/api/abrir-enlace", { nombre: b.dataset.enlace }); }
+      catch (e) { toast(e.message, "err"); }
     };
   });
 
   $$("[data-ex-borrar]", main).forEach(b => {
     b.onclick = async () => {
       const entorno = b.dataset.exBorrar;
+      const casa = b.dataset.casa;
       if (!confirm(t("ex.borrar_seguro"))) return;
       try {
-        await api.del(`/api/exchanges/bingx/${entorno}`);
+        await api.del(`/api/exchanges/${casa}/${entorno}`);
         toast(t("ex.borrada"), "ok");
         await navigate("operar");
       } catch (e) { toast(e.message, "err"); }

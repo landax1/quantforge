@@ -269,6 +269,50 @@ def mine(
     settings = settings or BacktestSettings()
 
     accept = accept or {}
+    # UN FILTRO MAL ESCRITO NO PUEDE PASAR DESAPERCIBIDO.
+    #
+    # Las claves se leen con `accept.get(...)`, así que una que no exista
+    # devuelve None y el criterio simplemente no se aplica: se mina creyendo
+    # que se filtra, el databank se llena de perdedoras y NADA lo dice. Pasó
+    # de verdad —`min_profit_factor` en vez de `min_pf`— y el resultado fue un
+    # databank con profit factors de 0,62 que parecía normal.
+    #
+    # La pantalla siempre manda claves válidas; esto protege a quien llame a
+    # `mine` desde código, que es como corre el ciclo cuando no hay nadie
+    # mirando.
+    desconocidas = sorted(set(accept) - set(_CRIT_BY_KEY))
+    if desconocidas:
+        raise ValueError(
+            f"Criterio de aceptación desconocido: {', '.join(desconocidas)}. "
+            f"Los que existen son {', '.join(sorted(_CRIT_BY_KEY))}.")
+
+    # UN BLOQUE DE FUNDING SOBRE UN HISTORICO SIN FUNDING NO MINA: MIENTE.
+    #
+    # `FundingPct` devuelve NaN cuando falta la columna, así que la condición
+    # es falsa en todas las velas y la estrategia no opera nunca. Eso llegaría
+    # al usuario como "no se encontró nada", que manda a aflojar los filtros —
+    # cuando lo que pasa es que el instrumento no tiene el dato.
+    #
+    # SE DESCARTAN Y SE DICE CUALES, en vez de cortar o de ignorarlos callado.
+    # Cortar sería lo natural, pero está mal: pedir "todos los bloques" es
+    # legítimo y no debería fallar por incluir dos que este instrumento no
+    # puede usar. Ignorarlos sin decirlo es peor todavía, que es el error que
+    # este archivo persigue en todos lados.
+    #
+    # Un CFD no cobra funding, y eso no es un problema a resolver sino una
+    # propiedad del instrumento que hay que informar.
+    from botiquant.generator.templates import TEMPLATES as _TPL
+
+    def _es_funding(t: str) -> bool:
+        return getattr(_TPL.get(t), "category", "") == "funding"
+
+    sin_funding: list[str] = []
+    if "funding" not in getattr(df, "columns", ()):
+        sin_funding = sorted(t for t in (*drivers, *filters) if _es_funding(t))
+        if sin_funding:
+            drivers = [t for t in drivers if not _es_funding(t)]
+            filters = [t for t in filters if not _es_funding(t)]
+
     seen: set[str] = set()
     bank: list[dict[str, Any]] = []
     best_history: list[float] = []
@@ -416,6 +460,9 @@ def mine(
             "rejected": tested - passed,
             "kept": len(bank),
             "accept": accept,
+            # Los bloques de funding que se descartaron porque este histórico
+            # no los tiene. Vacío en un perpetuo; con dos nombres en un CFD.
+            "sin_funding": sin_funding,
             # Por qué se cae lo que se cae, en cuentas. Mientras el databank
             # está vacío es lo único que distingue una búsqueda trabajando de
             # una colgada, y dice qué filtro aflojar: un rechazo por pocas

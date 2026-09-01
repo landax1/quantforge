@@ -222,7 +222,22 @@ def test_sin_posicion_el_lado_es_cero(monkeypatch):
 # ====================================================== abrir y cerrar
 
 _CONTRATO = {"minimo": 0.001, "paso": 0.001, "decimales_cantidad": 3,
-             "minimo_nocional": 50.0}
+             "minimo_nocional": 50.0, "decimales_precio": 2,
+             "tick": 0.1, "tick_texto": "0.10"}
+
+
+def _espiar_varias(monkeypatch, devuelve=None):
+    """Como `_espiar` pero guarda TODOS los pedidos: `proteger` manda dos y
+    `cancelar_todo` borra en dos servicios distintos."""
+    vistos = []
+
+    def _abrir(req, timeout=30):
+        vistos.append({"url": req.full_url, "metodo": req.get_method(),
+                       "cuerpo": req.data.decode() if req.data else ""})
+        return _Respuesta(devuelve if devuelve is not None else {})
+
+    monkeypatch.setattr(bx.urllib.request, "urlopen", _abrir)
+    return vistos
 
 
 def test_cerrar_en_una_via_manda_reduceOnly_y_NO_positionSide(monkeypatch):
@@ -282,3 +297,252 @@ def test_un_lado_invalido_no_manda_nada():
     with pytest.raises(bx.BinanceError):
         bx.cerrar("BTCUSDT", 0, 0.01, api_key="K", secret="S", modo="una_via",
                   contrato_=_CONTRATO, base="https://x")
+
+
+def test_la_orden_pide_el_precio_de_ejecucion(monkeypatch):
+    """Binance devuelve "ACK" por omisión: un acuse SIN precio de ejecución.
+
+    Esa respuesta es la que el bot anota en su registro, así que sin pedir
+    RESULT el registro dice que operó y no a cuánto — que es justo lo que hace
+    falta para comparar la ejecución contra lo que esperaba la estrategia.
+    """
+    visto = _espiar(monkeypatch, {"orderId": 1, "avgPrice": "77000"})
+    bx.abrir("BTCUSDT", 1, 0.005, api_key="K", secret="S", modo="una_via",
+             contrato_=_CONTRATO, base="https://x")
+    assert "newOrderRespType=RESULT" in visto["cuerpo"]
+
+    visto2 = _espiar(monkeypatch, {"orderId": 2})
+    bx.cerrar("BTCUSDT", 1, 0.005, api_key="K", secret="S", modo="una_via",
+              contrato_=_CONTRATO, base="https://x")
+    assert "newOrderRespType=RESULT" in visto2["cuerpo"]
+
+
+def test_una_orden_a_mercado_no_manda_precio_ni_timeInForce(monkeypatch):
+    """La referencia oficial dice que una MARKET pide sólo `quantity`.
+    Mandar `price` o `timeInForce` la rechaza."""
+    visto = _espiar(monkeypatch, {"orderId": 1})
+    bx.abrir("BTCUSDT", 1, 0.005, api_key="K", secret="S", modo="una_via",
+             contrato_=_CONTRATO, base="https://x")
+    assert "price=" not in visto["cuerpo"]
+    assert "timeInForce" not in visto["cuerpo"]
+
+
+def test_el_recvWindow_no_pasa_el_tope_de_Binance():
+    """El máximo son 60.000 ms; por encima, Binance rechaza el pedido."""
+    assert 0 < bx.RECV_WINDOW <= 60_000
+
+
+# ================= el stop vive en el exchange, y en OTRO SERVICIO
+
+def test_el_stop_y_el_objetivo_van_al_EXCHANGE(monkeypatch):
+    """Lo que hace que apagar la aplicación no desproteja nada.
+
+    Un bot que vigila su propio stop deja de proteger justo cuando más falta
+    hace: se cortó la luz, se cerró el programa, se suspendió la laptop. Con
+    las órdenes puestas del lado del exchange, apagar la app significa que no
+    entra en operaciones nuevas — no que la abierta quede a la deriva.
+    """
+    vistos = _espiar_varias(monkeypatch, {"algoId": 1})
+    r = bx.proteger("BTCUSDT", 1, stop=70000, objetivo=80000, api_key="K",
+                    secret="S", modo="una_via", contrato_=_CONTRATO,
+                    base="https://x")
+    assert len(r) == 2, "tienen que ser DOS órdenes: stop y objetivo"
+    cuerpos = [v["cuerpo"] for v in vistos]
+    assert any("type=STOP_MARKET" in c for c in cuerpos)
+    assert any("type=TAKE_PROFIT_MARKET" in c for c in cuerpos)
+    # las dos son la contraria de la posición: un largo se protege vendiendo
+    assert all("side=SELL" in c for c in cuerpos)
+
+
+def test_la_condicional_va_al_ALGO_SERVICE_y_no_al_endpoint_de_siempre(monkeypatch):
+    """EL CAMBIO DE BINANCE DEL 2025-12-09.
+
+    MEDIDO el 31/8/2026: `POST /fapi/v1/order` rechaza TODOS los tipos
+    condicionales con -4120, en las ocho variantes de parámetros que se
+    probaron. No es una combinación mal armada: es el endpoint. Si este test se
+    rompe, el bot vuelve a abrir posiciones que se creen protegidas y no lo
+    están.
+    """
+    vistos = _espiar_varias(monkeypatch, {"algoId": 1})
+    bx.proteger("BTCUSDT", 1, stop=70000, objetivo=float("nan"), api_key="K",
+                secret="S", modo="una_via", contrato_=_CONTRATO,
+                base="https://x")
+    assert all("/fapi/v1/algoOrder" in v["url"] for v in vistos)
+    assert all("algoType=CONDITIONAL" in v["cuerpo"] for v in vistos)
+
+
+def test_el_parametro_del_disparador_es_triggerPrice(monkeypatch):
+    """EN EL ALGO SERVICE SE LLAMA `triggerPrice`, NO `stopPrice`.
+
+    Es el mismo número con otro nombre. Mandarlo con el viejo lo ignora, y la
+    orden queda registrada SIN disparador: aparece en la lista, parece que está
+    todo bien, y nunca se ejecuta.
+    """
+    vistos = _espiar_varias(monkeypatch, {"algoId": 1})
+    bx.proteger("BTCUSDT", -1, stop=80000, objetivo=float("nan"), api_key="K",
+                secret="S", modo="una_via", contrato_=_CONTRATO,
+                base="https://x")
+    assert "triggerPrice=80000" in vistos[0]["cuerpo"]
+    assert "stopPrice" not in vistos[0]["cuerpo"]
+
+
+def test_el_precio_del_stop_se_AJUSTA_AL_TICK(monkeypatch):
+    """SIN ESTO EL STOP NO ENTRA.
+
+    MEDIDO: un stop calculado como `precio * 0.95` da 74.783,525 y Binance lo
+    rechaza con -1111 "Precision is over the maximum defined for this asset".
+    El número es correcto; le sobran decimales.
+
+    Se redondea al TICK y no a los decimales, que son dos límites distintos: en
+    BTCUSDT el tick es 0,10 y los decimales son 2, así que 74.783,52 respeta
+    los decimales y NO respeta el tick.
+    """
+    vistos = _espiar_varias(monkeypatch, {"algoId": 1})
+    bx.proteger("BTCUSDT", 1, stop=74783.525, objetivo=float("nan"),
+                api_key="K", secret="S", modo="una_via", contrato_=_CONTRATO,
+                base="https://x")
+    assert "triggerPrice=74783.5" in vistos[0]["cuerpo"]
+
+
+def test_closePosition_va_SIN_cantidad(monkeypatch):
+    """`closePosition` no se puede usar con `quantity` ni con `reduceOnly`.
+
+    Y es lo que se quiere: si el stop cerrara sólo una parte, quedaría la mitad
+    de la posición sin protección y nadie lo miraría.
+    """
+    vistos = _espiar_varias(monkeypatch, {"algoId": 1})
+    bx.proteger("BTCUSDT", 1, stop=70000, objetivo=float("nan"), api_key="K",
+                secret="S", modo="una_via", contrato_=_CONTRATO,
+                base="https://x")
+    assert "closePosition=true" in vistos[0]["cuerpo"]
+    assert "quantity" not in vistos[0]["cuerpo"]
+    assert "reduceOnly" not in vistos[0]["cuerpo"]
+
+
+def test_el_disparador_mira_el_precio_de_MARCA(monkeypatch):
+    """Es el que Binance usa para liquidar. Con el precio del contrato, una
+    mecha en un libro fino dispara un stop que la liquidación no habría
+    tocado."""
+    vistos = _espiar_varias(monkeypatch, {"algoId": 1})
+    bx.proteger("BTCUSDT", 1, stop=70000, objetivo=float("nan"), api_key="K",
+                secret="S", modo="una_via", contrato_=_CONTRATO,
+                base="https://x")
+    assert "workingType=MARK_PRICE" in vistos[0]["cuerpo"]
+
+
+def test_sin_stop_ni_objetivo_no_manda_ordenes(monkeypatch):
+    """Una estrategia sin salidas por precio no tiene qué proteger, y mandar
+    una orden con disparador vacío la haría rechazar."""
+    _espiar_varias(monkeypatch, {"algoId": 1})
+    assert bx.proteger("BTCUSDT", 1, stop=float("nan"), objetivo=float("nan"),
+                       api_key="K", secret="S", modo="una_via",
+                       contrato_=_CONTRATO, base="https://x") == []
+
+
+# ================================ el minimo por NOCIONAL, que es otro limite
+
+def test_el_minimo_por_NOCIONAL_tambien_frena_la_orden(monkeypatch):
+    """SON DOS LIMITES DISTINTOS Y PASAR UNO NO DICE NADA DEL OTRO.
+
+    En BTCUSDT manda la cantidad —0,001 BTC son 78 USDT contra 50 de nocional—
+    pero en un símbolo barato manda el nocional, y ahí una orden que pasa el
+    control de cantidad la rechaza el exchange igual. Es el mismo hueco que
+    apareció en Bybit, donde el nocional manda en seis de los diez líquidos.
+    """
+    barato = {"minimo": 1.0, "paso": 1.0, "decimales_cantidad": 0,
+              "minimo_nocional": 50.0}
+    _espiar(monkeypatch, {"orderId": 1})
+    with pytest.raises(bx.BinanceError) as e:
+        bx.abrir("ALGOUSDT", 1, 10, precio=0.20, api_key="K", secret="S",
+                 modo="una_via", contrato_=barato, base="https://x")
+    assert "nocional" in str(e.value)
+
+
+def test_con_nocional_suficiente_la_orden_sale(monkeypatch):
+    """El control no puede frenar una orden legítima."""
+    barato = {"minimo": 1.0, "paso": 1.0, "decimales_cantidad": 0,
+              "minimo_nocional": 50.0}
+    visto = _espiar(monkeypatch, {"orderId": 1})
+    bx.abrir("ALGOUSDT", 1, 300, precio=0.20, api_key="K", secret="S",
+             modo="una_via", contrato_=barato, base="https://x")
+    assert "quantity=300" in visto["cuerpo"]
+
+
+def test_sin_precio_el_nocional_no_se_comprueba(monkeypatch):
+    """Una orden a mercado no lleva precio. Inventar uno para poder comprobar
+    sería peor que no comprobar: lo hace el exchange."""
+    barato = {"minimo": 1.0, "paso": 1.0, "decimales_cantidad": 0,
+              "minimo_nocional": 50.0}
+    visto = _espiar(monkeypatch, {"orderId": 1})
+    bx.abrir("ALGOUSDT", 1, 10, api_key="K", secret="S", modo="una_via",
+             contrato_=barato, base="https://x")
+    assert "quantity=10" in visto["cuerpo"]
+
+
+# ============================= comprobar que el stop QUEDO, y limpiar despues
+
+def test_las_ordenes_abiertas_se_pueden_leer(monkeypatch):
+    """QUE `proteger` NO HAYA FALLADO NO SIGNIFICA QUE EL STOP ESTE PUESTO.
+
+    Significa que el pedido se aceptó. La diferencia entre esas dos cosas es
+    una posición que uno cree protegida y no lo está, y eso se descubre el día
+    que el precio va en contra.
+    """
+    _espiar(monkeypatch, [{"symbol": "BTCUSDT", "type": "STOP_MARKET",
+                           "stopPrice": "70000"}])
+    o = bx.ordenes_abiertas("BTCUSDT", "K", "S", base="https://x")
+    assert o[0]["type"] == "STOP_MARKET"
+
+
+def test_cancelar_todo_es_un_DELETE(monkeypatch):
+    """Va como DELETE y firmado: un GET no cancelaría nada y no avisaría."""
+    visto = _espiar(monkeypatch, {"code": 200})
+    bx.cancelar_todo("BTCUSDT", "K", "S", base="https://x")
+    assert visto["metodo"] == "DELETE"
+    assert "signature=" in visto["cuerpo"]
+
+
+def test_las_condicionales_NO_ESTAN_donde_las_demas_ordenes(monkeypatch):
+    """`ordenes_abiertas` NO LAS VE, Y NO AVISA: DEVUELVE UNA LISTA VACIA.
+
+    MEDIDO el 31/8/2026 con un stop y un objetivo correctamente puestos:
+    `/fapi/v1/openOrders` devolvió CERO órdenes. Preguntar en el lugar viejo da
+    "no hay stop" cuando lo hay —una alarma falsa permanente— y jamás confirma
+    que lo haya.
+    """
+    visto = _espiar(monkeypatch, [{"algoId": 7, "orderType": "STOP_MARKET",
+                                   "triggerPrice": "74783.50",
+                                   "algoStatus": "NEW", "closePosition": True}])
+    c = bx.condicionales_abiertas("BTCUSDT", "K", "S", base="https://x")
+    assert "/fapi/v1/openAlgoOrders" in visto["url"]
+    # el Algo Service los llama distinto: `orderType` y `triggerPrice`
+    assert c[0]["tipo"] == "STOP_MARKET"
+    assert c[0]["disparo"] == 74783.50
+
+
+def test_cancelar_todo_borra_EN_LOS_DOS_SERVICIOS(monkeypatch):
+    """Las comunes y las condicionales viven separadas desde el cambio.
+
+    MEDIDO: después de cerrar la posición las dos condicionales seguían vivas.
+    Cancelar sólo las comunes deja el stop y el objetivo dando vueltas.
+    """
+    vistos = _espiar_varias(monkeypatch, {"code": 200})
+    bx.cancelar_todo("BTCUSDT", "K", "S", base="https://x")
+    urls = " ".join(v["url"] for v in vistos)
+    assert "/fapi/v1/allOpenOrders" in urls
+    assert "/fapi/v1/algoOpenOrders" in urls
+    assert all(v["metodo"] == "DELETE" for v in vistos)
+
+
+def test_el_precio_de_ejecucion_SE_PREGUNTA_APARTE(monkeypatch):
+    """NI SIQUIERA CON `newOrderRespType=RESULT` VIENE EN LA RESPUESTA.
+
+    MEDIDO el 31/8/2026 en una orden a mercado llenada entera: `executedQty`
+    vino bien y `avgPrice` vino en None, porque Binance responde antes de
+    agregar los llenados. Sin preguntar aparte, el registro dice que operó pero
+    no a cuánto.
+    """
+    _espiar(monkeypatch, {"orderId": 5, "status": "FILLED",
+                          "executedQty": "0.0007", "avgPrice": "78728.30"})
+    d = bx.detalle_orden("BTCUSDT", 5, api_key="K", secret="S", base="https://x")
+    assert d["precio"] == 78728.30 and d["cantidad"] == 0.0007

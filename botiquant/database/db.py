@@ -66,6 +66,20 @@ CREATE TABLE IF NOT EXISTS corridas (
     ended TEXT NOT NULL DEFAULT '',
     contexto TEXT NOT NULL DEFAULT '{}'
 );
+CREATE TABLE IF NOT EXISTS operaciones (
+    id TEXT PRIMARY KEY,
+    strategy_id TEXT NOT NULL,
+    cuando TEXT NOT NULL,
+    accion TEXT NOT NULL DEFAULT '',
+    lado INTEGER,
+    cantidad REAL,
+    precio REAL,
+    ganancia REAL,
+    motivo TEXT NOT NULL DEFAULT '',
+    payload TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS ix_operaciones_estrategia
+    ON operaciones (strategy_id, cuando);
 CREATE TABLE IF NOT EXISTS banco (
     id TEXT PRIMARY KEY,
     corrida_id TEXT NOT NULL,
@@ -210,6 +224,13 @@ class Database:
             self._conn.execute(
                 "ALTER TABLE strategies ADD COLUMN retiro TEXT NOT NULL "
                 "DEFAULT '{}'")
+        # LO QUE EL SEMAFORO RECUERDA. Sin esto el ciclo no puede retirar
+        # nada: la rama de retiro pregunta cuántas vueltas lleva en naranja, y
+        # una racha no se puede contar si cada vuelta empieza de cero.
+        if "vigilancia" not in have:
+            self._conn.execute(
+                "ALTER TABLE strategies ADD COLUMN vigilancia TEXT NOT NULL "
+                "DEFAULT '{}'")
         # De quién es cada cosa. Cadena vacía = de nadie en particular, que es
         # lo que corresponde en una instalación local: ahí no hay cuentas y todo
         # es del que está sentado adelante. Servido a varios, cada fila lleva el
@@ -352,14 +373,72 @@ class Database:
         cond, args = self._de(user_id)
         rows = self._rows(
             "SELECT id, name, notes, created, updated, spec, meta, validacion, "
-            "estado, retiro "
+            "estado, retiro, vigilancia "
             f"FROM strategies WHERE 1=1{cond} ORDER BY updated DESC", args)
         for r in rows:
             r["spec"] = json.loads(r["spec"])
             r["meta"] = json.loads(r.get("meta") or "{}")
             r["validacion"] = json.loads(r.get("validacion") or "{}")
             r["retiro"] = json.loads(r.get("retiro") or "{}") or None
+            r["vigilancia"] = json.loads(r.get("vigilancia") or "{}")
         return rows
+
+    # --------------------------------------------- lo que operó de verdad
+
+    def anotar_operacion(self, sid: str, fila: dict[str, Any]) -> None:
+        """Una línea del registro del bot, para que sobreviva a cerrar la app.
+
+        ==================================================================
+        SIN ESTO EL SEMAFORO NO PUEDE OPINAR MAÑANA SOBRE LO DE HOY.
+        ==================================================================
+
+        El registro del bot vive en memoria mientras corre. Al cerrar la
+        aplicación se pierde, y con él la única evidencia de cómo le fue en
+        vivo — que es exactamente lo que el semáforo compara contra el
+        backtest. Guardado acá, una estrategia puede acumular sus treinta
+        operaciones a lo largo de semanas y varias sesiones.
+
+        NO FALLA SI NO PUEDE ESCRIBIR. Esto se llama desde el bucle del bot, y
+        un error de base de datos no puede tumbar al que está operando: perder
+        una línea del registro es malo, quedarse con una posición abierta
+        porque el bot se murió anotando es peor.
+        """
+        try:
+            self._exec(
+                "INSERT INTO operaciones (id, strategy_id, cuando, accion, "
+                "lado, cantidad, precio, ganancia, motivo, payload) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (_new_id(), sid, str(fila.get("cuando") or _now()),
+                 str(fila.get("accion") or ""), fila.get("lado"),
+                 fila.get("cantidad"), fila.get("precio"), fila.get("ganancia"),
+                 str(fila.get("motivo") or ""), json.dumps(fila, default=str)))
+        except Exception:                                      # noqa: BLE001
+            pass
+
+    def operaciones(self, sid: str, limite: int = 5_000) -> list[dict[str, Any]]:
+        """El registro guardado de esa estrategia, de vieja a nueva.
+
+        En ese orden porque el semáforo cuenta operaciones cerradas y compara
+        contra la línea base: al revés daría el mismo profit factor, pero
+        cualquier cosa que mire una racha leería la historia para atrás.
+        """
+        rows = self._rows(
+            "SELECT cuando, accion, lado, cantidad, precio, ganancia, motivo "
+            "FROM operaciones WHERE strategy_id=? ORDER BY cuando ASC, rowid ASC "
+            "LIMIT ?", (sid, int(limite)))
+        return rows
+
+    def guardar_vigilancia(self, sid: str, datos: dict[str, Any],
+                           user_id: str | None = None) -> None:
+        """Lo que el semáforo recuerda de esa estrategia.
+
+        No toca `updated`: que el semáforo opine no modifica la estrategia, y
+        si lo tocara, cada vuelta del ciclo la mandaría al tope de la lista y
+        el orden por fecha dejaría de significar cuándo la guardaste.
+        """
+        cond, args = self._de(user_id)
+        self._exec(f"UPDATE strategies SET vigilancia=? WHERE id=?{cond}",
+                   (json.dumps(datos), sid) + args)
 
     def guardar_validacion(self, sid: str, datos: dict[str, Any],
                            user_id: str | None = None) -> None:

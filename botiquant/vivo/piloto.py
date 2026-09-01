@@ -1,4 +1,4 @@
-"""Encender y apagar el bot, que es lo único que faltaba para que opere.
+"""Encender y apagar los bots, que es lo único que faltaba para que operen.
 
 El `Bot` de `runner.py` sabe dar UNA vuelta. Esto es lo que lo despierta cuando
 cierra cada vela, lo apaga cuando alguien lo pide, y lo apaga solo cuando algo
@@ -7,11 +7,29 @@ trabajos que terminan: un minado corre, entrega un resultado y libera el cupo.
 Un bot no termina nunca, y meterlo en esa cola le sacaría el lugar a las
 búsquedas de la persona hasta que lo apague.
 
-UN SOLO BOT A LA VEZ, Y NO ES UNA LIMITACIÓN TÉCNICA. Dos bots sobre la misma
-cuenta se pelean por la misma posición: uno abre, el otro ve una posición que
-él no abrió, se detiene, y el primero sigue creyendo que está solo. Peor si los
-dos operan el mismo símbolo — el cierre de uno es la apertura del otro. Hasta
-que exista una idea clara de cómo repartir el capital entre estrategias, uno.
+===========================================================================
+VARIOS BOTS, PERO UNO POR SIMBOLO
+===========================================================================
+
+Antes era uno solo, y el motivo era bueno: dos bots sobre la misma cuenta se
+pelean por la misma posición — uno abre, el otro ve una posición que él no
+abrió, se detiene, y el primero sigue creyendo que está solo.
+
+Pero ese choque no es de la CUENTA sino del SIMBOLO. En una cuenta de futuros
+hay una posición neta por símbolo, así que:
+
+    dos bots en símbolos distintos   no chocan: sólo comparten margen
+    dos bots en el MISMO símbolo     chocan de raíz, y no hay vuelta
+
+Por eso ahora se permiten varios y se rechaza el segundo del mismo símbolo. Un
+portafolio de verdad —repartir el capital entre estrategias y mirar el
+conjunto— es justo lo que el webhook de un exchange no puede hacer, y era la
+razón de operar por API en vez de por alerta.
+
+LO QUE SI COMPARTEN ES EL CAPITAL, y por eso cada bot lleva su `porcion`. Sin
+eso, cinco bots se creen dueños del 100% cada uno y entre todos arriesgan cinco
+veces lo pedido. Las porciones no pueden sumar más que la cuenta, y se
+comprueba acá: es el único lugar que ve a todos a la vez.
 
 NO SE REANUDA SOLO AL ABRIR LA APLICACIÓN. Es el alcance elegido para esta
 primera versión: opera mientras la aplicación está abierta y, si se cerró con
@@ -47,41 +65,83 @@ GRACIA = 5.0
 #: saque deja al bot sin poder notar que se cayó la red hasta el día siguiente.
 MAXIMA_ESPERA = 300.0
 
+#: Cuántos bots a la vez, como mucho.
+#:
+#: No es un límite técnico sino de atención: cada bot es una posición que
+#: alguien tiene que poder mirar, y una pantalla con quince es una pantalla que
+#: no se mira. El ciclo ya tiene su propio tope de cuántas promueve.
+MAXIMO_VUELOS = 8
+
 
 @dataclass
-class Piloto:
-    """Mantiene un bot corriendo, y lo apaga cuando hay que apagarlo."""
+class Vuelo:
+    """Un bot en el aire: su hilo, sus señales y cuándo arrancó.
 
-    bot: Bot | None = None
+    Cada uno con los suyos y no compartidos: con un solo evento de parada,
+    apagar un bot apagaría los cinco.
+    """
+
+    bot: Bot
     hilo: threading.Thread | None = None
-    _parar: threading.Event = field(default_factory=threading.Event)
-    _despertar: threading.Event = field(default_factory=threading.Event)
-    _lock: threading.Lock = field(default_factory=threading.Lock)
+    parar: threading.Event = field(default_factory=threading.Event)
+    despertar: threading.Event = field(default_factory=threading.Event)
     error: str = ""
     arrancado: str = ""
 
-    # ------------------------------------------------------------- consultar
     @property
     def encendido(self) -> bool:
         return bool(self.hilo and self.hilo.is_alive())
 
+
+@dataclass
+class Piloto:
+    """Mantiene los bots corriendo, y los apaga cuando hay que apagarlos."""
+
+    vuelos: dict[str, Vuelo] = field(default_factory=dict)
+    _lock: threading.Lock = field(default_factory=threading.Lock)
+
+    # ------------------------------------------------------------- consultar
+    @property
+    def encendido(self) -> bool:
+        """Si hay AL MENOS uno volando."""
+        return any(v.encendido for v in self.vuelos.values())
+
+    @property
+    def cuantos(self) -> int:
+        return sum(1 for v in self.vuelos.values() if v.encendido)
+
+    @property
+    def porcion_usada(self) -> float:
+        """Cuánto de la cuenta está comprometido por los que vuelan."""
+        return round(sum(v.bot.porcion for v in self.vuelos.values()
+                         if v.encendido), 4)
+
     def estado(self) -> dict[str, Any]:
         """Lo que la pantalla necesita saber. Nunca incluye una credencial."""
-        b = self.bot
-        if b is None:
-            return {"encendido": False, "hay_bot": False}
         return {
             "encendido": self.encendido,
-            "hay_bot": True,
+            "hay_bot": bool(self.vuelos),
+            "cuantos": self.cuantos,
+            "porcion_usada": self.porcion_usada,
+            "porcion_libre": round(max(0.0, 1.0 - self.porcion_usada), 4),
+            "maximo": MAXIMO_VUELOS,
+            "vuelos": [self._estado_de(v) for v in self.vuelos.values()],
+        }
+
+    def _estado_de(self, v: Vuelo) -> dict[str, Any]:
+        b = v.bot
+        return {
+            "encendido": v.encendido,
             "nombre": b.doc.get("nombre", ""),
             "simbolo": b.simbolo,
             "timeframe": b.timeframe,
             "modo": b.modo,
+            "porcion": b.porcion,
             "manda_ordenes": b.manda_ordenes,
             "detenido": b.detenido,
             "motivo_detencion": b.motivo_detencion,
-            "arrancado": self.arrancado,
-            "error": self.error,
+            "arrancado": v.arrancado,
+            "error": v.error,
             # Las últimas vueltas, de la más nueva a la más vieja: es como se
             # lee un registro cuando uno quiere saber qué acaba de pasar.
             "registro": list(reversed(b.registro[-40:])),
@@ -89,68 +149,107 @@ class Piloto:
             # ¿Está operando como decía que iba a operar? Se calcula sobre el
             # registro ENTERO y no sobre las últimas cuarenta: recortar la
             # ventana haría que un bot viejo pareciera que nunca opera.
-            "vigilante": self._vigilar(),
+            "vigilante": self._vigilar(b, v),
 
             # Y CÓMO LE VA, que es la otra mitad. El vigilante mira cuánto
             # opera; esto mira si sigue rindiendo como decía el backtest.
             # Van separados porque se contestan en momentos distintos: la
             # frecuencia se estabiliza en semanas y el rendimiento en meses.
-            "semaforo": self._semaforo(),
+            "semaforo": self._semaforo(b),
         }
 
-    def _vigilar(self) -> dict[str, Any]:
-        b = self.bot
-        if b is None:
-            return {"estado": vigilante.CALLADO, "razon": ""}
-        v = vigilante.revisar(b.doc.get("respaldo") or {}, b.registro,
-                              self.arrancado or None)
-        return {"estado": v.estado, "razon": v.razon,
-                "esperadas": round(v.esperadas, 2), "observadas": v.observadas}
+    def _vigilar(self, b: Bot, v: Vuelo) -> dict[str, Any]:
+        r = vigilante.revisar(b.doc.get("respaldo") or {}, b.registro,
+                              v.arrancado or None)
+        return {"estado": r.estado, "razon": r.razon,
+                "esperadas": round(r.esperadas, 2), "observadas": r.observadas}
 
-    def _semaforo(self) -> dict[str, Any]:
-        b = self.bot
-        if b is None:
-            return {"estado": semaforo.CALLADO, "motivo": ""}
-        v = semaforo.revisar(b.registro, b.doc.get("respaldo") or {})
-        return {"estado": v.estado, "motivo": v.motivo,
-                "recomendacion": v.recomendacion, "cerradas": v.cerradas,
-                "pf_vivo": v.pf_vivo, "pf_base": v.pf_base,
-                "conserva": v.conserva}
+    def _semaforo(self, b: Bot) -> dict[str, Any]:
+        r = semaforo.revisar(b.registro, b.doc.get("respaldo") or {})
+        return {"estado": r.estado, "motivo": r.motivo,
+                "recomendacion": r.recomendacion, "cerradas": r.cerradas,
+                "pf_vivo": r.pf_vivo, "pf_base": r.pf_base,
+                "conserva": r.conserva}
 
     # -------------------------------------------------------------- encender
     def encender(self, bot: Bot) -> dict[str, Any]:
+        """Pone un bot en el aire, si el símbolo está libre y la cuenta alcanza."""
         with self._lock:
-            if self.encendido:
+            simbolo = bot.simbolo
+            self._limpiar()
+
+            # EL CHOQUE ES POR SIMBOLO Y NO POR CUENTA. Ver el encabezado.
+            vivo = self.vuelos.get(simbolo)
+            if vivo is not None and vivo.encendido:
                 raise RuntimeError(
-                    "Ya hay un bot encendido. Apagalo antes de encender otro: "
-                    "dos bots sobre la misma cuenta se pelean por la misma "
-                    "posición.")
-            self.bot = bot
-            self.error = ""
-            self.arrancado = pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds")
-            self._parar.clear()
-            self._despertar.clear()
-            self.hilo = threading.Thread(target=self._bucle, daemon=True,
-                                         name="piloto")
-            self.hilo.start()
+                    f"Ya hay un bot operando {simbolo}. Dos bots sobre el "
+                    f"mismo símbolo se pelean por la misma posición: el cierre "
+                    f"de uno es la apertura del otro. Podés encender otro en "
+                    f"un símbolo distinto.")
+
+            if self.cuantos >= MAXIMO_VUELOS:
+                raise RuntimeError(
+                    f"Ya hay {MAXIMO_VUELOS} bots operando, que es el tope. No "
+                    f"es un límite técnico: cada bot es una posición que "
+                    f"alguien tiene que poder mirar.")
+
+            # LAS PORCIONES NO PUEDEN SUMAR MAS QUE LA CUENTA, y este es el
+            # único lugar que las ve a todas. Cada bot solo no puede saberlo.
+            usada = self.porcion_usada
+            if usada + bot.porcion > 1.0 + 1e-9:
+                raise RuntimeError(
+                    f"Las porciones no entran en la cuenta: los bots que ya "
+                    f"están operando usan el {usada * 100:.0f}% y este pide el "
+                    f"{bot.porcion * 100:.0f}%. Entre todos arriesgarían más "
+                    f"de lo que hay.")
+
+            v = Vuelo(bot=bot)
+            v.arrancado = pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds")
+            v.hilo = threading.Thread(target=self._bucle, args=(v,), daemon=True,
+                                      name=f"piloto-{simbolo}")
+            self.vuelos[simbolo] = v
+            v.hilo.start()
         return self.estado()
 
-    def apagar(self, espera: float = 10.0) -> dict[str, Any]:
+    def _limpiar(self) -> None:
+        """Saca los que ya no vuelan y no tienen nada que contar.
+
+        Se queda con los que murieron por un ERROR: ese estado es justamente lo
+        que alguien va a querer leer cuando pregunte por qué se apagó.
+        """
+        for s, v in list(self.vuelos.items()):
+            if not v.encendido and not v.error and not v.bot.detenido:
+                del self.vuelos[s]
+
+    # ---------------------------------------------------------------- apagar
+    def apagar(self, simbolo: str | None = None,
+               espera: float = 10.0) -> dict[str, Any]:
         """Deja de operar. NO cierra la posición que haya abierta.
 
         Es a propósito y hay que decirlo en la pantalla: apagar el bot y cerrar
         la posición son dos decisiones distintas. Alguien que apaga porque se
         va a dormir quiere que el stop del exchange siga cuidando la posición,
         no que se cierre a mercado en el peor momento.
+
+        Sin símbolo apaga TODOS. Es el botón de "me voy", y que exista uno solo
+        para todo evita el caso peor: apagar cuatro de cinco creyendo que se
+        apagaron los cinco.
         """
-        self._parar.set()
-        self._despertar.set()
-        h = self.hilo
-        if h and h.is_alive():
-            h.join(timeout=espera)
+        for v in self._elegidos(simbolo):
+            v.parar.set()
+            v.despertar.set()
+        for v in self._elegidos(simbolo):
+            if v.hilo and v.hilo.is_alive():
+                v.hilo.join(timeout=espera)
         return self.estado()
 
-    def panico(self) -> dict[str, Any]:
+    def _elegidos(self, simbolo: str | None) -> list[Vuelo]:
+        if simbolo is None:
+            return list(self.vuelos.values())
+        v = self.vuelos.get(simbolo)
+        return [v] if v is not None else []
+
+    def panico(self, simbolo: str | None = None) -> dict[str, Any]:
         """Apaga Y cierra lo que haya abierto. El botón para cuando algo pasa.
 
         EL ORDEN ES LO ÚNICO QUE IMPORTA ACÁ, y la primera versión lo tenía a
@@ -163,14 +262,21 @@ class Piloto:
         Por eso ahora primero se FRENA el bot —una marca que `paso` mira otra
         vez justo antes de mandar la orden— y después se apaga y se cierra.
         Frenar es instantáneo y no depende de que ningún hilo conteste.
+
+        SE FRENAN TODOS ANTES DE CERRAR NINGUNO. Con varios bots, cerrar el
+        primero mientras el quinto sigue vivo le da a ese quinto una vuelta
+        entera para abrir algo nuevo mientras uno cree que está vaciando la
+        cuenta.
         """
-        b = self.bot
-        if b is not None:
-            b.detenido = True
-            b.motivo_detencion = "pánico"
-        self.apagar()
-        cerrado: Any = "no había bot"
-        if b is not None:
+        elegidos = self._elegidos(simbolo)
+        for v in elegidos:
+            v.bot.detenido = True
+            v.bot.motivo_detencion = "pánico"
+        self.apagar(simbolo)
+
+        cerrados: dict[str, Any] = {}
+        for v in elegidos:
+            b = v.bot
             try:
                 pos = b.adaptador.posicion(b.simbolo)
                 cerrado = (b.adaptador.cerrar(b.simbolo, pos) if pos.abierta
@@ -179,28 +285,28 @@ class Piloto:
                 cerrado = f"no se pudo cerrar: {exc}"
             b.registro.append({"cuando": pd.Timestamp.now(tz="UTC").isoformat(),
                                "accion": "panico", "resultado": cerrado})
+            cerrados[b.simbolo] = cerrado
+
         e = self.estado()
-        e["cerrado"] = cerrado
+        e["cerrado"] = cerrados or "no había bot"
         return e
 
     # ----------------------------------------------------------- el bucle
-    def _espera(self) -> float:
+    def _espera(self, b: Bot) -> float:
         """Cuántos segundos hasta mirar de nuevo.
 
         Se calcula desde el reloj y no desde el arranque: si una vuelta tardó
         cuarenta segundos, la siguiente no se corre cuarenta segundos: se
         alinea igual con el cierre de la vela.
         """
-        b = self.bot
-        dur = DURACION.get(b.timeframe if b else "1h", 3600)
+        dur = DURACION.get(b.timeframe, 3600)
         ahora = pd.Timestamp.now(tz="UTC").timestamp()
         falta = dur - (ahora % dur) + GRACIA
         return min(max(falta, 1.0), MAXIMA_ESPERA)
 
-    def _bucle(self) -> None:
-        b = self.bot
-        assert b is not None
-        while not self._parar.is_set():
+    def _bucle(self, v: Vuelo) -> None:
+        b = v.bot
+        while not v.parar.is_set():
             try:
                 b.paso()
             except BingXError as exc:
@@ -208,10 +314,10 @@ class Piloto:
                 # probable de todos —la clave mal, vencida, o sin permiso de
                 # trading— y merece el mensaje del exchange y no un traceback:
                 # quien lo lea tiene que poder arreglarlo, no adivinar.
-                self.error = exc.del_exchange
+                v.error = exc.del_exchange
                 b.registro.append({
                     "cuando": pd.Timestamp.now(tz="UTC").isoformat(),
-                    "accion": "apagado por el exchange", "motivo": self.error})
+                    "accion": "apagado por el exchange", "motivo": v.error})
                 return
             except Exception:                                 # noqa: BLE001
                 # Un error inesperado APAGA el bot en vez de reintentar en
@@ -221,18 +327,18 @@ class Piloto:
                 # Se guarda el traceback ENTERO y no un resumen: si llego
                 # hasta aca es algo que no previmos, y recortarlo tira justo
                 # lo que hace falta para entenderlo.
-                self.error = traceback.format_exc(limit=5)
+                v.error = traceback.format_exc(limit=5)
                 b.registro.append({
                     "cuando": pd.Timestamp.now(tz="UTC").isoformat(),
-                    "accion": "apagado por error", "motivo": self.error[-300:]})
+                    "accion": "apagado por error", "motivo": v.error[-300:]})
                 return
             if b.detenido:
                 # Una guarda pidió detenerse: se sale del bucle y hace falta una
                 # persona. Seguir dando vueltas sólo llenaría el registro.
                 return
-            self._despertar.wait(self._espera())
-            self._despertar.clear()
+            v.despertar.wait(self._espera(b))
+            v.despertar.clear()
 
 
-#: El piloto del proceso. Uno solo, por la razón del encabezado.
+#: El piloto del proceso. Uno solo, y adentro los vuelos que haya.
 PILOTO = Piloto()

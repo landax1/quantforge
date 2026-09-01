@@ -82,6 +82,17 @@ class Parametros:
     #: que el ciclo se coma sus propias estrategias en una racha mala.
     vueltas_en_naranja: int = 3
 
+    #: Si el ciclo RETIRA solo, o sólo dice a quién retiraría.
+    #:
+    #: APAGADO POR OMISION, y el motivo lo escribe el propio semáforo: "hace
+    #: falta que alguien vea el semáforo cambiar de color varias veces y decida
+    #: si le cree". Hasta entonces el ciclo señala y no ejecuta.
+    #:
+    #: Es además la dirección segura del error. Apagado, el ciclo deja
+    #: corriendo algo que habría que sacar — y eso lo ve una persona. Prendido
+    #: y equivocado, retira estrategias buenas sin que nadie se entere.
+    retirar_solo: bool = False
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
@@ -113,6 +124,7 @@ class Parametros:
             promover_hasta=(destino if destino in (estados.VALIDADA, estados.PRACTICA)
                             else base.promover_hasta),
             vueltas_en_naranja=entero("vueltas_en_naranja", 1, 50),
+            retirar_solo=bool(d.get("retirar_solo", base.retirar_solo)),
         )
 
 
@@ -133,6 +145,13 @@ class Tarea:
     motivo: str = ""
     #: A quién le toca, cuando aplica.
     ids: list[str] = field(default_factory=list)
+    #: Quiénes cumplen la condición de retiro, SE VAYAN A RETIRAR O NO.
+    #:
+    #: Va aparte de `ids` porque con el retiro automático apagado el ciclo
+    #: sigue su camino —promueve, mina— y aun así tiene que poder decir "yo
+    #: sacaría estas tres". Si eso viajara en `ids`, la pantalla no podría
+    #: distinguir a quién le toca la acción de a quién se está señalando.
+    retirables: list[str] = field(default_factory=list)
 
 
 def que_toca(p: Parametros, *, estrategias: list[dict[str, Any]],
@@ -150,12 +169,18 @@ def que_toca(p: Parametros, *, estrategias: list[dict[str, Any]],
         return Tarea(NADA, "el ciclo está apagado")
 
     # 1) retirar libera un lugar
+    #
+    # SE CALCULA SIEMPRE Y SE EJECUTA SOLO SI EL INTERRUPTOR ESTA PRENDIDO. Con
+    # el retiro automático apagado el ciclo igual sabe a quién sacaría, y eso
+    # es lo que le permite a una persona ver el semáforo cambiar de color
+    # varias veces y decidir si le cree antes de dejarlo actuar.
     retirables = [e["id"] for e in estrategias
                   if e.get("vueltas_en_naranja", 0) >= p.vueltas_en_naranja]
-    if retirables:
+    marca = dict(retirables=list(retirables))
+    if retirables and p.retirar_solo:
         return Tarea(RETIRAR,
                      f"{len(retirables)} llevan {p.vueltas_en_naranja} vueltas "
-                     f"en naranja", retirables)
+                     f"en naranja", retirables, **marca)
 
     # 2) promover lo que ya está probado, si queda lugar
     if en_practica < p.max_en_practica:
@@ -193,20 +218,21 @@ def que_toca(p: Parametros, *, estrategias: list[dict[str, Any]],
                       f"validada(s) esperando")
             if llenos:
                 motivo += f"; {len(llenos)} instrumento(s) ya al tope"
-            return Tarea(PROMOVER, motivo, listas[:hueco])
+            return Tarea(PROMOVER, motivo, listas[:hueco], **marca)
 
     # 3) validar lo que se encontró y nadie probó
     sin_probar = [e["id"] for e in estrategias
                   if estados.normalizar(e.get("estado")) == estados.NUEVA]
     if sin_probar:
         return Tarea(VALIDAR, f"{len(sin_probar)} sin probar",
-                     sin_probar[:p.validar_por_vuelta])
+                     sin_probar[:p.validar_por_vuelta], **marca)
 
     # 4) y recién ahí, buscar más
     if horas_desde_el_ultimo_minado >= p.minar_cada_horas:
         return Tarea(MINAR,
                      f"pasaron {horas_desde_el_ultimo_minado:.0f} horas del "
-                     f"último minado")
+                     f"último minado", **marca)
 
     faltan = p.minar_cada_horas - horas_desde_el_ultimo_minado
-    return Tarea(NADA, f"nada que hacer; el próximo minado en {faltan:.0f} horas")
+    return Tarea(NADA, f"nada que hacer; el próximo minado en {faltan:.0f} horas",
+                 **marca)

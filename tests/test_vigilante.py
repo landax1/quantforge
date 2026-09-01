@@ -161,8 +161,8 @@ def test_el_estado_del_bot_trae_el_veredicto_del_vigilante():
                                  "close": c, "volume": np.full(n, 10.0)}, index=t)
         def capital(self): return 10_000.0
         def posicion(self, s): return Posicion()
-        def contrato(self, s): return {"quantityPrecision": 4,
-                                       "tradeMinQuantity": 0.0001}
+        def contrato(self, s): return {"decimales_cantidad": 4,
+                                       "minimo": 0.0001}
         def abrir(self, *a): return {}
         def cerrar(self, *a): return {}
 
@@ -177,9 +177,11 @@ def test_el_estado_del_bot_trae_el_veredicto_del_vigilante():
                                    "stop_type": "atr", "stop_value": 2.0,
                                    "target_type": "atr", "target_value": 4.0,
                                    "atr_period": 14}}}
+    from botiquant.vivo.piloto import Vuelo
     p = Piloto()
-    p.bot = Bot(doc=doc, adaptador=_Ex(), modo=SIMULACRO)
-    e = p.estado()
+    _b = Bot(doc=doc, adaptador=_Ex(), modo=SIMULACRO)
+    p.vuelos[_b.simbolo] = Vuelo(bot=_b)
+    e = p.estado()["vuelos"][0]
     assert "vigilante" in e
     # recien arrancado no puede opinar, y eso es lo correcto
     assert e["vigilante"]["estado"] == CALLADO

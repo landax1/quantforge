@@ -359,7 +359,35 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             # pedir un timeframe más fino que el del dataset: 400 y no 500,
             # porque es una elección corregible y el texto explica cómo
             raise HTTPException(400, str(exc)) from exc
-        return _slice_dates(df, payload)
+        df = _slice_dates(df, payload)
+
+        # EL FUNDING TAMBIEN COMO COLUMNA, no sólo como costo.
+        #
+        # Ya viajaba al motor adentro de `settings` para que la posición
+        # abierta lo pague. Pero ahí es un costo, y la biblioteca no lo puede
+        # MIRAR: no hay forma de escribir "sólo operá cuando los largos están
+        # amontonados" si el dato no está en el dataframe.
+        #
+        # SE ALINEA HACIA ATRAS Y NUNCA HACIA ADELANTE. Cada vela recibe la
+        # tasa del último cobro anterior o igual a ella; la del cobro que
+        # todavía no pasó no existe para esa vela. Un `ffill` es exactamente
+        # eso, y cualquier otra cosa —interpolar, rellenar hacia atrás— le
+        # daría a la búsqueda un dato que en ese momento nadie tenía.
+        #
+        # Un CFD no tiene archivo de funding y la columna no aparece. Eso es
+        # deliberado: `mine` corta con un mensaje si le piden un bloque de
+        # funding sobre un histórico que no lo trae, en vez de minar con una
+        # condición que nunca es cierta.
+        try:
+            tasas = store.funding(ds_id)
+            if tasas is not None and len(tasas):
+                df = df.copy()
+                df["funding"] = tasas.reindex(df.index, method="ffill")
+        except Exception:                                      # noqa: BLE001
+            # Que falte o esté ilegible el archivo de funding NO puede impedir
+            # minar por precio, que es lo que hace la mayoría.
+            pass
+        return df
 
     def _spec(payload: dict[str, Any]) -> StrategySpec:
         raw = payload.get("spec")
@@ -967,14 +995,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                     vistos.append(v)
             return vistos or None
 
-        accept = {"min_pf": _crit("min_pf"), "min_sharpe": _crit("min_sharpe"),
-                  "min_win_rate_pct": _crit("min_win_rate_pct"),
-                  "max_dd_pct": _crit("max_dd_pct"), "min_net_pct": _crit("min_net_pct"),
-                  "min_cagr_pct": _crit("min_cagr_pct"),
-                  "min_ret_dd": _crit("min_ret_dd"),
-                  "min_trades_month": _crit("min_trades_month"),
-                  "min_trades_week": _crit("min_trades_week"),
-                  "min_exposure_pct": _crit("min_exposure_pct")}
+        # SE ARMA DESDE LA TABLA DE CRITERIOS Y NO A MANO.
+        #
+        # Estaban enumerados uno por uno, y esa lista es un lugar donde un
+        # filtro desaparece sin ruido: se agrega un criterio a `_CRITERIA`, se
+        # dibuja en la pantalla, el usuario lo tilda... y si nadie se acordó de
+        # sumarlo también acá, el número viaja y nadie lo mira. No pasa un
+        # error: pasa que la búsqueda no filtra por algo que se le pidió.
+        #
+        # Derivándolo, agregar un criterio lo conecta de punta a punta o no
+        # existe en ningún lado. Las dos mitades del bug quedan cerradas: acá
+        # no se puede olvidar una clave, y `mine` rechaza una que no conozca.
+        from botiquant.mining.miner import _CRIT_BY_KEY
+        accept = {k: _crit(k) for k in _CRIT_BY_KEY}
 
         # the goal is a number of ACCEPTED strategies; max_candidates only caps
         # how long the search may hunt for them
@@ -2491,7 +2524,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         _solo_escritorio()
         from botiquant.data import bingx
         from botiquant.vivo import claves
-        from botiquant.vivo.adaptador import BASE_PRACTICA, BASE_REAL, BingX
+        from botiquant.vivo.adaptador import (BASE_PRACTICA, BASE_REAL,
+                                              Binance, BingX)
 
         pasos: list[dict[str, Any]] = []
 
@@ -2512,10 +2546,16 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 pasos.append({"paso": nombre, "ok": False, "detalle": str(exc)})
                 return False
 
+        # EL SIMBOLO Y EL LECTOR CAMBIAN SEGUN EL EXCHANGE. BingX pide el
+        # guion —BTC-USDT— y Binance lo rechaza; es el error mas comun al
+        # cambiar de casa, y aca se elige bien de entrada en vez de dejar que
+        # el exchange conteste algo que suena a "el simbolo no existe".
+        es_binance = exchange == "binance"
+        simbolo = "BTCUSDT" if es_binance else "BTC-USDT"
         base = BASE_REAL if entorno == "real" else BASE_PRACTICA
-        lector = BingX("", "", base=base)
+        lector = Binance("", "") if es_binance else BingX("", "", base=base)
 
-        if not paso("responde", lambda: f"{len(lector.velas('BTC-USDT', '1h', 2))} velas"):
+        if not paso("responde", lambda: f"{len(lector.velas(simbolo, '1h', 2))} velas"):
             return {"pasos": pasos, "listo": False}
 
         try:
@@ -2524,12 +2564,14 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             pasos.append({"paso": "clave", "ok": False, "detalle": str(exc)})
             return {"pasos": pasos, "listo": False}
 
-        cliente = BingX(api_key, secret, base=base)
+        cliente = (Binance(api_key, secret) if es_binance
+                   else BingX(api_key, secret, base=base))
         if not paso("saldo", lambda: f"{cliente.capital():,.2f} disponible"):
             return {"pasos": pasos, "listo": False}
-        paso("modo", lambda: "cobertura" if cliente.cobertura() else "simple")
+        paso("modo", lambda: (cliente.modo() if es_binance else
+                              ("cobertura" if cliente.cobertura() else "simple")))
         paso("posiciones",
-             lambda: "hay una abierta" if cliente.posicion("BTC-USDT").abierta
+             lambda: "hay una abierta" if cliente.posicion(simbolo).abierta
              else "ninguna abierta")
 
         return {"pasos": pasos, "listo": all(p["ok"] for p in pasos)}
@@ -2553,7 +2595,43 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         base de datos: se le pasan funciones y se comprueba a cuales llamo.
         """
         from botiquant import cantera, estados as est
+        from botiquant.vivo import semaforo
         from botiquant.vivo.piloto import PILOTO
+
+        ahora = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+        def _vueltas(f: dict[str, Any]) -> int:
+            """Cuantas vueltas en naranja lleva, contadas de verdad.
+
+            ==================================================================
+            ES EL CABLE QUE LE FALTABA AL RETIRO AUTOMATICO.
+            ==================================================================
+
+            La rama de retiro de `ciclo.que_toca` pregunta esto, y hasta ahora
+            recibia 0 fijo, asi que no podia dispararse nunca. El mecanismo
+            estaba escrito entero y no estaba conectado.
+
+            SE CALCULA DESDE EL REGISTRO GUARDADO y no desde el bot encendido:
+            asi el semaforo tambien opina sobre las que operaron ayer y hoy no
+            estan corriendo, que son la mayoria cuando hay un bot a la vez.
+
+            SOLO PARA LAS QUE OPERARON. Una estrategia que nunca se encendio no
+            tiene con que compararse, y preguntarle a la base por operaciones
+            que no existen en cada vuelta del ciclo es trabajo al pedo.
+            """
+            estado = est.normalizar(f.get("estado"))
+            if estado not in (est.PRACTICA, est.PRODUCCION):
+                return int((f.get("vigilancia") or {}).get("vueltas_naranja") or 0)
+
+            ops = db.operaciones(f["id"])
+            if not ops:
+                return int((f.get("vigilancia") or {}).get("vueltas_naranja") or 0)
+
+            respaldo = ((f.get("meta") or {}).get("metrics")) or {}
+            v = semaforo.revisar(ops, respaldo)
+            nueva = semaforo.actualizar(f.get("vigilancia"), v, cuando=ahora)
+            db.guardar_vigilancia(f["id"], nueva)
+            return int(nueva["vueltas_naranja"])
 
         filas = []
         for f in db.list_strategies(None):
@@ -2568,12 +2646,15 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "instrumento": str(meta.get("dataset_id") or ""),
                 "cantera": {"practica": cantera.revisar(entrada, cantera.PRACTICA).pasa,
                             "real": cantera.revisar(entrada, cantera.REAL).pasa},
-                # El semaforo cuenta vueltas en naranja, y eso todavia no se
-                # persiste: hasta que exista, nada se retira solo. Es la
-                # direccion segura del error — el ciclo deja corriendo algo
-                # que habria que sacar, y eso lo ve una persona; al reves,
-                # retiraria estrategias buenas sin que nadie se entere.
-                "vueltas_en_naranja": 0,
+                # Contadas desde el registro guardado. Ver `_vueltas`.
+                #
+                # Que esto sea distinto de cero no significa que se retire: el
+                # ciclo sale con `retirar_solo` APAGADO, y entonces dice a
+                # quien sacaria sin sacarlo. Prenderlo es una decision de una
+                # persona, despues de ver el semaforo cambiar de color varias
+                # veces y decidir si le cree.
+                "vueltas_en_naranja": _vueltas(f),
+                "vigilancia": f.get("vigilancia") or {},
             })
 
         corridas = db.list_corridas(None) or []
@@ -2588,7 +2669,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 pass
 
         return {"estrategias": filas, "horas_desde_minado": horas,
-                "en_practica": 1 if PILOTO.encendido else 0}
+                # CUANTOS, no "hay o no hay": el ciclo usa este número para
+                # saber si le queda lugar, y con varios bots un booleano le
+                # decía que había lugar cuando ya estaban todos ocupados.
+                "en_practica": PILOTO.cuantos}
 
     def _orq():
         """El ciclo del proceso, armado la primera vez que se lo pide."""
@@ -2673,7 +2757,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         """
         _solo_escritorio()
         from botiquant.vivo import claves
-        from botiquant.vivo.adaptador import (BASE_PRACTICA, BASE_REAL, BingX,
+        from botiquant.vivo.adaptador import (BASE_PRACTICA, BASE_REAL,
+                                              Binance, BingX,
                                               Papel, SoloDatos)
         from botiquant.vivo.piloto import PILOTO
         from botiquant.vivo.runner import PRACTICA, REAL, SIMULACRO, Bot
@@ -2708,12 +2793,38 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "puertas": veredicto.puertas,
             })
 
+        # EN QUE CASA SE OPERA. Explicito y no deducido del simbolo: BingX
+        # pide BTC-USDT y Binance BTCUSDT, y adivinar por el guion convertiria
+        # un error de tipeo en una orden al exchange equivocado.
+        exchange = str(payload.get("exchange") or "bingx").lower()
+        if exchange not in ("bingx", "binance"):
+            raise HTTPException(400, f"Exchange desconocido: {exchange}")
+
+        # BINANCE ESTA HABILITADO SOLO EN DEMO, y se corta ACA ademas de en el
+        # adaptador. El adaptador ya no tiene forma de apuntar a la cuenta
+        # real —no acepta una base— pero un 400 explica POR QUE no se puede,
+        # mientras que un adaptador que igual opera en demo dejaria al usuario
+        # creyendo que encendio en real.
+        if exchange == "binance" and modo == REAL:
+            raise HTTPException(
+                400, "Binance está habilitado sólo en demo. La aplicación no "
+                     "tiene forma de mandar una orden real a Binance: para "
+                     "operar en real hay que cambiar el código a propósito.")
+
         if modo == SIMULACRO:
             # Sin credenciales: los datos de mercado son publicos y este modo
             # no manda ninguna orden. Asi se puede mirar que haria el bot
             # antes de haber creado siquiera la clave.
-            adaptador: Any = Papel(datos=SoloDatos(BASE_PRACTICA),
+            datos: Any = Binance("", "") if exchange == "binance" else SoloDatos(BASE_PRACTICA)
+            adaptador: Any = Papel(datos=datos,
                                    capital_inicial=float(payload.get("capital") or 1000.0))
+        elif exchange == "binance":
+            try:
+                api_key, secret = claves.leer(workdir / "claves", "binance",
+                                              "practica")
+            except claves.ClaveError as exc:
+                raise HTTPException(400, str(exc)) from exc
+            adaptador = Binance(api_key, secret)
         else:
             entorno = "real" if modo == REAL else "practica"
             try:
@@ -2723,8 +2834,35 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             adaptador = BingX(api_key, secret,
                               base=BASE_REAL if modo == REAL else BASE_PRACTICA)
 
+        # QUE LO OPERADO SOBREVIVA A CERRAR LA APLICACION. Sin esto el
+        # registro vive en memoria y se pierde, y con el la unica evidencia de
+        # como le fue en vivo — que es lo que el semaforo compara contra el
+        # backtest para decidir si la ventaja se agoto.
+        #
+        # Se guardan solo las filas que son una operacion. El bot anota una por
+        # vuelta aunque no haga nada, y eso serian veinticuatro filas por dia
+        # por bot diciendo "no hubo senal".
+        sid = str(payload.get("estrategia_id") or "").strip()
+
+        def _anotar_afuera(fila: dict[str, Any]) -> None:
+            if sid and fila.get("accion") in ("abrir", "cerrar"):
+                db.anotar_operacion(sid, fila)
+
+        # QUE PORCION DE LA CUENTA MANEJA. Por omisión la entera, que es lo
+        # que corresponde con un solo bot y lo que hacían los que ya existían.
+        # `or 1.0` NO SIRVE ACA: un cero es falso en Python, así que
+        # `porcion: 0` se convertiría en 1.0 y el bot manejaría LA CUENTA
+        # ENTERA justo cuando alguien pidió que no manejara nada. Se compara
+        # contra None, que es lo único que significa "no lo mandaron".
+        crudo = (payload or {}).get("porcion")
         try:
-            bot = Bot(doc=doc, adaptador=adaptador, modo=modo,
+            porcion = 1.0 if crudo is None else float(crudo)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "La porción tiene que ser un número.")
+
+        try:
+            bot = Bot(doc=doc, adaptador=adaptador, modo=modo, porcion=porcion,
+                      oyente=_anotar_afuera if sid else None,
                       perdida_maxima_diaria=float(payload.get("perdida_maxima") or 0.0))
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
@@ -2735,18 +2873,59 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             raise HTTPException(409, str(exc)) from exc
 
     @app.post("/api/bot/apagar")
-    def bot_apagar() -> dict[str, Any]:
-        """Deja de operar. NO cierra la posición: para eso está el pánico."""
+    def bot_apagar(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Deja de operar. NO cierra la posición: para eso está el pánico.
+
+        Sin `simbolo` apaga TODOS. Es el botón de "me voy", y que exista uno
+        solo para todo evita el caso peor: apagar cuatro de cinco creyendo que
+        se apagaron los cinco.
+        """
         _solo_escritorio()
         from botiquant.vivo.piloto import PILOTO
-        return PILOTO.apagar()
+        simbolo = str((payload or {}).get("simbolo") or "").strip() or None
+        return PILOTO.apagar(simbolo)
 
     @app.post("/api/bot/panico")
-    def bot_panico() -> dict[str, Any]:
-        """Apaga y cierra lo que haya abierto."""
+    def bot_panico(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Apaga y cierra lo que haya abierto. Sin `simbolo`, todos."""
         _solo_escritorio()
         from botiquant.vivo.piloto import PILOTO
-        return PILOTO.panico()
+        simbolo = str((payload or {}).get("simbolo") or "").strip() or None
+        return PILOTO.panico(simbolo)
+
+    #: Los enlaces que la aplicacion sabe abrir. SE PIDEN POR NOMBRE Y NO POR
+    #: URL, que es mas fuerte que una lista blanca de direcciones: aunque
+    #: alguien llame al endpoint a mano, lo unico que puede pedir es una de
+    #: estas dos. Un endpoint que abre la URL que le manden es un endpoint que
+    #: manda a la gente adonde le manden.
+    ENLACES = {
+        # Donde se crea la clave del entorno demo. NO es la de binance.com a
+        # secas: esa seria la de la cuenta real.
+        "binance_clave": "https://demo.binance.com/en/my/settings/api-management",
+        # La pantalla donde se ve la orden aparecer del otro lado. Es la que
+        # convierte "el registro dice que anduvo" en "lo vi".
+        "binance_demo": "https://demo.binance.com/en/futures/BTCUSDT",
+    }
+
+    @app.post("/api/abrir-enlace")
+    def abrir_enlace(payload: dict[str, Any] | None = None) -> dict[str, str]:
+        """Abre en el navegador del sistema uno de NUESTROS enlaces.
+
+        En el navegador del sistema y no en la ventana de la aplicacion: el
+        escritorio es una sola ventana sin barra de direcciones, asi que
+        navegar adentro dejaria al usuario en Binance sin forma de volver.
+
+        Y solo en el escritorio, igual que abrir una carpeta. Servido a varios,
+        esto abriria una pestania en la maquina del servidor.
+        """
+        _solo_escritorio()
+        nombre = str((payload or {}).get("nombre") or "")
+        url = ENLACES.get(nombre)
+        if url is None:
+            raise HTTPException(403, f"Ese enlace no es de Botiquant: {nombre}")
+        import webbrowser
+        webbrowser.open(url)
+        return {"abierto": url}
 
     @app.post("/api/abrir-carpeta")
     def abrir_carpeta(payload: dict[str, Any] | None = None) -> dict[str, str]:

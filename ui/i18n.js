@@ -499,6 +499,11 @@ const STR = {
   "run.locked": [
     "Settings are frozen while it searches. Changing the criteria while looking at the results would be choosing them to fit this particular history. <b>Stop</b> to adjust and search again.",
     "Configuración congelada mientras busca. Cambiar los criterios viendo los resultados sería elegirlos a medida del histórico. <b>Detené</b> para ajustar y volver a minar."],
+  /* Cuando el histórico no tiene funding. Se dice el número y no los nombres:
+     lo que importa es que la corrida usó menos bloques de los pedidos. */
+  "vara.sin_funding": [
+    "{n} funding block(s) were left out: this instrument has no funding — perpetuals charge it, a CFD does not.",
+    "Quedaron afuera {n} bloque(s) de funding: este instrumento no lo tiene — lo cobran los perpetuos, un CFD no."],
   "vara.required": ["Required", "Se exigió"],
   "vara.min_trades": ["at least <b>{n}</b> trades", "mínimo <b>{n}</b> operaciones"],
   "vara.none": [
@@ -1261,10 +1266,50 @@ const STR = {
   "op.tab_bot": ["Bot", "Bot"],
   "op.tab_claves": ["Exchange keys", "Claves"],
   "op.sin_claves": ["No key loaded yet", "Todavía no cargaste ninguna clave"],
+  /* Decía "un bot por vez sobre una cuenta", que fue cierto hasta que el
+     piloto aprendió a sostener varios. La regla real es POR SIMBOLO. */
   "op.sub_bot": [
-    "One bot at a time on one account: two of them would fight over the same position.",
-    "Un bot por vez sobre una cuenta: dos se pelearían por la misma posición."],
+    "One bot per symbol: several can run at once, each sized on its own share of the account.",
+    "Un bot por símbolo: pueden correr varios a la vez, cada uno dimensionado sobre su porción de la cuenta."],
   "op.ir_claves": ["Load a key", "Cargar una clave"],
+  /* Binance va SOLO en demo, y el rotulo lo dice en el titulo y no en una
+     nota al pie: si estuviera abajo, alguien carga la clave, ve "configurada"
+     y da por hecho que puede operar en real. */
+  /* El exchange se ELIGE. Ver el comentario del select en app.js. */
+  /* VARIOS BOTS. El rótulo dice CUANTOS y no "encendido": con cinco
+     corriendo, "encendido" no dice si están los cinco o quedó uno. */
+  "bot.n_operando": ["{n} operating", "{n} operando"],
+  "bot.maneja": ["Handles {pct}% of the account", "Maneja el {pct}% de la cuenta"],
+  "bot.reparto": [
+    "{usado}% of the account is committed, {libre}% free.",
+    "El {usado}% de la cuenta está comprometido, queda {libre}% libre."],
+  "bot.apagar_todos": ["Stop them all", "Apagarlos a todos"],
+  "bot.porcion": ["Share of the account (%)", "Porción de la cuenta (%)"],
+  "bot.porcion_nota": [
+    "Each bot sizes its risk on ITS share, not on the whole balance. Fixed when it starts: turning on a new bot must not resize one that already has a position open.",
+    "Cada bot calcula su riesgo sobre SU porción, no sobre el saldo entero. Se fija al encender: prender uno nuevo no puede cambiarle el tamaño a otro que ya tiene una posición abierta."],
+  "bot.sin_lugar": ["No room for another one", "No hay lugar para otro"],
+  "bot.sin_lugar_sub": [
+    "Either every slot is taken or the account is fully committed. Stop one to free up its share.",
+    "O están todos los lugares ocupados, o la cuenta está comprometida entera. Apagá uno para liberar su porción."],
+
+  "bot.casa": ["Exchange", "Exchange"],
+  "bot.casa_bingx": ["BingX", "BingX"],
+  "bot.casa_binance": ["Binance (demo only)", "Binance (sólo demo)"],
+  "bot.casa_binance_nota": [
+    "On Binance the app only trades the demo environment, with fake money. There is no way to send it a real order.",
+    "En Binance la aplicación sólo opera el entorno demo, con plata de juguete. No tiene forma de mandarle una orden real."],
+
+  "ex.bn_t": ["Binance (demo only)", "Binance (sólo demo)"],
+  "ex.bn_sub": [
+    "Fake money on Binance's demo environment. The app has no way to send a real order to Binance.",
+    "Plata de juguete en el entorno demo de Binance. La aplicación no tiene forma de mandarle una orden real."],
+  "ex.bn_crear": ["Create the demo key", "Crear la clave demo"],
+  "ex.bn_ver": ["Watch it execute", "Ver cómo ejecuta"],
+  "ex.bn_nota": [
+    "The demo key is created on demo.binance.com, not on binance.com: that one belongs to your real account. The second link opens the screen where you can watch the order land.",
+    "La clave demo se crea en demo.binance.com, no en binance.com: esa es la de tu cuenta real. El segundo enlace abre la pantalla donde ves la orden aparecer."],
+
   "ex.sub": ["Connect an exchange so a strategy can trade on its own",
              "Conectá un exchange para que una estrategia opere sola"],
   "ex.regla1_t": ["Your keys stay on this computer",
@@ -1304,8 +1349,11 @@ const STR = {
   "ex.paso_posiciones": ["Open positions", "Posiciones abiertas"],
   "bot.sin_cripto": ["No crypto strategy saved yet",
                      "Todavía no hay ninguna estrategia de cripto guardada"],
-  "bot.sin_cripto_sub": ["A crypto exchange cannot trade indices or metals. Mine on BTCUSDT or ETHUSDT and save one, and it will show up here.",
-                         "Un exchange de cripto no opera índices ni metales. Miná sobre BTCUSDT o ETHUSDT y guardá una, y va a aparecer acá."],
+  /* NO ENUMERA LOS PARES. Decía "BTCUSDT o ETHUSDT" cuando eran los dos
+     únicos, y con trece quedó mintiendo: mandaba a minar sobre dos de trece.
+     Un texto que lista opciones envejece cada vez que se agrega una. */
+  "bot.sin_cripto_sub": ["A crypto exchange cannot trade indices or metals. Mine on one of the perpetuals and save it, and it will show up here.",
+                         "Un exchange de cripto no opera índices ni metales. Miná sobre alguno de los perpetuos y guardala, y va a aparecer acá."],
   "bot.acc_nada": ["waited", "esperó"],
   "bot.acc_largo": ["opened long", "abrió largo"],
   "bot.acc_corto": ["opened short", "abrió corto"],
@@ -1461,6 +1509,45 @@ const STR = {
   "inst.ethusdt": [
     "Ethereum perpetual — same funding mechanics as Bitcoin, more movement",
     "Ethereum perpetuo — mismo funding que Bitcoin, más movimiento"],
+  /* LOS ONCE QUE SE SUMARON EL 1/9/2026. Cada descripción dice el funding
+     MEDIDO de esa moneda y no una obviedad, porque es el dato que cambia si
+     una familia de estrategias es rentable o no — y NO va en la misma
+     dirección en todas: en Monero le paga al corto un 16,6% anual y en Zcash
+     se lo cobra un 2,2%. Medido sobre los últimos 1000 cobros de cada una. */
+  "inst.solusdt": [
+    "Solana perpetual — funding is roughly neutral (-0.3% a year), unusual among these",
+    "Solana perpetuo — el funding es casi neutro (-0,3% anual), raro entre estos"],
+  "inst.zecusdt": [
+    "Zcash perpetual — funding CHARGES the short side (-2.2% a year): a short starts behind",
+    "Zcash perpetuo — el funding le COBRA al lado corto (-2,2% anual): un corto arranca en contra"],
+  "inst.xrpusdt": [
+    "XRP perpetual — funding barely tilts either way (+0.2% a year)",
+    "XRP perpetuo — el funding casi no se inclina para ningún lado (+0,2% anual)"],
+  "inst.dogeusdt": [
+    "Dogecoin perpetual — funding pays the short side (+3.8% a year)",
+    "Dogecoin perpetuo — el funding le paga al lado corto (+3,8% anual)"],
+  "inst.arbusdt": [
+    "Arbitrum perpetual — the shortest history here: listed in 2023",
+    "Arbitrum perpetuo — la historia más corta de todos: cotiza desde 2023"],
+  "inst.uniusdt": [
+    "Uniswap perpetual — funding pays the short side (+4.4% a year)",
+    "Uniswap perpetuo — el funding le paga al lado corto (+4,4% anual)"],
+  "inst.bnbusdt": [
+    "BNB perpetual — the exchange's own token, funding pays the short side (+3.4% a year)",
+    "BNB perpetuo — el token del propio exchange, y el funding le paga al lado corto (+3,4% anual)"],
+  "inst.suiusdt": [
+    "Sui perpetual — listed in 2023, funding pays the short side (+2.8% a year)",
+    "Sui perpetuo — cotiza desde 2023, y el funding le paga al lado corto (+2,8% anual)"],
+  "inst.xmrusdt": [
+    "Monero perpetual — the most extreme funding here: +16.6% a year to the short side",
+    "Monero perpetuo — el funding más extremo de todos: +16,6% anual al lado corto"],
+  "inst.adausdt": [
+    "Cardano perpetual — funding pays the short side (+1.0% a year)",
+    "Cardano perpetuo — el funding le paga al lado corto (+1,0% anual)"],
+  "inst.linkusdt": [
+    "Chainlink perpetual — funding pays the short side (+4.8% a year)",
+    "Chainlink perpetuo — el funding le paga al lado corto (+4,8% anual)"],
+
   "cat.perpetuos": ["Crypto perpetuals", "Perpetuos de cripto"],
 
   "data.ready": ["{nombre}: {n} bars ready", "{nombre}: {n} velas listas"],

@@ -148,8 +148,8 @@ def revisar(d: Decision, *, estado: Estado, posicion_lado: int,
             motivo="no se abre sin stop: sería una posición sin protección")
 
     # ------------------------------------------- 7) el tamaño que el exchange acepta
-    decimales = int(contrato.get("quantityPrecision", 4))
-    minimo = float(contrato.get("tradeMinQuantity") or 0.0)
+    decimales = int(contrato.get("decimales_cantidad", 4))
+    minimo = float(contrato.get("minimo") or 0.0)
     cant = _redondear_abajo(d.cantidad, decimales)
 
     if cant <= 0 or cant < minimo:
@@ -159,7 +159,7 @@ def revisar(d: Decision, *, estado: Estado, posicion_lado: int,
                     f"mínimo de {minimo} que acepta el exchange. Con este "
                     f"capital y este stop, la operación no entra."))
 
-    min_usdt = float(contrato.get("tradeMinUSDT") or 0.0)
+    min_usdt = float(contrato.get("minimo_nocional") or 0.0)
     if min_usdt > 0 and cant * precio < min_usdt:
         return Veredicto(
             False,

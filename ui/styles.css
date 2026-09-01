@@ -733,14 +733,21 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
 /* QUE SE OPERA: CFD o cripto. Va arriba del menú y con más peso visual que un
    control cualquiera, porque no es una opción sino el contexto de todo lo que
    sigue: cambiarlo cambia los instrumentos, los costos y a dónde se exporta. */
-.mundo-sw { padding: 14px 16px 10px; }
+/* 12/16/8 y no 14/16/10: la escala de espaciado va de a 4 y estos dos eran
+   los unicos valores del archivo que se salian. Se conserva la asimetria —mas
+   arriba que abajo— porque el rotulo de arriba necesita aire y el conmutador
+   de abajo ya lo trae adentro. */
+.mundo-sw { padding: 12px 16px 8px; }
 .mundo-rot {
   display: block; font-size: 10px; font-weight: 650; letter-spacing: .08em;
   text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px;
 }
 .mundo-btns {
   display: flex; gap: 4px; background: var(--bg-soft);
-  border: 1px solid var(--border); border-radius: var(--r-sm); padding: 3px;
+  /* 4px y no 3: el paso mas chico de la escala. Un pixel de diferencia en un
+     inset no lo ve nadie, y tener un valor propio si lo paga el que despues
+     no entiende por que dos controles parecidos respiran distinto. */
+  border: 1px solid var(--border); border-radius: var(--r-sm); padding: 4px;
 }
 .mundo-btns button {
   flex: 1; font: inherit; font-size: 12px; font-weight: 600;
@@ -3208,6 +3215,13 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
    el estado importa mas que el contenido: hay que poder saber de un vistazo,
    desde lejos, si hay algo operando con plata. */
 .bot-card { margin-top: 16px; }
+
+/* CADA VUELO SEPARADO DEL SIGUIENTE. Con varios bots corridos uno debajo del
+   otro sin nada en medio, el "Apagar" de uno parece el del otro — y apagar el
+   que no era es el error caro de esta pantalla. Una línea y aire alcanzan:
+   una tarjeta adentro de otra tarjeta agrega un borde que no significa nada. */
+.bot-vuelo { padding: 12px 0; }
+.bot-vuelo + .bot-vuelo { border-top: 1px solid var(--border); }
 .bot-on { border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 
 .bot-linea { display: flex; align-items: center; justify-content: space-between;

@@ -211,6 +211,44 @@ def _vol_f(g: dict[str, float]):
     return c, list(c)
 
 
+# ------------------------------------------------------- el posicionamiento
+#
+# LOS UNICOS BLOQUES QUE NO MIRAN EL PRECIO. El funding lo paga el lado que
+# esta de mas, asi que dice quien esta amontonado — informacion que no esta
+# adentro de la vela y que por eso puede decidir distinto de todo lo demas.
+# Es lo que le falta a un portafolio armado solo con medias moviles:
+# decisiones que no se muevan todas juntas.
+#
+# SOLO EXISTEN EN PERPETUOS. Un CFD no tiene funding, y `mine` corta con un
+# mensaje si alguien los pide sobre un historico que no lo trae.
+#
+# VAN POR PERCENTIL Y NO POR VALOR. Ver `FundingPct`: la tasa media anualizada
+# va de +16,6% en Monero a -2,2% en Zcash, asi que un umbral crudo seria un
+# filtro distinto en cada moneda.
+
+
+@template("funding_alto_filter", "Crowded longs (high funding)", "filter", "funding",
+          (Gene("period", 90, 30, 300, 30), Gene("pct", 80, 60, 95, 5)))
+def _funding_alto(g: dict[str, float]):
+    """Sólo cuando el funding está en la parte alta de su rango reciente.
+
+    Funding alto es gente pagando por estar comprada. Si eso es buena o mala
+    señal NO lo decide este archivo —lo decide la búsqueda, probándolo— y por
+    eso el bloque existe en las dos versiones y no sólo en la que a alguien le
+    parece la correcta.
+    """
+    c = [cond(ind("FundingPct", period=g["period"]), ">", const(g["pct"]))]
+    return c, list(c)
+
+
+@template("funding_bajo_filter", "Crowded shorts (low funding)", "filter", "funding",
+          (Gene("period", 90, 30, 300, 30), Gene("pct", 20, 5, 40, 5)))
+def _funding_bajo(g: dict[str, float]):
+    """La contraria. Ver `funding_alto_filter`."""
+    c = [cond(ind("FundingPct", period=g["period"]), "<", const(g["pct"]))]
+    return c, list(c)
+
+
 @template("atr_rising_filter", "Volatility expanding", "filter", "volatility",
           (Gene("period", 14, 7, 30, 1),))
 def _atr_f(g: dict[str, float]):

@@ -346,6 +346,305 @@ CATALOG: list[dict[str, Any]] = [
         "direction": "both",
         "mejor_rendimiento": False,
     },
+    # =====================================================================
+    # LOS ONCE QUE SE SUMARON EL 1/9/2026, Y COMO SE ELIGIERON
+    # =====================================================================
+    #
+    # Con dos pares el minero no puede armar un portafolio: cinco estrategias
+    # sobre dos instrumentos son, medido, como tres apuestas. Estos once salen
+    # de un criterio y no de una preferencia:
+    #
+    #   * de los 525 perpetuos USDT que Binance tenia en negociacion,
+    #   * los mas negociados en 24 horas,
+    #   * que tuvieran AL MENOS TRES ANIOS de historia. Es el filtro que mas
+    #     descarta y el que mas importa: minar sobre menos es minar sobre una
+    #     sola condicion de mercado, y eso no se descubre hasta que cambia.
+    #
+    # Quedaron afuera los "1000X" —que envuelven mil unidades del token— no
+    # por malos sino porque cambian el significado de `contract_size` y eso
+    # merece pensarse aparte en vez de entrar de contrabando en una tanda.
+    #
+    # EL SLIPPAGE ES UNA REGLA DICHA Y NO UNA MEDICION POR INSTRUMENTO.
+    # Se midio el spread real del libro —cinco muestras separadas— y resulto
+    # ser de una sola punta en casi todos: usarlo como slippage seria suponer
+    # que una orden a mercado se llena siempre en la mejor oferta. Se usa
+    # 0,01% del precio, con piso de un tick, que es MAS CONSERVADOR que los dos
+    # valores que ya tenia el catalogo (BTC 0,0038% y ETH 0,0081%).
+    #
+    # A BTC Y ETH NO SE LES TOCO NADA. Sus numeros vienen de otro momento y
+    # cambiarlos ahora invalidaria en silencio toda comparacion contra lo que
+    # ya se minó con ellos.
+    #
+    # EL FUNDING ESTA MEDIDO POR MONEDA sobre los ultimos 1000 cobros (unos
+    # 2,7 anios) y NO VA EN LA MISMA DIRECCION EN TODAS: en Monero le paga al
+    # lado corto un 16,6% anual y en Zcash se lo cobra un 2,2%. Por eso cada
+    # entrada lo dice: es la diferencia entre que una familia de estrategias
+    # sea rentable o no, y no se puede suponer del signo de otra moneda.
+
+    {
+        "key": "solusdt",
+        "label": "SOLUSDT",
+        "full_name": "Solana perpetuo (para exchange)",
+        "fuente": "binance",
+        "binance": "SOLUSDT",
+        "category": "perpetuos",
+        "from": "2020-09-14",
+        "spread": 0.0,
+        "slippage": 0.01,
+        "commission_pct": 0.04,
+        "stop_points": 0.51,
+        "target_points": 1.02,
+        "contract_size": 1,
+        "min_lot": 0.01,
+        "min_cagr": 3.0,
+        "aliases": ["SOLUSDT", "SOL-USDT", "SOLUSD", "SOLPERP"],
+        # El funding le COBRA al lado corto: -0.26% anual medido
+        # desde 2026-03-18, o sea que un corto arranca en contra. Se
+        # permiten las dos direcciones igual: el motor lo cobra.
+        "direction": "both",
+        "mejor_rendimiento": False,
+        # 6.0 anios de historia al 1/9/2026.
+    },
+    {
+        "key": "zecusdt",
+        "label": "ZECUSDT",
+        "full_name": "Zcash perpetuo (para exchange)",
+        "fuente": "binance",
+        "binance": "ZECUSDT",
+        "category": "perpetuos",
+        "from": "2020-02-05",
+        "spread": 0.0,
+        "slippage": 0.085,
+        "commission_pct": 0.04,
+        "stop_points": 4.2,
+        "target_points": 8.4,
+        "contract_size": 1,
+        "min_lot": 0.001,
+        "min_cagr": 3.0,
+        "aliases": ["ZECUSDT", "ZEC-USDT", "ZECUSD", "ZECPERP"],
+        # El funding le COBRA al lado corto: -2.21% anual medido
+        # desde 2026-03-18, o sea que un corto arranca en contra. Se
+        # permiten las dos direcciones igual: el motor lo cobra.
+        "direction": "both",
+        "mejor_rendimiento": False,
+        # 6.6 anios de historia al 1/9/2026.
+    },
+    {
+        "key": "xrpusdt",
+        "label": "XRPUSDT",
+        "full_name": "XRP perpetuo (para exchange)",
+        "fuente": "binance",
+        "binance": "XRPUSDT",
+        "category": "perpetuos",
+        "from": "2020-01-06",
+        "spread": 0.0,
+        "slippage": 0.00014,
+        "commission_pct": 0.04,
+        "stop_points": 0.0069,
+        "target_points": 0.0138,
+        "contract_size": 1,
+        "min_lot": 0.1,
+        "min_cagr": 3.0,
+        "aliases": ["XRPUSDT", "XRP-USDT", "XRPUSD", "XRPPERP"],
+        # El funding le PAGA al lado corto: +0.22% anual medido
+        # desde 2026-03-18. Se permiten las dos direcciones para que la
+        # busqueda pueda encontrar esa familia.
+        "direction": "both",
+        "mejor_rendimiento": False,
+        # 6.7 anios de historia al 1/9/2026.
+    },
+    {
+        "key": "dogeusdt",
+        "label": "DOGEUSDT",
+        "full_name": "Dogecoin perpetuo (para exchange)",
+        "fuente": "binance",
+        "binance": "DOGEUSDT",
+        "category": "perpetuos",
+        "from": "2020-07-10",
+        "spread": 0.0,
+        "slippage": 1e-05,
+        "commission_pct": 0.04,
+        "stop_points": 0.00041,
+        "target_points": 0.00082,
+        "contract_size": 1,
+        "min_lot": 1.0,
+        "min_cagr": 3.0,
+        "aliases": ["DOGEUSDT", "DOGE-USDT", "DOGEUSD", "DOGEPERP"],
+        # El funding le PAGA al lado corto: +3.80% anual medido
+        # desde 2026-03-18. Se permiten las dos direcciones para que la
+        # busqueda pueda encontrar esa familia.
+        "direction": "both",
+        "mejor_rendimiento": False,
+        # 6.1 anios de historia al 1/9/2026.
+    },
+    {
+        "key": "arbusdt",
+        "label": "ARBUSDT",
+        "full_name": "Arbitrum perpetuo (para exchange)",
+        "fuente": "binance",
+        "binance": "ARBUSDT",
+        "category": "perpetuos",
+        "from": "2023-03-23",
+        "spread": 0.0,
+        "slippage": 1.1e-05,
+        "commission_pct": 0.04,
+        "stop_points": 0.00057,
+        "target_points": 0.00114,
+        "contract_size": 1,
+        "min_lot": 0.1,
+        "min_cagr": 3.0,
+        "aliases": ["ARBUSDT", "ARB-USDT", "ARBUSD", "ARBPERP"],
+        # El funding le PAGA al lado corto: +1.00% anual medido
+        # desde 2026-03-18. Se permiten las dos direcciones para que la
+        # busqueda pueda encontrar esa familia.
+        "direction": "both",
+        "mejor_rendimiento": False,
+        # 3.4 anios de historia al 1/9/2026.
+    },
+    {
+        "key": "uniusdt",
+        "label": "UNIUSDT",
+        "full_name": "Uniswap perpetuo (para exchange)",
+        "fuente": "binance",
+        "binance": "UNIUSDT",
+        "category": "perpetuos",
+        "from": "2020-09-18",
+        "spread": 0.0,
+        "slippage": 0.001,
+        "commission_pct": 0.04,
+        "stop_points": 0.026,
+        "target_points": 0.052,
+        "contract_size": 1,
+        "min_lot": 1.0,
+        "min_cagr": 3.0,
+        "aliases": ["UNIUSDT", "UNI-USDT", "UNIUSD", "UNIPERP"],
+        # El funding le PAGA al lado corto: +4.41% anual medido
+        # desde 2026-03-18. Se permiten las dos direcciones para que la
+        # busqueda pueda encontrar esa familia.
+        "direction": "both",
+        "mejor_rendimiento": False,
+        # 6.0 anios de historia al 1/9/2026.
+    },
+    {
+        "key": "bnbusdt",
+        "label": "BNBUSDT",
+        "full_name": "BNB perpetuo (para exchange)",
+        "fuente": "binance",
+        "binance": "BNBUSDT",
+        "category": "perpetuos",
+        "from": "2020-02-10",
+        "spread": 0.0,
+        "slippage": 0.069,
+        "commission_pct": 0.04,
+        "stop_points": 3.5,
+        "target_points": 7.0,
+        "contract_size": 1,
+        "min_lot": 0.01,
+        "min_cagr": 3.0,
+        "aliases": ["BNBUSDT", "BNB-USDT", "BNBUSD", "BNBPERP"],
+        # El funding le PAGA al lado corto: +3.43% anual medido
+        # desde 2026-03-18. Se permiten las dos direcciones para que la
+        # busqueda pueda encontrar esa familia.
+        "direction": "both",
+        "mejor_rendimiento": False,
+        # 6.6 anios de historia al 1/9/2026.
+    },
+    {
+        "key": "suiusdt",
+        "label": "SUIUSDT",
+        "full_name": "Sui perpetuo (para exchange)",
+        "fuente": "binance",
+        "binance": "SUIUSDT",
+        "category": "perpetuos",
+        "from": "2023-05-03",
+        "spread": 0.0,
+        "slippage": 0.0001,
+        "commission_pct": 0.04,
+        "stop_points": 0.0036,
+        "target_points": 0.0072,
+        "contract_size": 1,
+        "min_lot": 0.1,
+        "min_cagr": 3.0,
+        "aliases": ["SUIUSDT", "SUI-USDT", "SUIUSD", "SUIPERP"],
+        # El funding le PAGA al lado corto: +2.79% anual medido
+        # desde 2026-03-18. Se permiten las dos direcciones para que la
+        # busqueda pueda encontrar esa familia.
+        "direction": "both",
+        "mejor_rendimiento": False,
+        # 3.3 anios de historia al 1/9/2026.
+    },
+    {
+        "key": "xmrusdt",
+        "label": "XMRUSDT",
+        "full_name": "Monero perpetuo (para exchange)",
+        "fuente": "binance",
+        "binance": "XMRUSDT",
+        "category": "perpetuos",
+        "from": "2020-02-03",
+        "spread": 0.0,
+        "slippage": 0.052,
+        "commission_pct": 0.04,
+        "stop_points": 2.6,
+        "target_points": 5.2,
+        "contract_size": 1,
+        "min_lot": 0.001,
+        "min_cagr": 3.0,
+        "aliases": ["XMRUSDT", "XMR-USDT", "XMRUSD", "XMRPERP"],
+        # El funding le PAGA al lado corto: +16.62% anual medido
+        # desde 2026-03-18. Se permiten las dos direcciones para que la
+        # busqueda pueda encontrar esa familia.
+        "direction": "both",
+        "mejor_rendimiento": False,
+        # 6.6 anios de historia al 1/9/2026.
+    },
+    {
+        "key": "adausdt",
+        "label": "ADAUSDT",
+        "full_name": "Cardano perpetuo (para exchange)",
+        "fuente": "binance",
+        "binance": "ADAUSDT",
+        "category": "perpetuos",
+        "from": "2020-01-31",
+        "spread": 0.0,
+        "slippage": 0.0001,
+        "commission_pct": 0.04,
+        "stop_points": 0.00099,
+        "target_points": 0.00198,
+        "contract_size": 1,
+        "min_lot": 1.0,
+        "min_cagr": 3.0,
+        "aliases": ["ADAUSDT", "ADA-USDT", "ADAUSD", "ADAPERP"],
+        # El funding le PAGA al lado corto: +1.01% anual medido
+        # desde 2026-03-18. Se permiten las dos direcciones para que la
+        # busqueda pueda encontrar esa familia.
+        "direction": "both",
+        "mejor_rendimiento": False,
+        # 6.6 anios de historia al 1/9/2026.
+    },
+    {
+        "key": "linkusdt",
+        "label": "LINKUSDT",
+        "full_name": "Chainlink perpetuo (para exchange)",
+        "fuente": "binance",
+        "binance": "LINKUSDT",
+        "category": "perpetuos",
+        "from": "2020-01-17",
+        "spread": 0.0,
+        "slippage": 0.0011,
+        "commission_pct": 0.04,
+        "stop_points": 0.057,
+        "target_points": 0.114,
+        "contract_size": 1,
+        "min_lot": 0.01,
+        "min_cagr": 3.0,
+        "aliases": ["LINKUSDT", "LINK-USDT", "LINKUSD", "LINKPERP"],
+        # El funding le PAGA al lado corto: +4.81% anual medido
+        # desde 2026-03-18. Se permiten las dos direcciones para que la
+        # busqueda pueda encontrar esa familia.
+        "direction": "both",
+        "mejor_rendimiento": False,
+        # 6.6 anios de historia al 1/9/2026.
+    },
 ]
 
 BY_KEY = {c["key"]: c for c in CATALOG}

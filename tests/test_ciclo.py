@@ -47,13 +47,45 @@ def test_primero_retira_lo_que_esta_fallando():
 
     Al revés, el ciclo llena los lugares con estrategias nuevas mientras deja
     corriendo las que ya se agotaron.
+
+    Con el interruptor PRENDIDO: retirar solo es una decisión que se toma a
+    propósito, no el estado de fábrica.
     """
-    t = que_toca(_p(vueltas_en_naranja=3),
+    t = que_toca(_p(vueltas_en_naranja=3, retirar_solo=True),
                  estrategias=[_e("mala", estados.PRODUCCION, naranja=3),
                               _e("lista", estados.VALIDADA)],
                  horas_desde_el_ultimo_minado=999)
     assert t.accion == RETIRAR
     assert t.ids == ["mala"]
+
+
+def test_APAGADO_no_retira_pero_igual_dice_a_quien_sacaria():
+    """EL DEFAULT, Y EL MOTIVO LO ESCRIBE EL PROPIO SEMAFORO.
+
+    Dice de sí mismo que "hace falta que alguien vea el semáforo cambiar de
+    color varias veces y decida si le cree" antes de dejarlo actuar. Hasta
+    entonces el ciclo señala y sigue su camino.
+
+    Y es la dirección segura del error: apagado, deja corriendo algo que habría
+    que sacar —y eso lo ve una persona—; prendido y equivocado, retira
+    estrategias buenas sin que nadie se entere.
+    """
+    t = que_toca(_p(vueltas_en_naranja=3),
+                 estrategias=[_e("mala", estados.PRODUCCION, naranja=3),
+                              _e("lista", estados.VALIDADA)],
+                 horas_desde_el_ultimo_minado=999)
+    assert t.accion != RETIRAR, "retiró con el interruptor apagado"
+    # pero no se calla lo que vio
+    assert t.retirables == ["mala"]
+
+
+def test_la_marca_de_retirables_viaja_en_TODAS_las_ramas():
+    """Va aparte de `ids` justamente para esto: la acción puede ser promover o
+    minar y la pantalla igual tiene que poder mostrar a quién sacaría."""
+    t = que_toca(_p(vueltas_en_naranja=3),
+                 estrategias=[_e("mala", estados.PRODUCCION, naranja=3)],
+                 horas_desde_el_ultimo_minado=999)
+    assert t.accion == MINAR and t.retirables == ["mala"]
 
 
 def test_despues_promueve_lo_que_ya_esta_probado():

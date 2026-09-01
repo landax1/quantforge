@@ -327,3 +327,23 @@ def test_a_run_without_quality_filters_says_so(df):
 
     assert out["min_trades"] == 30
     assert all(v is None for v in out["accept"].values())
+
+
+def test_un_filtro_MAL_ESCRITO_no_pasa_desapercibido(df):
+    """Se mina creyendo que se filtra, y nada lo dice.
+
+    Las claves se leen con `accept.get(...)`: una que no exista devuelve None y
+    el criterio no se aplica. PASO DE VERDAD —`min_profit_factor` en vez de
+    `min_pf`— y el resultado fue un databank con profit factors de 0,62 que
+    parecía perfectamente normal.
+    """
+    with pytest.raises(ValueError, match="desconocido"):
+        mine(df, ["ema_cross"], [], accept={"min_profit_factor": 1.05},
+             max_candidates=1)
+
+
+def test_los_criterios_que_SI_existen_se_aceptan(df):
+    """El control no puede rechazar un criterio legítimo."""
+    r = mine(df, ["ema_cross"], [], accept={"min_pf": 1.05, "max_dd_pct": 50.0},
+             max_candidates=2, min_trades=1)
+    assert "databank" in r
