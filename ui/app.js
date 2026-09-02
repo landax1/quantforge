@@ -2508,10 +2508,13 @@ function panelBot(e, hayClave) {
               clave": el usuario tenía que adivinar que había que cambiar de
               casa antes de elegir el modo. Si hay clave en las dos, o en
               ninguna, queda BingX como antes. */ ""}
-        <select id="bot-casa">
-          <option value="bingx"${casaInicial === "bingx" ? " selected" : ""}>${esc(t("bot.casa_bingx"))}</option>
-          <option value="binance"${casaInicial === "binance" ? " selected" : ""}>${esc(t("bot.casa_binance"))}</option>
-        </select></label>
+        ${/* Un solo exchange operable: se muestra como dato, no como
+              elección. El <select> queda oculto porque el resto del panel
+              lee su valor. */ ""}
+        <select id="bot-casa" hidden>
+          <option value="binance" selected>${esc(t("bot.casa_binance"))}</option>
+        </select>
+        <span class="fld-fijo">${esc(t("bot.casa_binance"))} · ${esc(t("bot.solo_demo"))}</span></label>
       <label class="fld"><span>${esc(t("bot.modo"))}</span>
         <select id="bot-modo">
           <option value="">${esc(t("bot.elegir"))}</option>
@@ -2564,10 +2567,10 @@ function panelBot(e, hayClave) {
            pantalla no explicaba. Se elige acá, como todo lo demás. -->
       <div class="fld-pair mt">
         <label class="fld"><span>${esc(t("bot.casa"))}</span>
-          <select id="conj-casa">
+          <select id="conj-casa" hidden>
             <option value="binance">${esc(t("bot.casa_binance"))}</option>
-            <option value="bingx">${esc(t("bot.casa_bingx"))}</option>
-          </select></label>
+          </select>
+          <span class="fld-fijo">${esc(t("bot.casa_binance"))} · ${esc(t("bot.solo_demo"))}</span></label>
       </div>
       <div class="controls mt">
         <button class="btn ghost" id="conj-armar">${esc(t("conj.armar"))}</button>
@@ -3091,9 +3094,11 @@ const vistaClaves = async (main, por) => {
           encender y donde todo esto se prueba; alguien que eligió "cripto"
           llegaba acá y lo primero que veía eran dos tarjetas de BingX, con
           la de Binance debajo del pliegue. */ ""}
-    ${tarjeta("practica", "binance", "ex.bn", enlacesBinance)}
-    ${tarjeta("practica")}
-    ${tarjeta("real")}`;
+    ${/* SÓLO BINANCE, Y SÓLO DEMO. Es el único exchange que la aplicación
+          opera hoy; las tarjetas de BingX (práctica y real) se retiran de la
+          vista hasta que haya un segundo exchange operable de verdad. El
+          código de BingX y sus pruebas quedan. */ ""}
+    ${tarjeta("practica", "binance", "ex.bn", enlacesBinance)}`;
 
   const campo = (casa, entorno, cual) =>
     $(`[data-ex="${cual}"][data-casa="${casa}"][data-entorno="${entorno}"]`, main);
@@ -5151,6 +5156,12 @@ const vistaBuscar = async (main) => {
                 >${esc(t("oos.on"))}</button>
             </div>
             <p class="help-note mt">${t("oos.what", { pct: 30 })}</p>
+            ${/* EL REPARTO, DIBUJADO. "Reservar el 30 %" es un número; una
+                  barra partida en dos se entiende sin leer. */ ""}
+            <div class="oos-barra" id="m-oos-barra" ${+c.oosPct ? "" : "hidden"}>
+              <i class="oos-busca" style="flex:${100 - (+c.oosPct || 30)}"><span>${esc(t("oos.b_busca", { pct: 100 - (+c.oosPct || 30) }))}</span></i>
+              <i class="oos-guarda" style="flex:${+c.oosPct || 30}"><span>${esc(t("oos.b_guarda", { pct: +c.oosPct || 30 }))}</span></i>
+            </div>
 
             <div id="m-oos-detalle" ${+c.oosPct ? "" : "hidden"}>
               <div class="stage-sub">${esc(t("oos.how_much"))}</div>
@@ -5459,6 +5470,16 @@ const vistaBuscar = async (main) => {
       const v = +S.cfg.oosPct;
       nota.textContent = t("mine.oos_split", { mina: 100 - v, valida: v })
         + (v === 30 ? ` · ${t("ui.recommended")}` : "");
+    }
+    // la barra del reparto sigue al porcentaje elegido
+    const barra = $("#m-oos-barra", main);
+    if (barra) {
+      const v = +S.cfg.oosPct || 30;
+      barra.hidden = !on;
+      const busca = $(".oos-busca", barra), guarda = $(".oos-guarda", barra);
+      busca.style.flex = String(100 - v); guarda.style.flex = String(v);
+      $("span", busca).textContent = t("oos.b_busca", { pct: 100 - v });
+      $("span", guarda).textContent = t("oos.b_guarda", { pct: v });
     }
     updateNotes();
   };
@@ -7278,6 +7299,7 @@ const INSPECT_METRICS = () => [
   ["net_profit_pct", t("m.net"), "pct"],
   ["exposure_pct", t("m.exposure"), "raw"],
   ["cagr_exposed_pct", t("m.cagr_exposed"), "raw"],
+  ["months_positive_pct", t("m.months_positive"), "raw"],
   ["profit_factor", t("m.pf"), "n"],
   ["sharpe", t("m.sharpe"), "n"],
   ["recovery_factor", t("m.retdd"), "n"],
@@ -7286,10 +7308,22 @@ const INSPECT_METRICS = () => [
   ["trades", t("m.trades"), "int"],
   ["trades_per_month", t("m.trades_month"), "n"],
   ["avg_trade", t("m.avg_trade"), "money"],
-  ["avg_win", t("m.avg_win"), "money"],
-  ["avg_loss", t("m.avg_loss"), "loss"],
+  ["_win_loss", t("m.win_loss"), "win_loss"],
   ["expectancy_r", t("m.expectancy"), "n"],
   ["final_equity", t("m.final_equity"), "money"],
+];
+
+/* LAS SECUNDARIAS SE AGRUPAN POR PREGUNTA, no por orden de lista. En tres
+   columnas rellenadas por filas, "ganancia promedio" cerraba una fila a la
+   derecha y "pérdida promedio" abría la siguiente a la izquierda: dos mitades
+   del mismo dato en esquinas opuestas (2 de septiembre). Cada columna
+   contesta una pregunta y las parejas van en la misma línea. */
+const INSPECT_GRUPOS = () => [
+  ["insp.g_rinde", ["net_profit_pct", "cagr_exposed_pct", "exposure_pct",
+                    "months_positive_pct", "final_equity"]],
+  ["insp.g_duele", ["sharpe", "recovery_factor"]],
+  ["insp.g_opera", ["trades_per_month", "win_rate_pct", "avg_trade", "_win_loss",
+                    "expectancy_r"]],
 ];
 
 function renderInspector(box, row, res, ctx) {
@@ -7315,6 +7349,16 @@ function renderInspector(box, row, res, ctx) {
     else if (kind === "int") txt = (+v).toLocaleString();
     else if (kind === "money") { txt = fmtMoney(v); cls = v >= 0 ? "pos" : ""; }
     else if (kind === "loss") { txt = `-${fmtMoney(Math.abs(v))}`; cls = "neg"; }
+    else if (kind === "win_loss") {
+      /* Las dos mitades juntas, y la relación entre ellas, que es lo que
+         uno quiere saber: cuánto gana cada acierto contra cuánto cuesta cada
+         error. */
+      const g = +m.avg_win || 0, p = Math.abs(+m.avg_loss || 0);
+      const razon = p > 1e-9 ? `${fmtNum(g / p, 1)} : 1` : "";
+      txt = `<span class="pos">${fmtMoney(g)}</span> · <span class="neg">-${fmtMoney(p)}</span>${
+        razon ? ` · <span class="muted">${razon}</span>` : ""}`;
+      cls = "par";
+    }
     return { label, txt, cls };
   };
 
@@ -7328,11 +7372,12 @@ function renderInspector(box, row, res, ctx) {
       .map(pintarMetrica(mm))
       .map(d => `<div class="m-grande"><span>${d.label}</span><b class="${d.cls}">${d.txt}</b></div>`)
       .join("");
-    const resto = todas.filter(([k]) => !INSPECT_CABEZA.includes(k))
-      .map(pintarMetrica(mm))
-      .map(d => `<div class="m-fila"><span>${d.label}</span><b class="${d.cls}">${d.txt}</b></div>`)
-      .join("");
-    return `<div class="m-cabeza">${cabeza}</div><div class="m-resto">${resto}</div>`;
+    const fila = (d) => `<div class="m-fila"><span>${d.label}</span><b class="${d.cls}">${d.txt}</b></div>`;
+    const grupos = INSPECT_GRUPOS().map(([clave, keys]) => `
+      <div class="m-grupo"><b class="m-tit">${esc(t(clave))}</b>${
+        keys.map(k => todas.find(([kk]) => kk === k)).filter(Boolean)
+          .map(pintarMetrica(mm)).map(fila).join("")}</div>`).join("");
+    return `<div class="m-cabeza">${cabeza}</div><div class="m-resto">${grupos}</div>`;
   };
 
   const rules = (list, side) => (list || []).length
@@ -7453,7 +7498,12 @@ function renderInspector(box, row, res, ctx) {
         >${icono("seguir")} ${esc(t("insp.bingx_btn"))}</button>
       <button class="btn ghost" id="insp-pine">${icono("bajar")} TradingView (.pine)</button>
       <button class="btn ghost" id="insp-copiar">${icono("copiar")} ${esc(t("insp.copy_pine"))}</button>
-      <button class="btn ghost" id="insp-save">${icono("marcador")} ${esc(t("insp.save"))}</button>
+      ${/* YA GUARDADA NO SE VUELVE A GUARDAR. Abierta desde Mis estrategias,
+            el botón ofrecía guardar lo que ya estaba guardado; el chip de la
+            cabecera lo dice y el pie lo contradecía. */
+        ctx && ctx.strategy_id
+          ? `<span class="insp-guardada">${icono("tilde", "ico-sm")} ${esc(t("insp.ya_guardada"))}</span>`
+          : `<button class="btn ghost" id="insp-save">${icono("marcador")} ${esc(t("insp.save"))}</button>`}
     </div>
     <div class="guardado" id="insp-guardado" hidden></div>
   </div>`;
@@ -7498,7 +7548,8 @@ function renderInspector(box, row, res, ctx) {
 
   cablearNota(box, ctx);
 
-  $("#insp-save", box).onclick = async () => {
+  // sin botón cuando ya está guardada: no hay nada que atar
+  if ($("#insp-save", box)) $("#insp-save", box).onclick = async () => {
     const btn = $("#insp-save", box);
     btn.disabled = true;
     try {

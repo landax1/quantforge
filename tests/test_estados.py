@@ -310,6 +310,10 @@ def test_registra_CUANTO_PEOR_puede_ser_el_mismo_conjunto_de_operaciones(tmp_pat
         v = c.post(f"/api/strategies/{sid}/validar",
                    json={"simulations": 300}).json()["validacion"]
         assert v["cuanto_peor"] is None or v["cuanto_peor"] >= 1.0
+        # Y EL PERÍODO PROBADO, como lo guarda la prueba manual: sin esto la
+        # ficha decía "Probada sobre — → —" para todo lo que validó el ciclo.
+        if "estado" in v:
+            assert v["periodo"]["from"] < v["periodo"]["to"]
     finally:
         c.__exit__(None, None, None)
 

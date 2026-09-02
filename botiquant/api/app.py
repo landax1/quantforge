@@ -2024,6 +2024,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "consistencia_pct": resumen["consistency_pct"],
                 "retorno_fuera_pct": resumen["total_oos_return_pct"],
                 "probada": validacion["cuando"],
+                # El período probado, como lo guarda la prueba manual: sin
+                # esto la ficha decía "Probada sobre — → —" para todo lo que
+                # validó el ciclo.
+                "periodo": {"from": str(df.index[0])[:10], "to": str(df.index[-1])[:10]},
             })
         except Exception as exc:                            # noqa: BLE001
             validacion["prueba_error"] = str(exc)[:200]

@@ -135,6 +135,12 @@ const STR = {
   "m.avg_win": ["Average win", "Ganancia promedio"],
   "m.avg_loss": ["Average loss", "Pérdida promedio"],
   "m.final_equity": ["Final equity", "Capital final"],
+  "m.win_loss": ["Average win / loss", "Ganancia / pérdida media"],
+  "insp.g_rinde": ["How much does it make?", "¿Cuánto rinde?"],
+  "insp.g_duele": ["How much does it hurt?", "¿Cuánto duele?"],
+  "insp.g_opera": ["How does it trade?", "¿Cómo opera?"],
+  "insp.ya_guardada": ["Saved in My strategies", "Guardada en Mis estrategias"],
+  "bot.solo_demo": ["demo account", "cuenta demo"],
   "m.years": ["Years", "Años"],
 
   /* ------------------------------------------- qué le baja el puntaje */
@@ -347,7 +353,7 @@ const STR = {
     "Starts on the <b>last {n} years</b> so the first search does not take forever. This instrument has {total} years.",
     "Arranca en los <b>últimos {n} años</b> para que la primera búsqueda no tarde una eternidad. Este instrumento tiene {total} años."],
   "mine.use_all": ["Use all {total} years", "Usar los {total} años"],
-  "mine.oos": ["Out-of-sample check", "Validación fuera de muestra"],
+  "mine.oos": ["Keep a stretch for later", "Guardar un tramo para después"],
   "mine.oos_off": ["Off", "Desactivada"],
   // Vive adentro del paso de la data, pegado a las fechas: reservar un tramo
   // es partir en dos el periodo que se acaba de elegir, no un paso aparte al
@@ -356,11 +362,13 @@ const STR = {
   // usuario y por eso la explicacion vive adentro del paso, no en un tooltip.
   "oos.off": ["Off", "Desactivada"],
   "oos.on": ["On", "Activada"],
-  "oos.sum_on": ["last {pct}% reserved", "último {pct}% reservado"],
-  "oos.how_much": ["How much to set aside", "Cuánto reservar"],
+  "oos.sum_on": ["last {pct}% kept for later", "último {pct}% guardado para después"],
+  "oos.how_much": ["How much to keep for later", "Cuánto guardar para después"],
+  "oos.b_busca": ["searches here · {pct}%", "busca acá · {pct}%"],
+  "oos.b_guarda": ["never looks · {pct}%", "no mira · {pct}%"],
   "oos.what": [
-    "With this on, the last <b>{pct}%</b> of the period above is <b>set aside</b>: the search never sees it. Every strategy that passes is then re-run on that final stretch, and the results table gains a column saying whether the edge held there.",
-    "Activándolo, el último <b>{pct}%</b> del período de arriba queda <b>reservado</b>: la búsqueda no lo ve nunca. Después, cada estrategia que pasa se vuelve a correr sobre ese tramo final, y la tabla de resultados suma una columna que dice si la ventaja se sostuvo ahí."],
+    "The last <b>{pct}%</b> of the period is <b>kept for later</b>: the search never looks at it. Each strategy that passes is then run on that stretch. If it also makes money there, it was not just describing the past.",
+    "El último <b>{pct}%</b> del período queda <b>guardado para después</b>: la búsqueda no lo mira nunca. Cada estrategia que pasa se corre después sobre ese tramo. Si gana también ahí, no estaba describiendo el pasado."],
   "oos.informa": [
     "It reports, it does not discard: nothing is thrown out for failing there. Bear in mind the search is left with less history, so fewer strategies come out.",
     "Informa, no descarta: nada se tira por fallar ahí. Tené en cuenta que la búsqueda queda con menos historia, así que salen menos estrategias."],
@@ -984,8 +992,8 @@ const STR = {
   "col.maxdd": ["Max DD", "Máx. DD"],
   "col.ops": ["Trades", "Ops."],
   "col.months_plus": ["Months +", "Meses +"],
-  "col.oos": ["Out of<br>sample", "Fuera<br>de muestra"],
-  "col.oos_full": ["Out of sample", "Fuera de muestra"],
+  "col.oos": ["Kept<br>for later", "Tramo<br>guardado"],
+  "col.oos_full": ["Kept for later", "Tramo guardado"],
   "col.score_help": [
     "The app's own robustness score: how repeatable the strategy looks, not how much it returned.",
     "Puntaje propio de robustez: qué tan repetible parece la estrategia, no cuánto rindió."],
@@ -996,8 +1004,8 @@ const STR = {
     "Share of months closed in profit. High means it wins steadily, not in a single stroke.",
     "Porcentaje de meses cerrados en ganancia. Alto significa que gana seguido, no de un solo golpe."],
   "col.oos_help": [
-    "Out-of-sample profit factor divided by the in-sample one. Near 1 the edge held; near 0 the strategy was only describing the past.",
-    "Profit factor fuera de muestra dividido por el de adentro. Cerca de 1 la ventaja se sostuvo; cerca de 0 la estrategia sólo describía el pasado."],
+    "How much of the edge survived on the stretch the search never looked at (profit factor there divided by profit factor where it searched). Near 1 it held whole; near 0 the strategy was only describing the past.",
+    "Cuánto de la ventaja sobrevivió en el tramo que la búsqueda no miró (profit factor ahí dividido por el de donde buscó). Cerca de 1 se mantuvo entera; cerca de 0 la estrategia sólo describía el pasado."],
   "col.click_sort": ["click to sort", "clic para ordenar"],
   "col.oos_holds": ["holds", "se sostiene"],
   "col.oos_weakens": ["weakens", "se debilita"],

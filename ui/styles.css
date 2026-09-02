@@ -2823,7 +2823,23 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 /* El resto son datos de consulta: se leen cuando se los busca, no de un
    vistazo. Como lista alineada a derecha las cifras se comparan entre sí, que
    es justo lo que una grilla de fichas impide. */
-.m-resto { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 24px; }
+.m-resto { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0 24px; align-items: start; }
+@media (max-width: 760px) { .m-resto { grid-template-columns: 1fr; } }
+.m-tit {
+  display: block; font-size: 11px; font-weight: 600; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--accent); padding: 8px 0 4px;
+}
+.m-fila b.par { font-weight: 600; }
+.insp-guardada {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px;
+  color: var(--pos); font-size: 13px; font-weight: 600;
+}
+.fld-fijo { display: block; padding: 8px 0; font-size: 13px; color: var(--text-2); }
+/* el reparto entre lo que la búsqueda mira y lo que guarda para después */
+.oos-barra { display: flex; gap: 2px; margin-top: 12px; height: 26px; border-radius: var(--r-sm); overflow: hidden; }
+.oos-barra i { display: grid; place-items: center; font-style: normal; font-size: 11px; white-space: nowrap; overflow: hidden; }
+.oos-barra .oos-busca { background: var(--bg-soft); color: var(--text-2); }
+.oos-barra .oos-guarda { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 .m-fila {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
   padding: 6px 0; border-bottom: 1px solid var(--border-soft);
