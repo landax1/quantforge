@@ -41,6 +41,9 @@ class _Falso:
         monkeypatch.setattr(bt, "velas", lambda *a, **k: _velas())
         monkeypatch.setattr(bt, "contrato", lambda *a, **k: dict(_CONTRATO))
         monkeypatch.setattr(bt, "modo_posicion", lambda *a, **k: "una_via")
+        # el margen se prepara antes de abrir; en la red falsa no hay nada que preparar
+        monkeypatch.setattr(bt, "preparar_margen",
+                            lambda *a, **k: {"margen": "aislado", "apalancamiento": 5})
         monkeypatch.setattr(bt, "detalle_orden",
                             lambda *a, **k: {"precio": 78752.6, "cantidad": 0.0007,
                                              "id": 1, "estado": "FILLED"})
@@ -265,3 +268,53 @@ def test_lo_que_no_reconoce_pasa_TAL_CUAL():
     que existe y es otro; mejor que falle del lado del exchange con su propio
     mensaje."""
     assert a_simbolo("RAROUNO", con_guion=True) == "RAROUNO"
+
+
+# --------------------------------------------- margen aislado, antes de abrir
+
+def test_antes_de_abrir_se_pone_margen_aislado_y_apalancamiento_bajo(monkeypatch):
+    """El primer trade de una estrategia abrió en cruzado a 20× y el usuario
+    preguntó por qué: nadie lo fijaba. Ahora se fija en cada apertura, y con
+    el apalancamiento del adaptador, no el que haya quedado en la cuenta."""
+    f = _Falso(monkeypatch)
+    visto = {}
+
+    def _margen(simbolo, k, s, *, apalancamiento, base):
+        f.hechos.append("margen")
+        visto.update(simbolo=simbolo, apalancamiento=apalancamiento)
+        return {"margen": "aislado", "apalancamiento": apalancamiento}
+    monkeypatch.setattr(bt, "preparar_margen", _margen)
+    f.a.abrir("BTCUSDT", 1, 0.0007, stop=74000.0, objetivo=86000.0)
+    assert f.hechos[:2] == ["margen", "abrir"]
+    assert visto == {"simbolo": "BTCUSDT", "apalancamiento": Binance.APALANCAMIENTO}
+
+
+def test_si_el_margen_no_se_puede_poner_aislado_NO_se_abre(monkeypatch):
+    """Abrir en cruzado sería exactamente lo que se quiso evitar."""
+    f = _Falso(monkeypatch)
+
+    def _falla(*a, **k):
+        raise bt.BinanceError("[-4048] Margin type cannot be changed if there exists position.",
+                              codigo=-4048)
+    monkeypatch.setattr(bt, "preparar_margen", _falla)
+    with pytest.raises(bt.BinanceError, match="-4048"):
+        f.a.abrir("BTCUSDT", 1, 0.0007, stop=74000.0, objetivo=86000.0)
+    assert "abrir" not in f.hechos
+
+
+def test_ya_esta_asi_no_es_error(monkeypatch):
+    """-4046 (ya en aislado) y -4059 (mismo apalancamiento) no son fallos."""
+    import io
+    import json
+    import urllib.error
+    llamadas = []
+
+    def _abrir(req, timeout=30):
+        llamadas.append(req.full_url)
+        raise urllib.error.HTTPError(
+            req.full_url, 400, "Bad Request", {},
+            io.BytesIO(json.dumps({"code": -4046, "msg": "No need to change margin type."}).encode()))
+    monkeypatch.setattr(bt.urllib.request, "urlopen", _abrir)
+    monkeypatch.setattr(bt, "_DESFASE_MEDIDO", 1.0)
+    r = bt.preparar_margen("BTCUSDT", "K", "S", apalancamiento=5, base="https://x")
+    assert r["margen"] == "aislado" and len(llamadas) == 2

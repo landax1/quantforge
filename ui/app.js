@@ -3076,10 +3076,28 @@ const vistaClaves = async (main, por) => {
      "cobertura") y se mostraba tal cual, con guion bajo y en español, en la
      interfaz en inglés. Es un valor cerrado: se traduce como los demás. */
   function detallePaso(p) {
-    if (p.paso !== "modo") return p.detalle;
-    if (p.detalle === "una_via") return t("ex.modo_una_via");
-    if (p.detalle === "cobertura") return t("ex.modo_cobertura");
-    return p.detalle;
+    const d = String(p.detalle ?? "");
+    if (p.paso === "modo") {
+      if (d === "una_via") return t("ex.modo_una_via");
+      if (d === "cobertura") return t("ex.modo_cobertura");
+      return d;
+    }
+    /* Los detalles de los otros pasos también los escribe el servidor en
+       español ("2 velas", "4.991,94 disponible", "ninguna abierta"): son
+       formas cerradas, así que se reconocen y se dicen en el idioma de la
+       pantalla. Lo que no se reconoce —un mensaje de error del exchange— se
+       muestra tal cual. */
+    let m;
+    if (p.paso === "responde" && (m = d.match(/^([\d.,]+) velas$/)))
+      return t("ex.det_velas", { n: m[1] });
+    if (p.paso === "saldo" && (m = d.match(/^([\d.,]+) disponible$/)))
+      return t("ex.det_disponible", { n: m[1] });
+    if (p.paso === "posiciones") {
+      if (d === "ninguna abierta") return t("ex.det_ninguna");
+      if (d === "hay una abierta") return t("ex.det_una");
+      if ((m = d.match(/^(\d+) abiertas?$/))) return t("ex.det_abiertas", { n: m[1] });
+    }
+    return d;
   }
 
   $$("[data-ex-guardar]", main).forEach(b => {

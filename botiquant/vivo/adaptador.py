@@ -309,6 +309,11 @@ class Binance:
     que cambia entre entornos es dónde se ejecuta la orden, no qué se ve.
     """
 
+    #: Apalancamiento que se fija en cada símbolo antes de abrir. Bajo a
+    #: propósito: el tamaño lo decide el riesgo por operación, esto sólo
+    #: dice cuánto margen se aparta.
+    APALANCAMIENTO = 5
+
     #: Siempre falso, y no es un cálculo. Ver el encabezado de la clase.
     es_real = False
 
@@ -389,6 +394,13 @@ class Binance:
         c = self.contrato(simbolo)
         precio = float(self.velas(simbolo, "1m", 1)["close"].iloc[-1])
         simbolo = self._simbolo(simbolo)
+        # MARGEN AISLADO Y APALANCAMIENTO BAJO, ANTES DE ABRIR. El primer
+        # trade salió en cruzado a 20× porque nadie lo fijaba. Si Binance no
+        # deja cambiarlo (ya hay posición u orden en el símbolo), no se abre:
+        # abrir en cruzado sería exactamente lo que se quiso evitar.
+        binance_trade.preparar_margen(
+            simbolo, self.api_key, self.secret,
+            apalancamiento=self.APALANCAMIENTO, base=self.base)
         orden = binance_trade.abrir(
             simbolo, lado, cantidad, precio=precio, api_key=self.api_key,
             secret=self.secret, modo=self.modo(), contrato_=c, base=self.base)

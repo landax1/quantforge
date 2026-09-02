@@ -2645,9 +2645,16 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             return {"pasos": pasos, "listo": False}
         paso("modo", lambda: (cliente.modo() if es_binance else
                               ("cobertura" if cliente.cobertura() else "simple")))
-        paso("posiciones",
-             lambda: "hay una abierta" if cliente.posicion(simbolo).abierta
-             else "ninguna abierta")
+        # TODAS LAS POSICIONES DE LA CUENTA, no sólo la del símbolo de prueba:
+        # decía "ninguna abierta" con un corto de ETH abierto, porque miraba
+        # BTCUSDT. En BingX el adaptador sólo sabe preguntar por símbolo.
+        def _abiertas() -> str:
+            if es_binance:
+                from botiquant.data import binance_trade as bt
+                n = len(bt.posiciones(api_key, secret, base=bt.BASE_PRUEBA))
+                return "ninguna abierta" if n == 0 else f"{n} abiertas"
+            return "hay una abierta" if cliente.posicion(simbolo).abierta else "ninguna abierta"
+        paso("posiciones", _abiertas)
 
         return {"pasos": pasos, "listo": all(p["ok"] for p in pasos)}
 

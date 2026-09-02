@@ -324,6 +324,47 @@ def modo_posicion(api_key: str, secret: str,
     return "cobertura" if d.get("dualSidePosition") else "una_via"
 
 
+#: Códigos de Binance que significan "ya está así", no "falló".
+_YA_ESTA = frozenset({-4046, -4059})   # -4046 margen ya en ese modo · -4059 apalancamiento sin cambio
+
+
+def preparar_margen(simbolo: str, api_key: str, secret: str, *,
+                    apalancamiento: int = 5, base: str = BASE_PRUEBA) -> dict[str, Any]:
+    """Margen AISLADO y un apalancamiento bajo, antes de abrir.
+
+    ==================================================================
+    EL PRIMER TRADE DE UNA ESTRATEGIA ABRIÓ EN CRUZADO A 20×, y el usuario
+    preguntó por qué. Porque nadie lo fijaba: Binance usa lo que tenga el
+    símbolo por defecto, y por defecto es cruzado con el apalancamiento que
+    haya quedado en la cuenta.
+    ==================================================================
+
+    Aislado, para que una posición sólo pueda perder su propio margen y no
+    arrastre a las demás del portafolio. El tamaño lo decide el riesgo por
+    operación, no el apalancamiento: éste sólo fija cuánto margen se aparta,
+    y cinco es de sobra para posiciones dimensionadas al 1 % de la porción.
+
+    Binance rechaza el cambio de modo si ya hay una posición o una orden en
+    el símbolo (-4048, -4067): ahí se avisa y se deja como está, que es lo
+    que había. "Ya está así" (-4046, -4059) no es un error.
+    """
+    salida: dict[str, Any] = {"margen": "aislado", "apalancamiento": apalancamiento}
+    try:
+        _pedir("/fapi/v1/marginType", {"symbol": simbolo, "marginType": "ISOLATED"},
+               api_key=api_key, secret=secret, metodo="POST", base=base)
+    except BinanceError as exc:
+        if exc.codigo not in _YA_ESTA:
+            raise
+    try:
+        d = _pedir("/fapi/v1/leverage", {"symbol": simbolo, "leverage": int(apalancamiento)},
+                   api_key=api_key, secret=secret, metodo="POST", base=base)
+        salida["apalancamiento"] = int(d.get("leverage") or apalancamiento)
+    except BinanceError as exc:
+        if exc.codigo not in _YA_ESTA:
+            raise
+    return salida
+
+
 def saldo(api_key: str, secret: str, moneda: str = "USDT",
           base: str = BASE_PRUEBA) -> float:
     """El disponible de la cuenta de futuros, en esa moneda."""
