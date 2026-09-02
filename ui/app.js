@@ -2163,14 +2163,35 @@ function rotuloModo(modo) {
 /* UN BOT EN EL AIRE. Cada uno con su estado y sus botones: apagar "el bot"
    cuando hay cinco no significa nada, y un botón que apaga algo distinto de lo
    que uno está mirando es peor que no tenerlo. */
+/* EL ESTADO DE UN ROBOT EN UNA PALABRA: Mirando, En posición o Detenido.
+   El servidor dice si la posición es suya; el lado sale de la última acción
+   anotada (abrió largo / abrió corto), que es lo único que el registro sabe. */
+function estadoRobot(v) {
+  if (v.detenido || v.error) return { cls: "parado", txt: t("rob.detenido") };
+  if (!v.encendido) return { cls: "parado", txt: t("bot.off") };
+  const ultimaAbre = (v.registro || []).find(f => ["abrir_largo", "abrir_corto", "cerrar", "panico"].includes(f.accion));
+  /* Una posición ADOPTADA no tiene "abrió" en el registro: el lado se lee
+     de la frase de adopción ("larga" / "corta"), que es lo único que hay. */
+  const adopcion = (v.registro || []).find(f => /adopt/i.test(String(f.motivo || "")));
+  const enPos = v.en_posicion || (ultimaAbre && ultimaAbre.accion.startsWith("abrir")) || !!adopcion;
+  if (enPos) {
+    const corto = ultimaAbre ? ultimaAbre.accion === "abrir_corto"
+      : /cort/i.test(String((adopcion || {}).motivo || ""));
+    return { cls: "en-pos", txt: t("rob.en_posicion", { lado: corto ? t("rob.corto") : t("rob.largo") }) };
+  }
+  return { cls: "mirando", txt: t("rob.mirando") };
+}
+
 function tarjetaVuelo(v) {
   const detenido = v.detenido || v.error;
+  const est = estadoRobot(v);
   return `
-  <div class="bot-vuelo${v.encendido ? " vivo" : ""}">
+  <div class="bot-vuelo robot ${est.cls}${v.encendido ? " vivo" : ""}">
     <div class="bot-linea">
       <span><b>${esc(v.nombre || "—")}</b> · ${esc(v.simbolo || "")} ${esc(v.timeframe || "")}</span>
-      <span class="bot-modo bot-modo-${esc(v.modo || "")}">${esc(rotuloModo(v.modo))}</span>
+      <span class="robot-estado ${est.cls}">${esc(est.txt)}</span>
     </div>
+    <div class="robot-modo">${esc(rotuloModo(v.modo))}</div>
     <p class="help-note">${esc(t("bot.maneja", { pct: Math.round((v.porcion || 1) * 100) }))}${
       v.esperado_mes ? " · " + esc(t("bot.esperado_mes", { n: v.esperado_mes })) : ""}${
       v.encendido && v.timeframe ? " · " + esc(t("bot.proxima", { h: proximaVela(v.timeframe) })) : ""}</p>
@@ -2229,8 +2250,24 @@ function HORA(mas) {
 function zonaVuelos(e) {
   const vuelos = e.vuelos || [];
   const libre = typeof e.porcion_libre === "number" ? e.porcion_libre : 1;
+  /* LAS PROMOVIDAS QUE QUEDARON SIN ROBOT van acá, en ámbar, entre los
+     robots: son robots que faltan, no una nota al pie. Pasa cada vez que la
+     aplicación se cierra —mueren con el proceso— y se reencienden con un
+     clic, uno para todas. */
+  const apagadas = e.apagadas || [];
+  const tarjetasApagadas = apagadas.map(a => `
+    <div class="bot-vuelo robot apagada">
+      <div class="bot-linea">
+        <span><b>${esc(a.name || "—")}</b> · ${esc(a.simbolo || "")}</span>
+        <span class="robot-estado apagada">${esc(t("ag.apagada"))}</span>
+      </div>
+      <p class="help-note">${esc(t("ag.apagadas_sub"))}</p>
+    </div>`).join("");
   return `
-    ${vuelos.map(tarjetaVuelo).join("")}
+    ${vuelos.length || apagadas.length ? `<div class="robots">${vuelos.map(tarjetaVuelo).join("")}${tarjetasApagadas}</div>` : ""}
+    ${apagadas.length ? `<div class="controls mt">
+      <button class="btn" id="ag-reencender">${esc(t("ag.reencender", { n: apagadas.length }))}</button>
+    </div>` : ""}
     ${vuelos.length ? `
     <p class="help-note mt">${esc(t("bot.reparto", {
       usado: Math.round((e.porcion_usada || 0) * 100),
@@ -2302,69 +2339,9 @@ function horaLocal(iso) {
 }
 
 function zonaAgentes(e, c) {
-  const p = (c && c.params) || {};
-  const cicloOn = !!(c && c.corriendo && p.encendido);
-  const ult = ((c && c.registro) || [])[0];
-  const prox = (c && c.proxima) || {};
-  const vuelos = e.vuelos || [];
-  /* Los motivos del ciclo y de los bots los escribe el motor: son frases
-     libres en español y se muestran tal cual, como en la tarjeta del bot. */
-  const filaCiclo = !c ? "" : `
-    <div class="ag-fila">
-      <span class="ag-punto${cicloOn ? " vivo" : ""}${c.error ? " alerta" : ""}"></span>
-      <div>
-        <div class="ag-quien"><b>${esc(t("ag.ciclo"))}</b> · ${
-          esc(cicloOn ? t("ag.corriendo") : t("ag.apagado"))}</div>
-        <div class="ag-que">${esc(c.error ? c.error
-          : cicloOn ? t("ag.ahora") + ": " + (prox.motivo || "")
-          : t("ag.ciclo_sub"))}</div>
-        ${ult ? `<div class="ag-que"><span class="ag-hora">${esc(horaLocal(ult.cuando))}</span> · ${
-          esc(rotuloCiclo(ult.accion))} · ${esc(ult.motivo || "")}</div>` : ""}
-      </div>
-      <div class="ag-lado">
-        <button class="btn ghost" id="ag-ciclo" data-encender="${cicloOn ? "0" : "1"}">${
-          esc(cicloOn ? t("ag.ciclo_off") : t("ag.ciclo_on"))}</button>
-      </div>
-    </div>`;
-  const filasBots = vuelos.length ? vuelos.map(v => {
-    const parado = v.detenido || v.error;
-    const f = (v.registro || [])[0] || null;
-    return `
-    <div class="ag-fila">
-      <span class="ag-punto${v.encendido && !parado ? " vivo" : ""}${parado ? " alerta" : ""}"></span>
-      <div>
-        <div class="ag-quien"><b>${esc(v.nombre || "—")}</b> · ${esc(v.simbolo || "")} ${esc(v.timeframe || "")}${
-          parado ? " · " + esc(t("ag.detenido")) : ""}</div>
-        ${f ? `<div class="ag-que"><span class="ag-hora">${esc(horaLocal(f.cuando))}</span> · ${
-          esc(rotuloAccion(f.accion))} · ${esc(f.bloqueado || f.error || f.motivo || "")}</div>` : ""}
-        ${v.encendido && !parado && v.timeframe ? `<div class="ag-que">${
-          esc(t("ag.mirando", { sim: v.simbolo || "", h: proximaVela(v.timeframe) }))}</div>` : ""}
-      </div>
-      <div class="ag-lado"></div>
-    </div>`;
-  }).join("") : `
-    <div class="ag-fila">
-      <span class="ag-punto"></span>
-      <div class="ag-que">${esc(t("ag.sin_bots"))}</div>
-    </div>`;
-  /* LAS PROMOVIDAS QUE QUEDARON SIN BOT. Pasa cada vez que la app se cierra:
-     los bots mueren con el proceso y no se reencienden solos. Acá se ven, y
-     se reencienden con un clic —uno para todas, no uno por cada una. */
-  const apagadas = e.apagadas || [];
-  const filasApagadas = apagadas.length ? `
-    <div class="ag-fila">
-      <span class="ag-punto alerta"></span>
-      <div>
-        ${apagadas.map(a => `<div class="ag-quien"><b>${esc(a.name || "—")}</b> · ${
-          esc(a.simbolo || "")} · ${esc(t("ag.apagada"))}</div>`).join("")}
-        <div class="ag-que">${esc(t("ag.apagadas_sub"))}</div>
-      </div>
-      <div class="ag-lado">
-        <button class="btn" id="ag-reencender">${esc(t("ag.reencender", { n: apagadas.length }))}</button>
-      </div>
-    </div>` : "";
-  return filaCiclo + filasBots + filasApagadas;
+  return zonaPiloto(c);
 }
+
 
 function atarReencender(main) {
   const b = $("#ag-reencender", main);
@@ -2385,20 +2362,54 @@ function atarReencender(main) {
   };
 }
 
+/* EL PILOTO AUTOMÁTICO, con nombre de usuario. Antes era "el ciclo" dentro
+   de una franja de "agentes" donde robots y ciclo eran renglones iguales; no
+   se entendía qué hacía ni qué había hecho. Ahora es una tarjeta sola: un
+   interruptor, qué está por hacer, sus reglas en castellano y una línea de
+   tiempo con lo último que hizo. Los robots viven abajo, en su grilla. */
 function panelAgentes(e, c) {
-  const algo = (e.vuelos || []).some(v => v.encendido)
-    || !!(c && c.corriendo && (c.params || {}).encendido);
+  if (!c) return "";
   return `
-  <div class="card agentes">
+  <div class="card piloto" id="ag-zona">${zonaAgentes(e, c)}</div>`;
+}
+
+function zonaPiloto(c) {
+  const p = (c && c.params) || {};
+  const cicloOn = !!(c && c.corriendo && p.encendido);
+  const prox = (c && c.proxima) || {};
+  const ultimas = ((c && c.registro) || []).slice(0, 5);
+  const reglas = t("pil.reglas", { h: p.minar_cada_horas ?? 12, n: p.max_en_practica ?? 8 });
+  return `
     <div class="ex-head">
       <div>
         <b>${esc(t("ag.titulo"))}</b>
-        <p class="help-note">${esc(t("ag.sub"))}</p>
+        <p class="help-note">${esc(t("ag.ciclo_sub"))}</p>
       </div>
-      <span class="ex-estado ${algo ? "on" : ""}">${esc(algo ? t("ag.corriendo") : t("ag.apagado"))}</span>
+      <span class="ex-estado ${cicloOn ? "on" : ""}">${esc(cicloOn ? t("ag.corriendo") : t("ag.apagado"))}</span>
     </div>
-    <div id="ag-zona">${zonaAgentes(e, c)}</div>
-  </div>`;
+    <div class="piloto-cuerpo">
+      <div class="piloto-ahora">
+        <span class="ag-punto${cicloOn ? " vivo" : ""}${c.error ? " alerta" : ""}"></span>
+        <div>
+          <div class="ag-quien">${esc(c.error ? c.error
+            : cicloOn ? t("ag.ahora") + ": " + (prox.motivo || "")
+            : t("ag.ciclo_apagado"))}</div>
+          <div class="ag-que">${esc(reglas)}</div>
+        </div>
+        <div class="ag-lado">
+          <button class="btn ${cicloOn ? "ghost" : ""}" id="ag-ciclo" data-encender="${cicloOn ? "0" : "1"}">${
+            esc(cicloOn ? t("ag.ciclo_off") : t("ag.ciclo_on"))}</button>
+        </div>
+      </div>
+      <div class="piloto-linea">
+        <b>${esc(t("pil.ultimas"))}</b>
+        ${ultimas.length ? `<ol>${ultimas.map(u => `<li>
+          <span class="ag-hora">${esc(horaLocal(u.cuando))}</span>
+          <span class="pil-acc pil-${esc(u.accion || "nada")}">${esc(rotuloCiclo(u.accion))}</span>
+          <span class="ag-que">${esc(u.motivo || "")}</span></li>`).join("")}</ol>`
+        : `<p class="help-note">${esc(t("pil.nada"))}</p>`}
+      </div>
+    </div>`;
 }
 
 /* El interruptor del ciclo se vuelve a atar en cada refresco, porque la zona
@@ -2462,7 +2473,7 @@ function panelBot(e, hayClave) {
   <div class="card bot-card${on ? " bot-on" : ""}">
     <div class="ex-head">
       <div>
-        <b>${esc(t("bot.title"))}</b>
+        <b>${esc(t("rob.titulo"))}</b>
         <p class="help-note">${esc(t("bot.sub"))}</p>
       </div>
       <span class="ex-estado ${on ? "on" : ""}">${
@@ -2909,10 +2920,11 @@ const vistaBot = async (main, hayClave) => {
       // La franja de agentes se redibuja SIEMPRE: el ciclo se mueve aunque no
       // haya ningún bot, y es justamente eso lo que hay que poder ver.
       const ag = $("#ag-zona", main);
-      if (ag) { ag.innerHTML = zonaAgentes(e, c); atarCiclo(main, c); atarReencender(main); }
-      if (!(e.vuelos || []).length) return;
+      if (ag && c) { ag.innerHTML = zonaAgentes(e, c); atarCiclo(main, c); }
+      if (!(e.vuelos || []).length && !(e.apagadas || []).length) return;
       zona.innerHTML = zonaVuelos(e);
       atarVuelos(main);
+      atarReencender(main);
     } catch (err) { /* la próxima vuelta lo reintenta */ }
   }, 30000);
 

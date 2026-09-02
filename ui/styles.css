@@ -2879,11 +2879,11 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
    destaca es repetirlo. La línea que las separa es el fondo asomando por un
    hueco de 1px — un borde de verdad en cada una sumaría cuatro dobles. */
 .m-cabeza {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
-  background: var(--border-soft);
-  border: 1px solid var(--border-soft);
-  border-radius: var(--r); overflow: hidden; margin-bottom: 20px;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  margin-bottom: 20px;
 }
+.m-cabeza .m-grande { border: 1px solid var(--border-soft); border-radius: var(--r); }
+@media (max-width: 700px) { .m-cabeza { grid-template-columns: 1fr 1fr; } }
 .m-grande { background: var(--card); padding: 12px 16px 16px; }
 .m-grande span {
   display: block; color: var(--text-dim); font-size: 11px; font-weight: 550;
@@ -3334,6 +3334,45 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
    una tarjeta adentro de otra tarjeta agrega un borde que no significa nada. */
 .bot-vuelo { padding: 12px 0; }
 .bot-vuelo + .bot-vuelo { border-top: 1px solid var(--border); }
+/* --- los robots: una tarjeta por robot, en grilla, con su estado en una
+   palabra. Dentro de la tarjeta grande van en el nivel de superficie de
+   abajo (card-2) y con su propio borde: no se tocan entre sí. --- */
+.robots { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-bottom: 4px; }
+.robots .bot-vuelo, .robots .bot-vuelo + .bot-vuelo {
+  padding: 12px 16px; border: 1px solid var(--border-soft); border-top: 1px solid var(--border-soft);
+  border-radius: var(--r); background: var(--card-2);
+}
+.robots .robot.en-pos { border-color: color-mix(in srgb, var(--pos) 45%, transparent); }
+.robots .robot.parado { border-color: color-mix(in srgb, var(--neg) 35%, transparent); }
+.robots .robot.apagada { border-color: var(--warn-line); }
+.robot-estado {
+  flex: none; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.robot-estado::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.robot-estado.mirando { color: var(--accent); background: var(--accent-soft); }
+.robot-estado.mirando::before { animation: latido 1.6s ease-in-out infinite; }
+.robot-estado.en-pos { color: var(--pos); background: color-mix(in srgb, var(--pos) 14%, transparent); }
+.robot-estado.parado { color: var(--neg); background: color-mix(in srgb, var(--neg) 12%, transparent); }
+.robot-estado.apagada { color: var(--warn); background: var(--warn-soft); }
+.robot-modo { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+/* encender un robot: la tarjeta pasa a "Mirando" con un pulso, una vez */
+@keyframes enciende { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 100% { box-shadow: 0 0 0 14px transparent; } }
+.robots .robot.vivo.recien { animation: enciende .7s var(--ease) both; }
+
+/* --- el piloto automático --- */
+.piloto-cuerpo { display: grid; gap: 16px; }
+.piloto-ahora { display: grid; grid-template-columns: 14px 1fr auto; gap: 0 12px; align-items: start; }
+.piloto-ahora .btn { white-space: nowrap; }
+.piloto-linea { border-top: 1px solid var(--border-soft); padding-top: 12px; }
+.piloto-linea > b { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+.piloto-linea ol { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
+.piloto-linea li { display: grid; grid-template-columns: auto auto 1fr; gap: 12px; align-items: baseline; font-size: 12px; }
+.piloto-linea .ag-hora { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.pil-acc { font-weight: 600; }
+.pil-promover { color: var(--pos); } .pil-minar { color: var(--accent); } .pil-retirar { color: var(--neg); } .pil-validar { color: var(--warn); }
+@media (max-width: 700px) { .piloto-linea li { grid-template-columns: auto 1fr; } .piloto-linea li .ag-que { grid-column: 1 / -1; } }
+@media (prefers-reduced-motion: reduce) { .robot-estado.mirando::before, .robots .robot.vivo.recien { animation: none; } }
 .bot-on { border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
 
 .bot-linea { display: flex; align-items: center; justify-content: space-between;

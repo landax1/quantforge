@@ -150,6 +150,9 @@ class Piloto:
             "manda_ordenes": b.manda_ordenes,
             "detenido": b.detenido,
             "motivo_detencion": b.motivo_detencion,
+            # SI TIENE UNA POSICIÓN SUYA ABIERTA, en una palabra: es lo primero
+            # que uno quiere saber de un robot y había que deducirlo del registro.
+            "en_posicion": bool(getattr(b.estado, "posicion_propia", False)),
             "arrancado": v.arrancado,
             "error": v.error,
             # CUANTO SE ESPERA QUE OPERE, según su propio backtest. Es lo que

@@ -1319,7 +1319,7 @@ const STR = {
     "Pasar un escalón es un permiso, no un consejo: dice que los números aguantan, no que vaya a funcionar."],
 
   /* Las dos pestañas de Operar y lo que las acompaña. */
-  "op.tab_bot": ["Bot", "Bot"],
+  "op.tab_bot": ["Robots", "Robots"],
   "op.tab_claves": ["Exchange keys", "Claves"],
   "op.sin_claves": ["No key loaded yet", "Todavía no cargaste ninguna clave"],
   /* Decía "un bot por vez sobre una cuenta", que fue cierto hasta que el
@@ -1336,7 +1336,7 @@ const STR = {
   /* El exchange se ELIGE. Ver el comentario del select en app.js. */
   /* EL TABLERO. El resultado va PARTIDO por concepto: un numero solo esconde
      si la estrategia no sirve o si sirve y los costos se la comen. */
-  "op.tab_tablero": ["Performance", "Rendimiento"],
+  "op.tab_tablero": ["Your account", "Tu cuenta"],
   "tab.titulo": ["What the account actually did", "Lo que la cuenta hizo de verdad"],
   "tab.sub": [
     "Straight from Binance demo, not from what the bots remember: the bot's log is lost when the app closes and knows nothing about fees.",
@@ -1396,7 +1396,18 @@ const STR = {
   "bot.proxima": ["next candle ~{h}", "próxima vela ~{h}"],
 
   /* ---- la franja de agentes en Operar: qué está haciendo cada uno ---- */
-  "ag.titulo": ["Your agents", "Tus agentes"],
+  "ag.titulo": ["Autopilot", "Piloto automático"],
+  "pil.reglas": [
+    "Its rules: every {h} h it searches for new strategies, tests them and turns on the ones that pass, up to {n} robots, one per symbol, on the demo account.",
+    "Sus reglas: cada {h} h busca estrategias nuevas, las prueba y enciende las que pasan, hasta {n} robots, uno por símbolo, en la cuenta demo."],
+  "pil.ultimas": ["What it did last", "Lo último que hizo"],
+  "pil.nada": ["It has not done anything yet.", "Todavía no hizo nada."],
+  "rob.titulo": ["Robots", "Robots"],
+  "rob.mirando": ["Watching", "Mirando"],
+  "rob.en_posicion": ["In position · {lado}", "En posición · {lado}"],
+  "rob.largo": ["long", "largo"],
+  "rob.corto": ["short", "corto"],
+  "rob.detenido": ["Stopped", "Detenido"],
   "ag.sub": ["What each one is doing right now. Refreshes every 30 seconds.",
              "Qué está haciendo cada uno ahora mismo. Se actualiza cada 30 segundos."],
   "ag.ciclo": ["The cycle", "El ciclo"],
