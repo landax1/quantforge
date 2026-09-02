@@ -123,9 +123,54 @@ def _valor(v: Any) -> str:
     return str(v)
 
 
+#: Reloj de Binance menos reloj local, en milisegundos. Ver `_sincronizar`.
+_DESFASE_MS = 0
+#: Cuándo se midió (reloj local, segundos); 0 es "nunca".
+_DESFASE_MEDIDO = 0.0
+#: Códigos que dicen "probá de nuevo" y no "esto está mal": reloj fuera de
+#: ventana, error interno, límite de pedidos, tiempo agotado, sobrecarga.
+TRANSITORIOS = frozenset({-1001, -1003, -1007, -1008, -1021})
+
+
+def _sincronizar(base: str = BASE_PRUEBA, timeout: float = 10.0) -> int:
+    """Mide cuánto adelanta el reloj de Binance al de esta máquina.
+
+    ==================================================================
+    LA PC NO SINCRONIZA SU RELOJ. Pasó de verdad: el servicio de hora de
+    Windows estaba parado, el reloj iba cuatro segundos atrás, y la demo
+    tarda otros cuatro en responder. Binance rechazó los pedidos con -1021
+    y dos bots se apagaron en plena vela.
+    ==================================================================
+
+    Se descuenta la mitad del viaje, que es la estimación honesta del
+    instante en que el servidor leyó su reloj. Arreglar el reloj de Windows
+    pide permisos de administrador; esto no pide nada.
+    """
+    global _DESFASE_MS, _DESFASE_MEDIDO
+    t0 = time.time() * 1000
+    req = urllib.request.Request(f"{base}/fapi/v1/time", headers={"User-Agent": "botiquant"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        servidor = int(json.load(r)["serverTime"])
+    t1 = time.time() * 1000
+    _DESFASE_MS = int(servidor - (t0 + t1) / 2)
+    _DESFASE_MEDIDO = time.time()
+    return _DESFASE_MS
+
+
+def _marcar_medido() -> None:
+    global _DESFASE_MEDIDO
+    _DESFASE_MEDIDO = time.time()
+
+
+def _ahora_ms() -> int:
+    """La hora que Binance espera ver: la local corregida por el desfase."""
+    return int(time.time() * 1000) + _DESFASE_MS
+
+
 def _pedir(ruta: str, params: dict[str, Any] | None = None, *,
            api_key: str = "", secret: str = "", metodo: str = "GET",
-           base: str = BASE_PRUEBA, timeout: float = 30.0) -> Any:
+           base: str = BASE_PRUEBA, timeout: float = 30.0,
+           _reintento: bool = False) -> Any:
     """Un pedido a Binance, firmado si le dan credenciales.
 
     SE FIRMA EXACTAMENTE LA CADENA QUE VIAJA. No se ordena y no se firma una
@@ -140,7 +185,17 @@ def _pedir(ruta: str, params: dict[str, Any] | None = None, *,
     headers = {"User-Agent": "botiquant"}
 
     if api_key and secret:
-        p.setdefault("timestamp", int(time.time() * 1000))
+        # La primera vez que se firma algo se mide el reloj; después sólo
+        # cuando Binance dice que está fuera de ventana.
+        if not _DESFASE_MEDIDO:
+            try:
+                _sincronizar(base)
+            except (OSError, ValueError, KeyError, TypeError):
+                # Se sigue con el reloj local y no se vuelve a intentar en
+                # cada pedido: si el reloj está mal, el -1021 lo va a decir
+                # y ahí se mide de nuevo.
+                _marcar_medido()
+        p.setdefault("timestamp", _ahora_ms())
         p.setdefault("recvWindow", RECV_WINDOW)
 
     # urlencode y no armado a mano: un símbolo o un decimal con caracteres
@@ -171,11 +226,24 @@ def _pedir(ruta: str, params: dict[str, Any] | None = None, *,
         crudo = e.read()[:400].decode(errors="replace")
         try:
             d = json.loads(crudo)
-            raise BinanceError(
-                f"[{d.get('code')}] {d.get('msg') or crudo}",
-                codigo=d.get("code")) from e
-        except (ValueError, AttributeError):
+        except ValueError:
             raise BinanceError(f"Binance devolvió {e.code}: {crudo}") from e
+        if not isinstance(d, dict):
+            raise BinanceError(f"Binance devolvió {e.code}: {crudo}") from e
+        if d.get("code") == -1021 and not _reintento and api_key and secret:
+            # RELOJ FUERA DE VENTANA: se vuelve a medir el desfase y se
+            # repite UNA vez con la hora corregida. Una sola, para no
+            # insistir contra un exchange que rechaza por otra cosa.
+            try:
+                _sincronizar(base)
+            except (OSError, ValueError, KeyError):
+                pass
+            return _pedir(ruta, params, api_key=api_key, secret=secret,
+                          metodo=metodo, base=base, timeout=timeout,
+                          _reintento=True)
+        raise BinanceError(
+            f"[{d.get('code')}] {d.get('msg') or crudo}",
+            codigo=d.get("code")) from e
     except OSError as e:
         raise BinanceError(f"No se pudo conectar con Binance: {e}") from e
 

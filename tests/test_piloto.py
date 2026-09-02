@@ -603,3 +603,59 @@ def test_el_ciclo_puede_preguntar_lo_mismo_que_el_bot_antes_de_promover():
     spec["entry_long"][0]["left"] = {"type": "indicator", "name": "NoExiste",
                                      "params": {}}
     assert "NoExiste" in por_que_no_operable(StrategySpec.from_dict(spec))
+
+
+# ------------------------------------------- los tropiezos del exchange
+
+def _exchange_que_tropieza(veces):
+    """Un exchange que rechaza las primeras `veces` vueltas con -1021."""
+    from botiquant.data.binance_trade import BinanceError
+    ex = _Exchange()
+    velas = ex.velas
+    cuenta = {"n": 0}
+
+    def _velas(*a, **k):
+        cuenta["n"] += 1
+        if cuenta["n"] <= veces:
+            raise BinanceError("[-1021] Timestamp for this request is outside "
+                               "of the recvWindow.", codigo=-1021)
+        return velas(*a, **k)
+    ex.velas = _velas
+    return ex, cuenta
+
+
+def test_un_tropiezo_del_exchange_no_apaga_el_bot(piloto, monkeypatch):
+    """Pasó de verdad: Binance rechazó con -1021 —el reloj de la PC iba cuatro
+    segundos atrás— y dos bots se apagaron en plena vela por un error que un
+    segundo después ya no estaba. Un parpadeo se reintenta; se anota."""
+    from botiquant.vivo import piloto as mod
+    monkeypatch.setattr(mod, "ESPERA_TRAS_TROPIEZO", 0.05)
+    ex, cuenta = _exchange_que_tropieza(2)
+    piloto.encender(_bot(ex, modo=PRACTICA))
+    for _ in range(100):
+        if cuenta["n"] >= 3:
+            break
+        time.sleep(0.05)
+    time.sleep(0.2)
+    e = piloto.estado()
+    assert e["encendido"] is True
+    reintentos = [f for f in e["vuelos"][0]["registro"] if f["accion"] == "reintento"]
+    assert len(reintentos) == 2
+    assert "1 de 3" in reintentos[-1]["motivo"] or "1 de 3" in reintentos[0]["motivo"]
+
+
+def test_tres_tropiezos_seguidos_si_apagan_y_dicen_por_que(piloto, monkeypatch):
+    """A esa altura no es un parpadeo, y seguir insistiendo contra algo que
+    rechaza es la forma de mandar órdenes malas en fila."""
+    from botiquant.vivo import piloto as mod
+    monkeypatch.setattr(mod, "ESPERA_TRAS_TROPIEZO", 0.05)
+    ex, cuenta = _exchange_que_tropieza(99)
+    piloto.encender(_bot(ex, modo=PRACTICA))
+    for _ in range(100):
+        if not piloto.encendido:
+            break
+        time.sleep(0.05)
+    e = piloto.estado()
+    assert e["encendido"] is False
+    assert cuenta["n"] == 3
+    assert "-1021" in e["vuelos"][0]["error"]

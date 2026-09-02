@@ -546,3 +546,69 @@ def test_el_precio_de_ejecucion_SE_PREGUNTA_APARTE(monkeypatch):
                           "executedQty": "0.0007", "avgPrice": "78728.30"})
     d = bx.detalle_orden("BTCUSDT", 5, api_key="K", secret="S", base="https://x")
     assert d["precio"] == 78728.30 and d["cantidad"] == 0.0007
+
+
+# ================================================== el reloj fuera de ventana
+
+def test_un_reloj_fuera_de_ventana_se_corrige_y_se_reintenta_UNA_vez(monkeypatch):
+    """Pasó de verdad: el servicio de hora de Windows estaba parado, el reloj
+    iba cuatro segundos atrás, y Binance rechazó con -1021. Se mide el desfase
+    contra el reloj del servidor y se repite el pedido con la hora corregida."""
+    import io
+    import time
+    import urllib.error
+    import urllib.parse
+
+    llamadas: list[str] = []
+
+    def _abrir(req, timeout=30):
+        llamadas.append(req.full_url)
+        if "/fapi/v1/time" in req.full_url:
+            return _Respuesta({"serverTime": int(time.time() * 1000) + 8_000})
+        if sum("/fapi/v2/balance" in u for u in llamadas) == 1:
+            raise urllib.error.HTTPError(
+                req.full_url, 400, "Bad Request", {},
+                io.BytesIO(json.dumps({
+                    "code": -1021,
+                    "msg": "Timestamp for this request is outside of the recvWindow."
+                }).encode()))
+        return _Respuesta({"ok": True})
+
+    monkeypatch.setattr(bx.urllib.request, "urlopen", _abrir)
+    monkeypatch.setattr(bx, "_DESFASE_MS", 0)
+    monkeypatch.setattr(bx, "_DESFASE_MEDIDO", time.time())
+
+    r = bx._pedir("/fapi/v2/balance", api_key="K", secret="S", base="https://x")
+    assert r == {"ok": True}
+
+    balances = [u for u in llamadas if "/fapi/v2/balance" in u]
+    assert len(balances) == 2
+    assert any("/fapi/v1/time" in u for u in llamadas)
+    ts = int(urllib.parse.parse_qs(urllib.parse.urlparse(balances[1]).query)["timestamp"][0])
+    assert ts - time.time() * 1000 > 6_000        # la hora corregida, no la local
+    assert bx._DESFASE_MS > 6_000
+
+
+def test_si_sigue_fuera_de_ventana_no_insiste(monkeypatch):
+    """Una sola repetición: insistir contra un exchange que rechaza por otra
+    cosa es la forma de mandar cien pedidos malos en un minuto."""
+    import io
+    import time
+    import urllib.error
+
+    llamadas: list[str] = []
+
+    def _abrir(req, timeout=30):
+        llamadas.append(req.full_url)
+        if "/fapi/v1/time" in req.full_url:
+            return _Respuesta({"serverTime": int(time.time() * 1000)})
+        raise urllib.error.HTTPError(
+            req.full_url, 400, "Bad Request", {},
+            io.BytesIO(json.dumps({"code": -1021, "msg": "outside of the recvWindow"}).encode()))
+
+    monkeypatch.setattr(bx.urllib.request, "urlopen", _abrir)
+    monkeypatch.setattr(bx, "_DESFASE_MEDIDO", time.time())
+    with pytest.raises(bx.BinanceError) as e:
+        bx._pedir("/fapi/v2/balance", api_key="K", secret="S", base="https://x")
+    assert e.value.codigo == -1021
+    assert sum("/fapi/v2/balance" in u for u in llamadas) == 2

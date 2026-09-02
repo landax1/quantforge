@@ -52,6 +52,7 @@ from typing import Any
 import pandas as pd
 
 from botiquant.data.bingx import BingXError
+from botiquant.data.binance_trade import TRANSITORIOS, BinanceError
 from botiquant.vivo import semaforo, vigilante
 from botiquant.vivo.nucleo import DURACION
 from botiquant.vivo.runner import Bot
@@ -70,6 +71,12 @@ MAXIMA_ESPERA = 300.0
 #: No es un límite técnico sino de atención: cada bot es una posición que
 #: alguien tiene que poder mirar, y una pantalla con quince es una pantalla que
 #: no se mira. El ciclo ya tiene su propio tope de cuántas promueve.
+#: Cuántos tropiezos SEGUIDOS del exchange se toleran antes de apagar el bot.
+TROPIEZOS_MAXIMOS = 3
+#: Cuánto se espera tras un tropiezo antes de volver a intentar (segundos):
+#: corto, para no perder la vela; no tan corto como para martillar.
+ESPERA_TRAS_TROPIEZO = 20.0
+
 MAXIMO_VUELOS = 8
 
 
@@ -87,6 +94,9 @@ class Vuelo:
     despertar: threading.Event = field(default_factory=threading.Event)
     error: str = ""
     arrancado: str = ""
+    #: Tropiezos SEGUIDOS del exchange (reloj, tiempo agotado, sobrecarga).
+    #: Se vuelve a cero con cada vuelta buena; al tercero el bot se apaga.
+    tropiezos: int = 0
 
     @property
     def encendido(self) -> bool:
@@ -325,6 +335,37 @@ class Piloto:
         while not v.parar.is_set():
             try:
                 b.paso()
+                v.tropiezos = 0
+            except BinanceError as exc:
+                # UN TROPIEZO DEL EXCHANGE NO APAGA EL BOT A LA PRIMERA.
+                #
+                # Pasó de verdad: Binance rechazó un pedido con -1021 —el
+                # reloj de la PC iba cuatro segundos atrás— y dos bots se
+                # apagaron en plena vela por un error que un segundo después
+                # ya no estaba. Apagarse ante lo transitorio es dejar la
+                # cartera a medias cada vez que la red parpadea.
+                #
+                # Tres seguidos sí apagan: a esa altura no es un parpadeo, y
+                # seguir insistiendo contra algo que rechaza es la forma de
+                # mandar órdenes malas en fila. Lo que no es transitorio
+                # —clave, permisos, símbolo— apaga a la primera, como antes.
+                transitorio = (exc.codigo in TRANSITORIOS
+                               or str(exc).startswith("No se pudo conectar"))
+                v.tropiezos += 1
+                if transitorio and v.tropiezos < TROPIEZOS_MAXIMOS:
+                    b.registro.append({
+                        "cuando": pd.Timestamp.now(tz="UTC").isoformat(),
+                        "accion": "reintento",
+                        "motivo": f"{exc.del_exchange} ({v.tropiezos} de "
+                                  f"{TROPIEZOS_MAXIMOS})"})
+                    v.despertar.wait(ESPERA_TRAS_TROPIEZO)
+                    v.despertar.clear()
+                    continue
+                v.error = exc.del_exchange
+                b.registro.append({
+                    "cuando": pd.Timestamp.now(tz="UTC").isoformat(),
+                    "accion": "apagado por el exchange", "motivo": v.error})
+                return
             except BingXError as exc:
                 # El exchange rechazo algo y DIJO por que. Es el caso mas
                 # probable de todos —la clave mal, vencida, o sin permiso de
