@@ -513,6 +513,7 @@ function explicacionHTML(id, pasos, opciones = {}) {
         <b>${esc(t(pasos[st.paso].titulo))}</b>
         <p>${t(pasos[st.paso].texto, pasos[st.paso].params || {})}</p>
       </div>
+      ${opciones.panel ? `<div class="expl-panel">${opciones.panel(st.paso)}</div>` : ""}
       <div class="expl-pie">
         <button class="btn small" data-expl-play>${st.andando ? esc(t("expl.pausar")) : esc(t("expl.reproducir"))}</button>
         <span class="expl-prog">${st.paso + 1} / ${pasos.length}</span>
@@ -547,6 +548,10 @@ function atarExplicacion(root, id, pasos, opciones = {}) {
     $("p", texto).innerHTML = t(pasos[st.paso].texto, pasos[st.paso].params || {});
     $(".expl-prog", caja).textContent = `${st.paso + 1} / ${pasos.length}`;
     $("[data-expl-play]", caja).textContent = st.andando ? t("expl.pausar") : t("expl.reproducir");
+    /* EL PANEL DEL PASO: donde el recorrido también se configura. Se
+       redibuja con cada paso y quien lo dibuja vuelve a atar sus campos. */
+    const panel = $(".expl-panel", caja);
+    if (panel && opciones.panel) { panel.innerHTML = opciones.panel(st.paso); if (opciones.alPintar) opciones.alPintar(caja, st.paso); }
     moverPunto();
   };
   const parar = () => { st.andando = false; if (st.timer) clearInterval(st.timer); st.timer = null; pintar(); };
@@ -572,6 +577,78 @@ function atarExplicacion(root, id, pasos, opciones = {}) {
   $("[data-expl-play]", caja).onclick = () => (st.andando ? parar() : andar());
   $$("[data-expl-ir]", caja).forEach(n => n.onclick = () => { st.paso = +n.dataset.explIr; parar(); });
   if (st.abierta) { requestAnimationFrame(moverPunto); if (st.andando) andar(); }
+  if (opciones.alPintar) opciones.alPintar(caja, st.paso);
+}
+
+/* ═══════════════════ EL PILOTO SE CONFIGURA SOBRE SU PROPIO DIBUJO ════════
+   Cada nodo del recorrido abre sus parámetros: cada cuántas horas busca,
+   cuántas candidatas, sobre qué perpetuos, cuántas prueba, cuántos robots,
+   cuándo retira. Es el mismo diagrama que lo explica, así que quien lo
+   entiende ya sabe dónde tocar. Es el "workflow" de la aplicación: un solo
+   recorrido fijo, editable nodo por nodo, sin lienzo de nodos libres. */
+let PILOTO_PARAMS = null;   // copia editable de c.params, hasta guardar
+
+/* Claves ENTERAS, por el examen de textos: no se arman pegando el prefijo. */
+const PIL_ROTULO = () => ({
+  minar_cada_horas: t("pil.f_minar_cada_horas"), candidatas_por_vuelta: t("pil.f_candidatas_por_vuelta"),
+  reservar_pct: t("pil.f_reservar_pct"), validar_por_vuelta: t("pil.f_validar_por_vuelta"),
+  max_en_practica: t("pil.f_max_en_practica"), max_por_instrumento: t("pil.f_max_por_instrumento"),
+  vueltas_en_naranja: t("pil.f_vueltas_en_naranja"),
+});
+
+function panelPiloto(i) {
+  const p = PILOTO_PARAMS || {};
+  const num = (clave, min, max, paso = 1) => `
+    <label class="fld"><span>${esc(PIL_ROTULO()[clave])}</span>
+      <input type="number" data-pil="${clave}" value="${esc(String(p[clave] ?? ""))}" min="${min}" max="${max}" step="${paso}"></label>`;
+  const perps = (S.datasets || []).filter(d => mundoDeDataset(d.name) === "exchange");
+  const elegidos = new Set(p.instrumentos || []);
+  const paneles = [
+    `<div class="pil-campos">${num("minar_cada_horas", 1, 168)}${num("candidatas_por_vuelta", 100, 50000, 100)}${num("reservar_pct", 0, 60)}</div>
+     <div class="pil-instr"><span class="fld-rot">${esc(t("pil.f_instrumentos"))}</span>
+       <div class="pil-chips">${perps.map(d => `<label class="pil-chip ${elegidos.has(d.id) ? "on" : ""}">
+         <input type="checkbox" data-pil-instr="${esc(d.id)}" ${elegidos.has(d.id) ? "checked" : ""}>${esc(d.name.replace(/ (H1|M1).*/, ""))}</label>`).join("")}</div>
+       <p class="help-note">${esc(t("pil.f_instrumentos_nota"))}</p></div>`,
+    `<div class="pil-campos">${num("validar_por_vuelta", 1, 50)}</div>
+     <p class="help-note">${esc(t("pil.f_validar_nota"))}</p>`,
+    `<div class="pil-campos">${num("max_en_practica", 1, 20)}${num("max_por_instrumento", 1, 10)}</div>
+     <p class="help-note">${esc(t("pil.f_practica_nota"))}</p>`,
+    `<div class="pil-campos">${num("vueltas_en_naranja", 1, 50)}</div>
+     <p class="help-note">${esc(t("pil.f_vigila_nota"))}</p>`,
+    `<label class="pil-check"><input type="checkbox" data-pil="retirar_solo" ${p.retirar_solo ? "checked" : ""}> ${esc(t("pil.f_retirar_solo"))}</label>
+     <p class="help-note">${esc(t("pil.f_retirar_nota"))}</p>`,
+  ];
+  return `<div class="pil-panel">${paneles[i] || ""}
+    <div class="controls mt"><button class="btn small" data-pil-guardar>${esc(t("pil.guardar"))}</button>
+      <span class="help-note" data-pil-estado></span></div></div>`;
+}
+
+function atarPanelPiloto(caja) {
+  const p = PILOTO_PARAMS;
+  if (!p) return;
+  $$("[data-pil]", caja).forEach(el => el.onchange = () => {
+    if (el.type === "checkbox") p[el.dataset.pil] = el.checked;
+    else p[el.dataset.pil] = +el.value;
+  });
+  $$("[data-pil-instr]", caja).forEach(cb => cb.onchange = () => {
+    const set = new Set(p.instrumentos || []);
+    if (cb.checked) set.add(cb.dataset.pilInstr); else set.delete(cb.dataset.pilInstr);
+    p.instrumentos = [...set];
+    cb.closest(".pil-chip").classList.toggle("on", cb.checked);
+  });
+  const g = $("[data-pil-guardar]", caja);
+  if (g) g.onclick = async () => {
+    g.disabled = true;
+    try {
+      /* Manda el juego ENTERO: el servidor reemplaza todos los parámetros,
+         y mandar uno solo devolvería los demás a sus valores por defecto. */
+      const r = await api.post("/api/ciclo/params", p);
+      PILOTO_PARAMS = { ...(r.params || p) };
+      toast(t("pil.guardado"), "ok");
+      const est = $("[data-pil-estado]", caja); if (est) est.textContent = t("pil.guardado");
+    } catch (e) { toast(e.message, "err"); }
+    g.disabled = false;
+  };
 }
 
 /* Los pasos del piloto automático: lo que hace, en el orden en que lo hace. */
@@ -2561,6 +2638,8 @@ function zonaPiloto(c) {
   const prox = (c && c.proxima) || {};
   const ultimas = ((c && c.registro) || []).slice(0, 5);
   const reglas = t("pil.reglas", { h: p.minar_cada_horas ?? 12, n: p.max_en_practica ?? 8 });
+  // la copia editable nace de lo que dice el servidor, una sola vez
+  if (!PILOTO_PARAMS && Object.keys(p).length) PILOTO_PARAMS = { ...p };
   return `
     <div class="ex-head">
       <div>
@@ -2583,7 +2662,7 @@ function zonaPiloto(c) {
             esc(cicloOn ? t("ag.ciclo_off") : t("ag.ciclo_on"))}</button>
         </div>
       </div>
-      ${explicacionHTML("piloto", PASOS_PILOTO(), { ciclico: true })}
+      ${explicacionHTML("piloto", PASOS_PILOTO(), { ciclico: true, panel: panelPiloto })}
       <div class="piloto-linea">
         <b>${esc(t("pil.ultimas"))}</b>
         ${ultimas.length ? `<ol>${ultimas.map(u => `<li>
@@ -2600,7 +2679,10 @@ function zonaPiloto(c) {
    el servidor reemplaza el juego completo, y mandar uno solo devolvería los
    demás a sus valores por defecto sin que nadie lo pidiera. */
 function atarCiclo(main, c) {
-  atarExplicacion(main, "piloto", PASOS_PILOTO(), { ciclico: true });
+  // los parámetros que muestra el servidor son la base; lo editado y no
+  // guardado se conserva entre refrescos porque vive en PILOTO_PARAMS
+  if (!PILOTO_PARAMS && c && c.params) PILOTO_PARAMS = { ...c.params };
+  atarExplicacion(main, "piloto", PASOS_PILOTO(), { ciclico: true, panel: panelPiloto, alPintar: atarPanelPiloto });
   const b = $("#ag-ciclo", main);
   if (!b) return;
   b.onclick = async () => {
@@ -2608,7 +2690,7 @@ function atarCiclo(main, c) {
     b.disabled = true;
     try {
       await api.post("/api/ciclo/params",
-                     Object.assign({}, (c && c.params) || {}, { encendido: encender }));
+                     Object.assign({}, (c && c.params) || {}, PILOTO_PARAMS || {}, { encendido: encender }));
       toast(t(encender ? "ag.ciclo_encendido" : "ag.ciclo_apagado"), "ok");
       await navigate("operar");
     } catch (err) { toast(err.message, "err"); }

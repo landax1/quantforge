@@ -3386,7 +3386,8 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
   transition: transform .6s cubic-bezier(.4, 0, .2, 1); pointer-events: none;
 }
 .expl-texto { margin-top: 12px; min-height: 56px; }
-.expl-texto b { display: block; font-size: 14px; margin-bottom: 2px; }
+.expl-texto > b { display: block; font-size: 14px; margin-bottom: 2px; }
+.expl-texto p b { display: inline; color: var(--text); }
 .expl-texto p { margin: 0; font-size: 13px; color: var(--text-2); max-width: 70ch; }
 .expl-texto.cambia { animation: aparece .3s var(--ease) both; }
 .expl-pie { display: flex; align-items: center; gap: 12px; margin-top: 12px; }
@@ -3401,6 +3402,19 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
   .expl-punto { display: none; }
   .expl-texto.cambia, .expl.abierta .expl-cuerpo { animation: none; }
 }
+
+/* --- el piloto se configura sobre su dibujo --- */
+.expl-panel { margin-top: 12px; }
+.pil-panel { border-top: 1px dashed var(--border-strong); padding-top: 12px; }
+.pil-campos { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.pil-campos .fld input { width: 100%; }
+.pil-instr { margin-top: 12px; }
+.fld-rot { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px; }
+.pil-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.pil-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border-strong); cursor: pointer; }
+.pil-chip.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.pil-chip input { margin: 0; }
+.pil-check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
 
 /* --- el piloto automático --- */
 .piloto-cuerpo { display: grid; gap: 16px; }
