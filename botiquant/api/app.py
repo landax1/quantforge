@@ -63,7 +63,7 @@ from botiquant.reports.mql5 import export_mql5
 from botiquant.reports.bingx import export_bingx
 from botiquant.reports.pine import export_pine
 from botiquant.reports.report import excel_report, html_report, metrics_csv, trades_csv
-from botiquant.data.catalog import mundo_de_entrada
+from botiquant.data.catalog import mundo_de_entrada, mundo_de_nombre
 from botiquant.metatrader import experts_de, terminales
 from botiquant.rutas import (
     carpeta_de_estrategias, carpeta_de_trabajo, raiz_recursos,
@@ -289,8 +289,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     store = DataStore(workdir / "datasets", db)
     # Primer arranque: se cargan los instrumentos que vienen con el programa.
     # Una aplicación de backtesting que abre sin un solo instrumento no se
-    # puede ni probar. Sólo si el workspace está vacío — ver semilla.sembrar.
-    sembrar(store, len(db.list_datasets(None)))
+    # puede ni probar. Sólo las secciones vacías — ver semilla.sembrar.
+    sembrar(store, db.list_datasets(None))
     # Los topes se configuran por entorno porque dependen de la máquina: en un
     # servidor con más núcleos conviene subirlos, y en la propia no hace falta
     # racionar nada. Sin variables, el default deja un núcleo libre para atender
@@ -1698,7 +1698,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     # ------------------------------------------------------------ strategies
     @app.get("/api/strategies")
-    def list_strategies(request: Request) -> list[dict[str, Any]]:
+    def list_strategies(request: Request, mundo: str = "") -> list[dict[str, Any]]:
         """Las estrategias guardadas, con hasta dónde puede llegar cada una.
 
         El veredicto de la cantera viaja acá y no se calcula en la pantalla
@@ -1710,7 +1710,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         """
         from botiquant import cantera, estados
 
-        filas = db.list_strategies(duenio(request))
+        filas = [f for f in db.list_strategies(duenio(request))
+                 if _es_del_mundo((f.get("meta") or {}).get("dataset_name") or "", mundo)]
         for f in filas:
             # DONDE ESTA, que es distinto de hasta donde PODRIA llegar. Una
             # estrategia puede estar habilitada para real y no haberse
@@ -1784,12 +1785,34 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     #: que nadie va a mirar, y cada una arrastra su curva de capital.
     _PAGINA_BANCO = 200
 
+    def _es_del_mundo(nombre_dataset: str, mundo: str) -> bool:
+        """Si un histórico se muestra en la sección pedida.
+
+        CADA SECCIÓN VE SÓLO LO SUYO. Con las dos secciones compartiendo el
+        banco, "Cripto" abría con las 236 corridas de SP500 y la sección
+        parecía no hacer nada al cambiar (2 de septiembre). Lo que no se
+        puede clasificar —un CSV propio, una guardada vieja— se ve en las
+        dos, porque adivinarle un mundo sería peor que dejarlo a la vista.
+        """
+        if not mundo:
+            return True
+        m = mundo_de_nombre(nombre_dataset or "")
+        return m is None or m == mundo
+
+    def _corridas_del_mundo(dueno, mundo: str):
+        """Las corridas de la sección, y sus ids (None = sin recorte)."""
+        corridas = [c for c in db.list_corridas(dueno)
+                    if _es_del_mundo(c.get("dataset_name") or "", mundo)]
+        ids = [c["id"] for c in corridas] if mundo else None
+        return corridas, ids
+
     @app.get("/api/corridas")
-    def list_corridas(request: Request) -> dict[str, Any]:
+    def list_corridas(request: Request, mundo: str = "") -> dict[str, Any]:
         dueno = duenio(request)
+        corridas, ids = _corridas_del_mundo(dueno, mundo)
         return {
-            "corridas": db.list_corridas(dueno),
-            "total": db.contar_banco(dueno),
+            "corridas": corridas,
+            "total": db.contar_banco(dueno, corrida_ids=ids),
             "tope": db.TOPE_BANCO,
             "tope_corridas": db.TOPE_CORRIDAS,
         }
@@ -1797,12 +1820,13 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     @app.get("/api/banco")
     def list_banco(request: Request, corrida: str = "", orden: str = "puesto",
                    dir: str = "", limite: int = _PAGINA_BANCO,
-                   desde: int = 0) -> list[dict[str, Any]]:
+                   desde: int = 0, mundo: str = "") -> list[dict[str, Any]]:
         desc = None if dir not in ("asc", "desc") else (dir == "desc")
+        _, ids = _corridas_del_mundo(duenio(request), mundo)
         filas = db.list_banco(
             corrida_id=corrida or None, orden=orden, desc=desc,
             limite=max(1, min(limite, _PAGINA_BANCO)), desde=max(0, desde),
-            user_id=duenio(request))
+            user_id=duenio(request), corrida_ids=ids)
 
         # HASTA DÓNDE LLEGA CADA UNA, en la lista y no después de guardarla.
         #

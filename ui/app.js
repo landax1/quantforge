@@ -1383,14 +1383,21 @@ function pintarMundo() {
   $$("[data-mundo]", caja).forEach(b => b.onclick = () => {
     if (b.dataset.mundo === S.mundo) return;
     S.mundo = b.dataset.mundo;
-    localStorage.setItem("qf.mundo", S.mundo);
+    recordarEleccionDeMundo();
     /* CAMBIAR DE SECCION OLVIDA EL INSTRUMENTO ELEGIDO. Si no, se queda
        apuntando a uno que en la sección nueva no existe, y la pantalla de
        minado abre mostrando un instrumento que no está en su propia lista. */
     S.sel.dataset_id = null;
+    /* Y OLVIDA LA CORRIDA ELEGIDA: es de la otra sección, y filtrar por ella
+       acá dejaría la tabla vacía sin decir por qué. */
+    S.banco.corrida = "";
+    S.banco.sel.clear();
     saveCfg();
     pintarMundo();
-    navigate(S.page);
+    /* Los números del menú son de la sección: 236 al lado de "Minado" en
+       cripto, con cero perpetuos minados, prometía lo que no había. */
+    Promise.allSettled([refreshSavedCount(), refreshBancoCount()])
+      .then(() => navigate(S.page));
   });
 }
 
@@ -1723,10 +1730,7 @@ PAGES.bienvenida = async (main) => {
 
   $$("[data-elegir]", main).forEach(b => b.onclick = () => {
     S.mundo = b.dataset.elegir;
-    try {
-      localStorage.setItem("qf.mundo", S.mundo);
-      localStorage.setItem(VISTA_BIENVENIDA, "1");
-    } catch (e) { /* modo privado */ }
+    recordarEleccionDeMundo();
     /* El instrumento elegido se olvida al cambiar de mundo, por el mismo
        motivo que en el interruptor de la barra: quedaría apuntando a uno que
        en la sección nueva no existe. */
@@ -1735,18 +1739,33 @@ PAGES.bienvenida = async (main) => {
     pintarMundo();
     /* AL MINADO Y NO A DATOS: con la semilla adentro, las dos secciones abren
        con instrumentos listos. Mandar a Datos era correcto cuando la
-       aplicación abría vacía y ahora sería un rodeo. */
-    navigate(S.datasets.length ? "mining" : "data");
+       aplicación abría vacía y ahora sería un rodeo. Los contadores del
+       menú se piden de nuevo porque son de la sección recién elegida. */
+    Promise.allSettled([refreshSavedCount(), refreshBancoCount()])
+      .then(() => navigate(S.datasets.length ? "mining" : "data"));
   });
 };
 
-/* Se muestra si nunca se vio Y no hay nada hecho. La segunda mitad importa:
-   quien ya tiene estrategias guardadas no necesita que le expliquen el camino,
-   aunque haya borrado el almacenamiento del navegador. */
+/* Se muestra mientras nadie haya ELEGIDO qué opera.
+
+   Antes se saltaba si ya había algo hecho —estrategias guardadas, un banco—
+   y por eso quien venía de la versión con sólo CFDs abría directo en la
+   sección que hubiera quedado guardada, sin haberla elegido nunca (2 de
+   septiembre: "ni siquiera elegí el panel"). Tener trabajo hecho no
+   reemplaza la decisión: son dos productos distintos y la elección es del
+   usuario, no de un valor que quedó en el almacenamiento. */
+const MUNDO_ELEGIDO = "qf.mundo_elegido";
+
 function tocaBienvenida() {
-  let vista = false;
-  try { vista = localStorage.getItem(VISTA_BIENVENIDA) === "1"; } catch (e) { vista = false; }
-  return !vista && !(S.saved?.length) && !(S.banco?.total);
+  try { return localStorage.getItem(MUNDO_ELEGIDO) !== "1"; } catch (e) { return true; }
+}
+
+function recordarEleccionDeMundo() {
+  try {
+    localStorage.setItem("qf.mundo", S.mundo);
+    localStorage.setItem(MUNDO_ELEGIDO, "1");
+    localStorage.setItem(VISTA_BIENVENIDA, "1");
+  } catch (e) { /* modo privado */ }
 }
 
 /* ══════════════════════════════════════════════════════ CONSEJOS ══════════
@@ -3502,7 +3521,7 @@ PAGES.data = async (main) => {
    poda solo cuando se llena, esto no se toca nunca. */
 async function refreshSavedCount() {
   try {
-    S.saved = await api.get("/api/strategies");
+    S.saved = await api.get("/api/strategies?" + new URLSearchParams({ mundo: S.mundo || "" }));
     const el = $("#saved-count");
     /* NO CUENTA LAS RETIRADAS. El menú decía 14 y había 7 vivas: el
        cementerio existe para separar lo vivo de lo muerto y el contador los
@@ -3533,7 +3552,7 @@ async function refreshMt5() {
 
 async function refreshBancoCount() {
   try {
-    const r = await api.get("/api/corridas");
+    const r = await api.get("/api/corridas?" + new URLSearchParams({ mundo: S.mundo || "" }));
     S.banco.corridas = r.corridas;
     S.banco.total = r.total;
     S.banco.tope = r.tope;
@@ -4155,7 +4174,7 @@ const ORDEN_NATURAL = (todas) => todas
 
 async function cargarBanco({ corridas = true, mas = false } = {}) {
   if (corridas) {
-    const r = await api.get("/api/corridas");
+    const r = await api.get("/api/corridas?" + new URLSearchParams({ mundo: S.mundo || "" }));
     S.banco.corridas = r.corridas;
     S.banco.total = r.total;
     S.banco.tope = r.tope;
@@ -4175,7 +4194,7 @@ async function cargarBanco({ corridas = true, mas = false } = {}) {
   const desde = mas ? S.banco.filas.length : 0;
   const pagina = await api.get("/api/banco?" + new URLSearchParams({
     corrida: S.banco.corrida, orden: s.key, dir: s.dir === 1 ? "asc" : "desc",
-    desde: String(desde),
+    desde: String(desde), mundo: S.mundo || "",
   }));
   S.banco.filas = mas ? S.banco.filas.concat(pagina) : pagina;
   // lo tildado que ya no está (borrado, podado, o de otra corrida) se suelta:
@@ -4880,6 +4899,22 @@ const vistaBuscar = async (main) => {
       `<div class="card"><div class="empty-state"><div class="big">${icono("pico","ico-xl")}</div>
         <b>${esc(t("mine.no_data"))}</b>
         <p class="mt">${t("mine.no_data_help")}</p>
+        <button class="btn mt" id="go-data">${esc(t("mine.go_data"))}</button>
+      </div></div>`;
+    $("#go-data", main).onclick = () => navigate("data");
+    return;
+  }
+  /* LA SECCION ELEGIDA PUEDE ESTAR VACIA AUNQUE LA OTRA NO. Sin esto, en
+     "Cripto" sin perpetuos el selector caía en el primer histórico que
+     hubiera —SP500— y cambiar de sección parecía no hacer nada: un parpadeo
+     y la misma pantalla. Pasó el 2 de septiembre con un espacio de trabajo
+     que venía de la versión con sólo CFDs. */
+  if (!datasetsDelMundo().length) {
+    const cripto = S.mundo === "exchange";
+    main.innerHTML = pageHead(t("nav.mining"), esc(t("mine.sub_empty"))) +
+      `<div class="card"><div class="empty-state"><div class="big">${icono("pico","ico-xl")}</div>
+        <b>${esc(t(cripto ? "mine.no_data_cripto" : "mine.no_data_cfd"))}</b>
+        <p class="mt">${t(cripto ? "mine.no_data_cripto_help" : "mine.no_data_cfd_help")}</p>
         <button class="btn mt" id="go-data">${esc(t("mine.go_data"))}</button>
       </div></div>`;
     $("#go-data", main).onclick = () => navigate("data");

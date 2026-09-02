@@ -55,7 +55,7 @@ def test_an_empty_workspace_gets_the_bundled_instruments(paquete):
     puede ni probar."""
     store = _StoreFalso()
 
-    puestos = semilla.sembrar(store, ya_hay=0)
+    puestos = semilla.sembrar(store, existentes=[])
 
     assert puestos == 2
     assert [p[0] for p in store.puestos] == ["UNO H1", "DOS H1"]
@@ -68,8 +68,42 @@ def test_nothing_is_seeded_when_the_user_already_has_data(paquete):
     entradas del mismo mercado sin saber cuál está usando."""
     store = _StoreFalso()
 
-    assert semilla.sembrar(store, ya_hay=1) == 0
+    assert semilla.sembrar(store, existentes=[{"source": "semilla"}]) == 0
     assert store.puestos == []
+
+
+def test_a_workspace_with_only_cfds_gets_the_perpetuals(paquete):
+    """Quien venía de la versión con sólo CFDs abría "Cripto" sin un solo
+    perpetuo: el selector volvía a SP500 y la sección parecía no hacer nada.
+    Se siembra por sección, y la que ya tiene datos se deja como está."""
+    (paquete / semilla.MANIFIESTO).write_text(json.dumps([
+        {"archivo": "uno.csv", "nombre": "UNO H1", "source": "semilla"},
+        {"archivo": "dos.csv", "nombre": "DOSUSDT H1", "source": "binance"},
+    ]), encoding="utf-8")
+    store = _StoreFalso()
+
+    puestos = semilla.sembrar(store, existentes=[{"source": "dukascopy"}])
+
+    assert puestos == 1
+    assert [p[0] for p in store.puestos] == ["DOSUSDT H1"]
+
+
+def test_a_perpetual_already_downloaded_blocks_the_crypto_seed(paquete):
+    """Quien ya bajó un perpetuo en M1 no recibe el mismo mercado en H1."""
+    (paquete / semilla.MANIFIESTO).write_text(json.dumps([
+        {"archivo": "uno.csv", "nombre": "UNO H1", "source": "semilla"},
+        {"archivo": "dos.csv", "nombre": "DOSUSDT H1", "source": "binance"},
+    ]), encoding="utf-8")
+    store = _StoreFalso()
+
+    assert semilla.sembrar(store, existentes=[{"source": "binance"}]) == 1
+    assert [p[0] for p in store.puestos] == ["UNO H1"]
+
+
+def test_an_uploaded_csv_does_not_count_as_data_of_either_world(paquete):
+    store = _StoreFalso()
+
+    assert semilla.sembrar(store, existentes=[{"source": "upload"}]) == 2
 
 
 def test_a_build_without_bundled_data_still_starts(tmp_path, monkeypatch):
@@ -79,7 +113,7 @@ def test_a_build_without_bundled_data_still_starts(tmp_path, monkeypatch):
     store = _StoreFalso()
 
     assert semilla.disponible() == []
-    assert semilla.sembrar(store, ya_hay=0) == 0
+    assert semilla.sembrar(store, existentes=[]) == 0
 
 
 def test_a_broken_file_does_not_block_startup(paquete):
@@ -88,7 +122,7 @@ def test_a_broken_file_does_not_block_startup(paquete):
     (paquete / "uno.csv").write_text("esto no es un csv de velas", encoding="utf-8")
     store = _StoreFalso()
 
-    puestos = semilla.sembrar(store, ya_hay=0)
+    puestos = semilla.sembrar(store, existentes=[])
 
     assert puestos == 1
     assert [p[0] for p in store.puestos] == ["DOS H1"]
@@ -98,7 +132,7 @@ def test_a_missing_file_listed_in_the_manifest_is_skipped(paquete):
     (paquete / "dos.csv").unlink()
     store = _StoreFalso()
 
-    assert semilla.sembrar(store, ya_hay=0) == 1
+    assert semilla.sembrar(store, existentes=[]) == 1
 
 
 def test_a_corrupt_manifest_is_not_fatal(paquete):
@@ -204,7 +238,7 @@ def test_un_perpetuo_sembrado_lleva_su_funding(paquete, tmp_path):
     (paquete / semilla.MANIFIESTO).write_text(json.dumps(manifiesto))
 
     st = _StoreFalso()
-    assert semilla.sembrar(st, ya_hay=0) == 2
+    assert semilla.sembrar(st, existentes=[]) == 2
     # el primero lleva funding y fuente binance; el segundo no tiene y no pasa nada
     assert st.fundings == {"1": 100}
     assert st.puestos[0][2] == "binance", (
@@ -217,5 +251,5 @@ def test_un_funding_roto_no_impide_sembrar_las_velas(paquete):
     manifiesto[0]["funding"] = "uno.funding.csv"
     (paquete / semilla.MANIFIESTO).write_text(json.dumps(manifiesto))
     st = _StoreFalso()
-    assert semilla.sembrar(st, ya_hay=0) == 2
+    assert semilla.sembrar(st, existentes=[]) == 2
     assert st.fundings == {}

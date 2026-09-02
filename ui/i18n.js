@@ -317,6 +317,17 @@ const STR = {
   "mine.no_data_help": ["Go to <b>Data</b> and download an instrument — one click and it is ready.",
                         "Andá a <b>Datos</b> y descargá un instrumento — con un clic queda listo."],
   "mine.go_data": ["Go to Data", "Ir a Datos"],
+  /* La sección elegida no tiene ni un instrumento. Se dice cuál es la que
+     falta, porque "no hay con qué minar" al lado de un SP500 cargado en la
+     otra sección se lee como un error de la aplicación. */
+  "mine.no_data_cripto": ["No perpetuals loaded yet", "Todavía no hay ningún perpetuo cargado"],
+  "mine.no_data_cripto_help": [
+    "Your CFDs are still here — switch back to <b>CFDs</b> to see them. To search on crypto, go to <b>Data</b> and download a perpetual from Binance: one click and it is ready.",
+    "Tus CFDs siguen ahí — volvé a <b>CFDs</b> para verlos. Para buscar en cripto, andá a <b>Datos</b> y descargá un perpetuo de Binance: con un clic queda listo."],
+  "mine.no_data_cfd": ["No CFD instruments loaded yet", "Todavía no hay ningún CFD cargado"],
+  "mine.no_data_cfd_help": [
+    "Your perpetuals are still here — switch back to <b>Crypto</b> to see them. To search on CFDs, go to <b>Data</b> and download an index, a pair or a metal: one click and it is ready.",
+    "Tus perpetuos siguen ahí — volvé a <b>Cripto</b> para verlos. Para buscar en CFDs, andá a <b>Datos</b> y descargá un índice, un par o un metal: con un clic queda listo."],
 
   /* ------------------------------------------------------------ pantalla MINADO */
   "mine.sub": ["You choose how many strategies you want; the search does not stop until it has them.",

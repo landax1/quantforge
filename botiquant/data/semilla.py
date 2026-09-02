@@ -42,20 +42,42 @@ def disponible() -> list[dict[str, Any]]:
     return datos if isinstance(datos, list) else []
 
 
-def sembrar(store, ya_hay: int, progreso=None) -> int:
-    """Carga los instrumentos incluidos si el workspace está vacío.
+def mundo_de_fuente(source: str | None) -> str | None:
+    """A qué sección pertenece un histórico, por su origen.
 
-    Sólo con el workspace vacío, y ese detalle importa: si corriera siempre,
+    Los perpetuos vienen de Binance; lo demás —Dukascopy, MetaTrader, la
+    propia semilla— es CFD. Un CSV subido o importado no es de ninguna: no se
+    le adivina el mundo, y por eso tampoco cuenta como "ya hay datos" de uno.
+    """
+    f = str(source or "").strip().lower()
+    if f == "binance":
+        return "exchange"
+    if f in ("upload", "import", "sample", ""):
+        return None
+    return "metatrader"
+
+
+def sembrar(store, existentes: list[dict[str, Any]], progreso=None) -> int:
+    """Carga los instrumentos incluidos de cada sección que esté vacía.
+
+    Se decide POR SECCIÓN y no por workspace. Antes bastaba con que hubiera
+    un instrumento para no sembrar nada, y quien venía de una versión con
+    sólo CFDs abría "Cripto" sin un solo perpetuo: el selector volvía a
+    SP500 y la sección parecía no hacer nada (pasó el 2 de septiembre).
+
+    Dentro de una sección con datos no se siembra: si corriera siempre,
     volvería a meter los instrumentos que el usuario borró a propósito, y
     duplicaría los que ya bajó en M1 dejándole dos entradas del mismo mercado
     sin saber cuál está usando.
 
     `BQ_SIN_SEMILLA` lo apaga. Lo usan los tests: casi todos parten de un
     workspace vacío y comprueban qué pasa al agregar el primer instrumento, así
-    que arrancar con cuatro puestos les cambia el punto de partida.
+    que arrancar con instrumentos puestos les cambia el punto de partida.
     """
-    if ya_hay or os.environ.get("BQ_SIN_SEMILLA", "").strip() not in ("", "0", "false"):
+    if os.environ.get("BQ_SIN_SEMILLA", "").strip() not in ("", "0", "false"):
         return 0
+    ocupados = {mundo_de_fuente(d.get("source")) for d in existentes or []}
+    ocupados.discard(None)
 
     entradas = disponible()
     if not entradas:
@@ -64,6 +86,8 @@ def sembrar(store, ya_hay: int, progreso=None) -> int:
     base = raiz_recursos() / CARPETA
     puestos = 0
     for i, e in enumerate(entradas):
+        if mundo_de_fuente(e.get("source") or "semilla") in ocupados:
+            continue
         origen = base / str(e.get("archivo", ""))
         if not origen.is_file():
             continue

@@ -622,15 +622,33 @@ class Database:
             f["contexto"] = json.loads(f.get("contexto") or "{}")
         return filas
 
-    def contar_banco(self, user_id: str | None = None) -> int:
+    @staticmethod
+    def _entre_corridas(corrida_ids) -> tuple[str, tuple]:
+        """Recorte a un conjunto de corridas. `None` es "todas"; una lista
+        vacía es "ninguna", y tiene que dar cero filas, no todas."""
+        if corrida_ids is None:
+            return "", ()
+        ids = [str(c) for c in corrida_ids]
+        if not ids:
+            return " AND 0", ()
+        marcas = ",".join("?" * len(ids))
+        return f" AND corrida_id IN ({marcas})", tuple(ids)
+
+    def contar_banco(self, user_id: str | None = None, *,
+                     corrida_ids=None) -> int:
         cond, args = self._de(user_id)
+        c2, a2 = self._entre_corridas(corrida_ids)
         return int(self._rows(
-            f"SELECT COUNT(*) AS n FROM banco WHERE 1=1{cond}", args)[0]["n"])
+            f"SELECT COUNT(*) AS n FROM banco WHERE 1=1{cond}{c2}", args + a2)[0]["n"])
 
     def list_banco(self, *, corrida_id: str | None = None, orden: str = "puesto",
                    desc: bool | None = None, limite: int = 200, desde: int = 0,
-                   user_id: str | None = None) -> list[dict[str, Any]]:
+                   user_id: str | None = None, corrida_ids=None) -> list[dict[str, Any]]:
         """Filas del banco, ordenadas en la base.
+
+        ``corrida_ids`` recorta a un conjunto de corridas: es como la pantalla
+        muestra sólo las de la sección elegida (CFDs o cripto) sin perder la
+        paginación, que se hace acá y no en el navegador.
 
         Sin ``corrida_id`` devuelve el banco entero, que es la vista que permite
         comparar corridas — con el cuidado de que ahí las columnas que dependen
@@ -643,6 +661,8 @@ class Database:
         if corrida_id:
             cond += " AND corrida_id=?"
             args = args + (corrida_id,)
+        c2, a2 = self._entre_corridas(corrida_ids)
+        cond, args = cond + c2, args + a2
         # Las filas sin dato van al fondo se ordene como se ordene: pedir "las
         # mejores por fuera de muestra" no puede arrancar con las que no tienen.
         filas = self._rows(
