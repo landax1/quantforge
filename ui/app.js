@@ -3789,7 +3789,15 @@ PAGES.saved = async (main) => {
 
   const sinProbar = items.filter(x => estadoDe(x) === "sin_probar").length;
 
-  main.innerHTML = pageHead(t("nav.saved"), esc(t("saved.sub", { n: items.length }))) +
+  /* LA CIFRA DE LA CABECERA ES LA MISMA QUE LA DEL MENÚ. El menú cuenta las
+     que están en juego (sin las retiradas) y acá se decía "25 guardadas"
+     con 16 en el menú: dos números para lo mismo, a un clic de distancia.
+     Las retiradas se nombran aparte, que es lo que son. */
+  const retiradas = items.filter(x => estaRetirada(x)).length;
+  const enJuego = items.length - retiradas;
+  main.innerHTML = pageHead(t("nav.saved"), esc(retiradas
+    ? t("saved.sub_retiradas", { n: enJuego, r: retiradas })
+    : t("saved.sub", { n: enJuego }))) +
     `${PRUEBAS && sinProbar ? `<div class="pista mb">${icono("idea", "ico-sm")}
        <div>${esc(t("saved.pending", { n: sinProbar }))}</div></div>` : ""}
     ${/* QUE EL PORTAFOLIO SE SEPA QUE EXISTE, sin ponerse en el camino.

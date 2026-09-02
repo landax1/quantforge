@@ -776,6 +776,8 @@ const STR = {
   /* ------------------------------------------------------- mis estrategias */
   "saved.sub": ["{n} saved. They survive any new search.",
                 "{n} guardadas. Sobreviven a cualquier corrida nueva."],
+  "saved.sub_retiradas": ["{n} in play · {r} retired. They survive any new search.",
+                          "{n} en juego · {r} retiradas. Sobreviven a cualquier búsqueda nueva."],
   /* La única pista de que el portafolio existe. Aparece recién con dos
      guardadas: con una sería vender algo que todavía no se puede hacer. */
   "saved.combinar": [
