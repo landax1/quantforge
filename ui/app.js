@@ -483,6 +483,113 @@ const RECETAS = () => [
   },
 ];
 
+/* ═══════════════════════════════ UNA EXPLICACIÓN QUE SE VE PASAR ══════════
+   Un recorrido de pasos con un punto que viaja de uno al siguiente, y un
+   texto que cambia con cada paso. Se aprieta "ver cómo funciona" y la
+   aplicación se explica sola: para el piloto automático y para la entrada.
+
+   Un diagrama quieto se lee a medias; el mismo diagrama con un punto que
+   avanza se sigue entero, porque la vista va a donde está pasando algo. Con
+   "reducir movimiento" el punto no se mueve y los pasos se muestran todos
+   a la vez, como una lista. */
+const EXPLICACIONES = {};          // estado por id: paso actual, andando
+
+function explicacionHTML(id, pasos, opciones = {}) {
+  const st = EXPLICACIONES[id] || (EXPLICACIONES[id] = { paso: 0, andando: false, abierta: !!opciones.abierta });
+  const ciclico = !!opciones.ciclico;
+  return `
+  <div class="expl ${st.abierta ? "abierta" : ""} ${ciclico ? "ciclica" : ""}" id="expl-${esc(id)}" data-expl="${esc(id)}">
+    <button class="linkbtn expl-abrir" data-expl-abrir>${icono("seguir", "ico-sm")} ${esc(t("expl.ver"))}</button>
+    <div class="expl-cuerpo">
+      <div class="expl-flujo">
+        ${pasos.map((p, i) => `
+        <button class="expl-nodo ${i === st.paso ? "on" : ""} ${i < st.paso ? "hecho" : ""}" data-expl-ir="${i}">
+          <span class="expl-ico">${icono(p.ico, "ico-sm")}</span>
+          <b>${esc(t(p.titulo))}</b>
+        </button>${i < pasos.length - 1 || ciclico ? `<i class="expl-lin ${i < st.paso ? "hecho" : ""}"></i>` : ""}`).join("")}
+        <span class="expl-punto" aria-hidden="true"></span>
+      </div>
+      <div class="expl-texto" aria-live="polite">
+        <b>${esc(t(pasos[st.paso].titulo))}</b>
+        <p>${t(pasos[st.paso].texto)}</p>
+      </div>
+      <div class="expl-pie">
+        <button class="btn small" data-expl-play>${st.andando ? esc(t("expl.pausar")) : esc(t("expl.reproducir"))}</button>
+        <span class="expl-prog">${st.paso + 1} / ${pasos.length}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+function atarExplicacion(root, id, pasos, opciones = {}) {
+  const caja = $(`#expl-${id}`, root);
+  if (!caja) return;
+  const st = EXPLICACIONES[id];
+  const sinMovimiento = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const punto = $(".expl-punto", caja);
+
+  const moverPunto = () => {
+    const nodo = $$(".expl-nodo", caja)[st.paso];
+    if (!nodo || !punto) return;
+    const flujo = $(".expl-flujo", caja);
+    const r = nodo.getBoundingClientRect(), f = flujo.getBoundingClientRect();
+    punto.style.transform = `translate(${r.left - f.left + r.width / 2 - 6}px, ${r.top - f.top - 8}px)`;
+  };
+  const pintar = () => {
+    $$(".expl-nodo", caja).forEach((n, i) => {
+      n.classList.toggle("on", i === st.paso);
+      n.classList.toggle("hecho", i < st.paso);
+    });
+    $$(".expl-lin", caja).forEach((l, i) => l.classList.toggle("hecho", i < st.paso));
+    const texto = $(".expl-texto", caja);
+    texto.classList.remove("cambia"); void texto.offsetWidth; texto.classList.add("cambia");
+    $("b", texto).textContent = t(pasos[st.paso].titulo);
+    $("p", texto).innerHTML = t(pasos[st.paso].texto);
+    $(".expl-prog", caja).textContent = `${st.paso + 1} / ${pasos.length}`;
+    $("[data-expl-play]", caja).textContent = st.andando ? t("expl.pausar") : t("expl.reproducir");
+    moverPunto();
+  };
+  const parar = () => { st.andando = false; if (st.timer) clearInterval(st.timer); st.timer = null; pintar(); };
+  const andar = () => {
+    st.andando = true;
+    if (st.timer) clearInterval(st.timer);
+    st.timer = setInterval(() => {
+      if (!document.body.contains(caja)) { clearInterval(st.timer); st.timer = null; st.andando = false; return; }
+      const ultimo = st.paso >= pasos.length - 1;
+      if (ultimo && !opciones.ciclico) { parar(); return; }
+      st.paso = ultimo ? 0 : st.paso + 1;
+      pintar();
+    }, sinMovimiento ? 4000 : 2600);
+    pintar();
+  };
+
+  $("[data-expl-abrir]", caja).onclick = () => {
+    st.abierta = !st.abierta;
+    caja.classList.toggle("abierta", st.abierta);
+    if (st.abierta) { st.paso = 0; andar(); } else parar();
+  };
+  $("[data-expl-play]", caja).onclick = () => (st.andando ? parar() : andar());
+  $$("[data-expl-ir]", caja).forEach(n => n.onclick = () => { st.paso = +n.dataset.explIr; parar(); });
+  if (st.abierta) { requestAnimationFrame(moverPunto); if (st.andando) andar(); }
+}
+
+/* Los pasos del piloto automático: lo que hace, en el orden en que lo hace. */
+const PASOS_PILOTO = () => [
+  { ico: "pico",   titulo: "expl.pil1",  texto: "expl.pil1_t" },
+  { ico: "tilde",  titulo: "expl.pil2",  texto: "expl.pil2_t" },
+  { ico: "seguir", titulo: "expl.pil3",  texto: "expl.pil3_t" },
+  { ico: "sube",   titulo: "expl.pil4",  texto: "expl.pil4_t" },
+  { ico: "baja",   titulo: "expl.pil5",  texto: "expl.pil5_t" },
+];
+
+/* Los pasos de la entrada: el camino entero de una estrategia. */
+const PASOS_ENTRADA = () => [
+  { ico: "diana",    titulo: "wel.s1",   texto: "expl.ent1_t" },
+  { ico: "tilde",    titulo: "expl.ent2", texto: "expl.ent2_t" },
+  { ico: "marcador", titulo: "wel.s2",   texto: "expl.ent3_t" },
+  { ico: "seguir",   titulo: "wel.s3",   texto: "expl.ent4_t" },
+];
+
 /* Los minutos de cada temporalidad, para saber qué histórico puede darla:
    de velas de una hora no salen velas de quince. */
 const MINUTOS_DE_TF = { "1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440 };
@@ -1814,7 +1921,9 @@ PAGES.bienvenida = async (main) => {
           <p>${esc(t(p.clave + "_sub"))}</p>
         </li>`).join("")}
     </ol>
+    <div class="wel-expl">${explicacionHTML("entrada", PASOS_ENTRADA())}</div>
   </div>`;
+  atarExplicacion(main, "entrada", PASOS_ENTRADA());
 
   $$("[data-elegir]", main).forEach(b => b.onclick = () => {
     S.mundo = b.dataset.elegir;
@@ -2455,6 +2564,7 @@ function zonaPiloto(c) {
             esc(cicloOn ? t("ag.ciclo_off") : t("ag.ciclo_on"))}</button>
         </div>
       </div>
+      ${explicacionHTML("piloto", PASOS_PILOTO(), { ciclico: true })}
       <div class="piloto-linea">
         <b>${esc(t("pil.ultimas"))}</b>
         ${ultimas.length ? `<ol>${ultimas.map(u => `<li>
@@ -2471,6 +2581,7 @@ function zonaPiloto(c) {
    el servidor reemplaza el juego completo, y mandar uno solo devolvería los
    demás a sus valores por defecto sin que nadie lo pidiera. */
 function atarCiclo(main, c) {
+  atarExplicacion(main, "piloto", PASOS_PILOTO(), { ciclico: true });
   const b = $("#ag-ciclo", main);
   if (!b) return;
   b.onclick = async () => {
