@@ -3787,7 +3787,8 @@ PAGES.saved = async (main) => {
     </tr>`;
   };
 
-  const sinProbar = items.filter(x => estadoDe(x) === "sin_probar").length;
+  // Sin las retiradas: "24 de estas sin probar" contaba las que ya no juegan.
+  const sinProbar = items.filter(x => !estaRetirada(x) && estadoDe(x) === "sin_probar").length;
 
   /* LA CIFRA DE LA CABECERA ES LA MISMA QUE LA DEL MENÚ. El menú cuenta las
      que están en juego (sin las retiradas) y acá se decía "25 guardadas"
