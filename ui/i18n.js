@@ -1278,6 +1278,8 @@ const STR = {
   "op.sub_bot": [
     "One bot per symbol: several can run at once, each sized on its own share of the account.",
     "Un bot por símbolo: pueden correr varios a la vez, cada uno dimensionado sobre su porción de la cuenta."],
+  "op.cfd_nota": ["CFDs trade through MetaTrader: export the strategy as a robot from My strategies and attach it to a chart. The bots below are for crypto.",
+                 "Los CFD se operan en MetaTrader: exportá la estrategia como robot desde Mis estrategias y ponela en un gráfico. Los bots de abajo son de cripto."],
   "op.ir_claves": ["Load a key", "Cargar una clave"],
   /* Binance va SOLO en demo, y el rotulo lo dice en el titulo y no en una
      nota al pie: si estuviera abajo, alguien carga la clave, ve "configurada"

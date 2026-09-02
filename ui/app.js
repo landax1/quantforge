@@ -2643,7 +2643,14 @@ const vistaBot = async (main, hayClave) => {
   // estrategias operables no puede distinguir un perpetuo de un CFD.
   if (!(S.datasets || []).length) await refreshDatasets();
 
+  /* EN EL MUNDO CFD, OPERAR ES OTRA COSA. Los bots de abajo son de cripto;
+     alguien que eligió CFDs llegaba acá y leía "no hay lugar para otro"
+     sin que nada le dijera que su camino es exportar el robot a MetaTrader.
+     Se dice arriba, una vez. */
+  const notaCfd = S.mundo === "metatrader"
+    ? `<div class="card ex-aviso"><p class="help-note">${esc(t("op.cfd_nota"))}</p></div>` : "";
   main.innerHTML = pageHead(t("nav.operar"), esc(t("op.sub_bot")))
+    + notaCfd
     + panelAgentes(bot, ciclo)
     + panelBot(bot, hayClave);
   atarCiclo(main, ciclo);
