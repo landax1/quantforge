@@ -2323,6 +2323,9 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
   box-shadow: 0 -4px 16px var(--sombra-color);
   font-size: 13px;
 }
+/* selección rápida por resultado, arriba de la tabla */
+.sel-rapida { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -8px 0 12px; font-size: 12px; color: var(--text-dim); }
+.sel-rapida .linkbtn { font-size: 12px; }
 .barra-sel .barra-acciones { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ---- el camino: cuatro etapas con cuentas, que también filtran ---- */
@@ -2729,6 +2732,10 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
    que trae la aplicación, con la misma vara para los cuatro. Si algún día deja
    de ser cierto, se vuelve a medir o se saca. */
 .inst-card { position: relative; }
+/* el logo de la cripto ocupa el lugar del ícono de familia */
+.inst-logo { width: 44px; height: 44px; flex: none; border-radius: 50%; }
+.ctx-ic.con-logo { padding: 0; background: transparent; overflow: hidden; }
+.ctx-logo { width: 100%; height: 100%; display: block; }
 .inst-sello {
   position: absolute; top: -9px; right: 16px;
   display: inline-flex; align-items: center; gap: 4px;

@@ -988,12 +988,27 @@ function puedeBorrar(d) {
 }
 
 /* qué instrumento y timeframe están cargados ahora mismo */
+/* EL LOGO DE CADA CRIPTO. Íconos del set abierto cryptocurrency-icons
+   (licencia CC0, dominio público) en ui/iconos/cripto; SUI y ARB no están
+   en el set y son marcas simples dibujadas acá. Se busca por la moneda del
+   par: "BTCUSDT H1" → btc. Lo que no tiene logo sigue con sus iniciales. */
+const LOGOS_CRIPTO = new Set(["btc", "eth", "bnb", "sol", "xrp", "doge", "ada",
+                              "link", "sui", "arb", "uni", "xmr", "zec"]);
+function logoCripto(nombre, cls = "logo-cripto") {
+  const token = String(nombre || "").trim().split(/\s+/)[0].toLowerCase();
+  const m = token.match(/^([a-z]+?)(usdt|usd|busd|usdc)$/);
+  const moneda = m ? m[1] : token;
+  if (!LOGOS_CRIPTO.has(moneda)) return "";
+  return `<img class="${cls}" src="/static/iconos/cripto/${moneda}.svg" alt="" width="32" height="32">`;
+}
+
 function ctxPill() {
   const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
   if (!ds) return "";
   const initials = (ds.name.match(/[A-Za-z0-9]+/g) || ["?"])[0].slice(0, 3).toUpperCase();
+  const logo = logoCripto(ds.name, "ctx-logo");
   return `<div class="ctx-pill">
-    <span class="ctx-ic">${esc(initials)}</span>
+    <span class="ctx-ic ${logo ? "con-logo" : ""}">${logo || esc(initials)}</span>
     <div><b>${esc(ds.name)}</b><br>
       <span>${fmtInt(ds.rows)} ${esc(t("ui.bars"))} · ${esc(String(ds.start).slice(0, 10))} → ${esc(String(ds.end).slice(0, 10))}</span>
     </div></div>`;
@@ -3552,9 +3567,9 @@ PAGES.data = async (main) => {
         title="${esc(t("inst.mejor_ayuda"))}">${icono("estrella")} ${
         esc(t("inst.mejor"))}</span>` : ""}
       <div class="inst-top">
-        <span class="inst-ic"><svg viewBox="0 0 24 24" fill="none"
+        ${logoCripto(c.label, "inst-logo") || `<span class="inst-ic"><svg viewBox="0 0 24 24" fill="none"
           stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
-          stroke-linejoin="round">${fam.icono}</svg></span>
+          stroke-linejoin="round">${fam.icono}</svg></span>`}
         <span class="inst-id"><h3>${esc(c.label)}</h3>
           <span class="cat">${esc(t("cat." + c.category))}</span></span>
       </div>
@@ -4292,8 +4307,17 @@ PAGES.saved = async (main) => {
         : ""}
     <div class="card">
       <h2>${esc(t("saved.title"))} <span class="hint">${esc(t("saved.hint"))}</span></h2>
+      ${PORTAFOLIO && visibles.length ? `<div class="sel-rapida"><span>${esc(t("sel.rapida"))}</span>
+        <button class="linkbtn" data-sel-est="todas">${esc(t("etapa.todas_corto"))}</button>
+        <button class="linkbtn" data-sel-est="aprobada">${esc(t("est.aprobada"))}</button>
+        <button class="linkbtn" data-sel-est="aceptable">${esc(t("est.aceptable"))}</button>
+        <button class="linkbtn" data-sel-est="no_paso">${esc(t("est.no_paso"))}</button>
+        <button class="linkbtn" data-sel-est="sin_probar">${esc(t("est.sin_probar"))}</button>
+        <button class="linkbtn" data-sel-est="ninguna">${esc(t("ui.clear"))}</button></div>` : ""}
       <div class="scroll-x"><table class="guardadas">
-        <thead><tr>${PORTAFOLIO ? '<th class="tick"></th>' : ""}
+        <thead><tr>${PORTAFOLIO ? `<th class="tick"><input type="checkbox" id="sel-todas-guardadas"
+            ${visibles.length && visibles.every(x => SEL_PF.has(x.id)) ? "checked" : ""}
+            aria-label="${esc(t("ui.select_all"))}" title="${esc(t("ui.select_all"))}"></th>` : ""}
           <th>${esc(t("col.strategy"))}</th><th>${esc(t("mine.market"))}</th>
           <th class="num">${esc(t("col.annual"))}</th>
           <th class="num">${esc(t("col.maxdd"))}</th>
@@ -4361,6 +4385,33 @@ PAGES.saved = async (main) => {
     cb.closest("tr").classList.toggle("elegida", cb.checked);
     pintarBarra();
   });
+  /* TODAS LAS VISIBLES DE UNA VEZ: con el filtro en "Por probar", tildar
+     todas y apretar "Probar N" es probar todo lo que falta en dos clics. */
+  const aplicarSel = () => {
+    $$("[data-pf]", main).forEach(cb => {
+      cb.checked = SEL_PF.has(cb.dataset.pf);
+      cb.closest("tr").classList.toggle("elegida", cb.checked);
+    });
+    const th = $("#sel-todas-guardadas", main);
+    if (th) th.checked = visibles.length > 0 && visibles.every(x => SEL_PF.has(x.id));
+    pintarBarra();
+  };
+  $$("[data-sel-est]", main).forEach(bt => bt.onclick = () => {
+    const que = bt.dataset.selEst;
+    SEL_PF.clear();
+    if (que === "todas") visibles.forEach(x => SEL_PF.add(x.id));
+    else if (que !== "ninguna") visibles.filter(x => !estaRetirada(x) && estadoDe(x) === que).forEach(x => SEL_PF.add(x.id));
+    aplicarSel();
+  });
+  const todasG = $("#sel-todas-guardadas", main);
+  if (todasG) todasG.onchange = () => {
+    visibles.forEach(x => { if (todasG.checked) SEL_PF.add(x.id); else SEL_PF.delete(x.id); });
+    $$("[data-pf]", main).forEach(cb => {
+      cb.checked = SEL_PF.has(cb.dataset.pf);
+      cb.closest("tr").classList.toggle("elegida", cb.checked);
+    });
+    pintarBarra();
+  };
 
   $$("[data-sid]", main).forEach(tr => tr.onclick = (ev) => {
     if (ev.target.closest("button") || ev.target.closest(".tick")) return;
@@ -5007,6 +5058,15 @@ function pintarBanco() {
       <input type="search" class="banco-buscar" id="banco-buscar"
         placeholder="${esc(t("bank.buscar"))}" value="${esc(FILTRO_BANCO)}"
         aria-label="${esc(t("bank.buscar"))}"></h2>
+    ${/* SELECCIÓN RÁPIDA POR RESULTADO: todas las que están a la vista, o
+          sólo las que en el tramo guardado se sostuvieron, se debilitaron o
+          se cayeron. Es la pregunta que uno se hace antes de guardar. */
+      filas.length ? `<div class="sel-rapida"><span>${esc(t("sel.rapida"))}</span>
+        <button class="linkbtn" data-sel-oos="todas">${esc(t("etapa.todas_corto"))}</button>
+        ${hayOos ? `<button class="linkbtn" data-sel-oos="good">${esc(t("col.oos_holds"))}</button>
+        <button class="linkbtn" data-sel-oos="mid">${esc(t("col.oos_weakens"))}</button>
+        <button class="linkbtn" data-sel-oos="bad">${esc(t("col.oos_falls"))}</button>` : ""}
+        <button class="linkbtn" data-sel-oos="ninguna">${esc(t("ui.clear"))}</button></div>` : ""}
 
     ${mezcla ? `<div class="banner info mt" style="margin-bottom:14px">
       <span class="b-ic">${icono("info")}</span><div>${t("bank.mixed_risk", {
@@ -5201,6 +5261,18 @@ function cablearBanco(host) {
     else b.sel.clear();
     refrescar();
   };
+  $$("[data-sel-oos]", host).forEach(bt => bt.onclick = () => {
+    const que = bt.dataset.selOos;
+    const visibles = filasVisibles();
+    const clase = (f) => {
+      if (!f.oos || !f.oos.trades) return "none";
+      const q = f.oos_ratio; return q >= 0.8 ? "good" : q >= 0.5 ? "mid" : "bad";
+    };
+    b.sel.clear();
+    if (que === "todas") visibles.forEach(f => b.sel.add(f.banco_id));
+    else if (que !== "ninguna") visibles.filter(f => clase(f) === que).forEach(f => b.sel.add(f.banco_id));
+    refrescar();
+  });
 
   $$("[data-fila]", host).forEach(tr => tr.onclick = (ev) => {
     if (ev.target.closest(".tick")) return;
@@ -7177,7 +7249,13 @@ function renderMining(snap, finished) {
   const bankHtml = `
   <div class="card">
     ${splitNote}
-    <h2>${esc(t("nav.bank"))} <span class="hint">${esc(t("run.bank_hint", { n: bank.length }))}</span></h2>
+    <h2>${esc(t("nav.bank"))} <span class="hint">${esc(t("run.bank_hint", { n: bank.length }))}</span>
+      ${/* TODAS A MIS ESTRATEGIAS EN UN CLIC, cuando la búsqueda terminó y ya
+            está archivada: es lo que uno quiere hacer con lo recién encontrado
+            antes de probarlas juntas. */
+        finished && snap.corrida_id && bank.length
+          ? `<button class="btn small" id="guardar-todas" style="margin-left:auto">${
+              icono("marcador", "ico-sm")} ${esc(t("bank.guardar_todas", { n: bank.length }))}</button>` : ""}</h2>
     ${bank.length ? `<div class="databank-wrap"><table>
       <!-- OCHO COLUMNAS, NO DIECISEIS.
            La tabla tenia dieciseis y por eso necesitaba scroll horizontal: para
@@ -7244,6 +7322,19 @@ function renderMining(snap, finished) {
 
     bankBox.innerHTML = bankHtml;
     bankBox.dataset.h = bankHtml;
+    const todasAlBanco = $("#guardar-todas", bankBox);
+    if (todasAlBanco) todasAlBanco.onclick = async () => {
+      todasAlBanco.disabled = true;
+      try {
+        const filas = await api.get("/api/banco?" + new URLSearchParams({ corrida: snap.corrida_id, limite: "200" }));
+        const r = await api.post("/api/banco/guardar", { ids: filas.map(f => f.banco_id) });
+        (r.guardadas || []).forEach(g => RECIEN_GUARDADAS.add(g.id));
+        toast(t("bank.guardadas_n", { n: (r.guardadas || []).length }), "ok");
+        refreshSavedCount();
+        todasAlBanco.replaceWith(Object.assign(document.createElement("span"),
+          { className: "insp-guardada recien", innerHTML: `${icono("tilde", "ico-sm")} ${esc(t("bank.guardadas_n", { n: (r.guardadas || []).length }))}` }));
+      } catch (e) { toast(e.message, "err"); todasAlBanco.disabled = false; }
+    };
 
     const nuevo = $(".databank-wrap", bankBox);
     if (nuevo && (x || y)) { nuevo.scrollLeft = x; nuevo.scrollTop = y; }

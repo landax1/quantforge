@@ -472,6 +472,8 @@ const STR = {
   "run.open_full": ["Open the full analysis", "Ver análisis completo"],
   "run.history": ["How the best score improved", "Evolución del mejor score"],
   "run.history_hint": ["how the search got better over time", "cómo fue mejorando la búsqueda"],
+  "bank.guardar_todas": ["Save all {n} to My strategies", "Guardar las {n} en Mis estrategias"],
+  "bank.guardadas_n": ["{n} saved to My strategies", "{n} guardadas en Mis estrategias"],
   "run.bank_hint": [
     "{n} strategies ranked by score (robustness, not profit) · click any of them for the full analysis",
     "{n} estrategias ordenadas por score (robustez, no rentabilidad) · clic en cualquiera para analizarla a fondo"],
@@ -1932,6 +1934,8 @@ const STR = {
   "etapa.descartadas_sub": ["{n} retired with a reason", "{n} retiradas con motivo"],
   "etapa.descartadas_sub0": ["did not hold the test", "no pasaron la prueba"],
   "etapa.todas": ["Show all {n}", "Ver todas · {n}"],
+  "etapa.todas_corto": ["all", "todas"],
+  "sel.rapida": ["Select:", "Seleccionar:"],
   "etapa.vacia": ["Nothing in this stage yet.", "Todavía no hay ninguna en esta etapa."],
   "saved.probar_faltan": ["Test the {n} missing", "Probar las {n} que faltan"],
   "sel.probar": ["Test {n}", "Probar {n}"],
