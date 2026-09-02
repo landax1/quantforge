@@ -499,7 +499,7 @@ function explicacionHTML(id, pasos, opciones = {}) {
   const ciclico = !!opciones.ciclico;
   return `
   <div class="expl ${st.abierta ? "abierta" : ""} ${ciclico ? "ciclica" : ""}" id="expl-${esc(id)}" data-expl="${esc(id)}">
-    <button class="linkbtn expl-abrir" data-expl-abrir>${icono("seguir", "ico-sm")} ${esc(t("expl.ver"))}</button>
+    ${opciones.fija ? "" : `<button class="linkbtn expl-abrir" data-expl-abrir>${icono("seguir", "ico-sm")} ${esc(t("expl.ver"))}</button>`}
     <div class="expl-cuerpo">
       <div class="expl-flujo">
         ${pasos.map((p, i) => `
@@ -511,7 +511,7 @@ function explicacionHTML(id, pasos, opciones = {}) {
       </div>
       <div class="expl-texto" aria-live="polite">
         <b>${esc(t(pasos[st.paso].titulo))}</b>
-        <p>${t(pasos[st.paso].texto)}</p>
+        <p>${t(pasos[st.paso].texto, pasos[st.paso].params || {})}</p>
       </div>
       <div class="expl-pie">
         <button class="btn small" data-expl-play>${st.andando ? esc(t("expl.pausar")) : esc(t("expl.reproducir"))}</button>
@@ -544,7 +544,7 @@ function atarExplicacion(root, id, pasos, opciones = {}) {
     const texto = $(".expl-texto", caja);
     texto.classList.remove("cambia"); void texto.offsetWidth; texto.classList.add("cambia");
     $("b", texto).textContent = t(pasos[st.paso].titulo);
-    $("p", texto).innerHTML = t(pasos[st.paso].texto);
+    $("p", texto).innerHTML = t(pasos[st.paso].texto, pasos[st.paso].params || {});
     $(".expl-prog", caja).textContent = `${st.paso + 1} / ${pasos.length}`;
     $("[data-expl-play]", caja).textContent = st.andando ? t("expl.pausar") : t("expl.reproducir");
     moverPunto();
@@ -563,7 +563,8 @@ function atarExplicacion(root, id, pasos, opciones = {}) {
     pintar();
   };
 
-  $("[data-expl-abrir]", caja).onclick = () => {
+  const abrir = $("[data-expl-abrir]", caja);
+  if (abrir) abrir.onclick = () => {
     st.abierta = !st.abierta;
     caja.classList.toggle("abierta", st.abierta);
     if (st.abierta) { st.paso = 0; andar(); } else parar();
@@ -580,6 +581,24 @@ const PASOS_PILOTO = () => [
   { ico: "seguir", titulo: "expl.pil3",  texto: "expl.pil3_t" },
   { ico: "sube",   titulo: "expl.pil4",  texto: "expl.pil4_t" },
   { ico: "baja",   titulo: "expl.pil5",  texto: "expl.pil5_t" },
+];
+
+/* Los pasos de una búsqueda: lo que le pasa a cada candidata. Reusa los
+   textos que ya explicaban esto en cuatro columnas quietas. */
+const PASOS_MINAR = () => [
+  { ico: "idea",   titulo: "idle.s1", texto: "idle.s1_sub" },
+  { ico: "pico",   titulo: "idle.s2", texto: "idle.s2_sub" },
+  { ico: "tilde",  titulo: "idle.s3", texto: "idle.s3_sub" },
+  { ico: "seguir", titulo: "idle.s4", texto: "idle.s4_sub", params: { goal: S.cfg.goal } },
+];
+
+/* Los pasos de la prueba: cómo se corta la historia y qué se le pregunta. */
+const PASOS_PRUEBA = () => [
+  { ico: "base",   titulo: "expl.pr1", texto: "expl.pr1_t" },
+  { ico: "idea",   titulo: "expl.pr2", texto: "expl.pr2_t" },
+  { ico: "tilde",  titulo: "expl.pr3", texto: "expl.pr3_t" },
+  { ico: "baja",   titulo: "expl.pr4", texto: "expl.pr4_t" },
+  { ico: "estrella", titulo: "expl.pr5", texto: "expl.pr5_t" },
 ];
 
 /* Los pasos de la entrada: el camino entero de una estrategia. */
@@ -6466,17 +6485,13 @@ function renderIdle() {
         ${on.length ? "" : `<p class="idle-warn">${t("idle.no_filters")}</p>`}
       </div>
     </div>
-    <div class="guide-steps">
-      <div class="gstep"><span class="gnum">1</span><b>${esc(t("idle.s1"))}</b>
-        <p>${esc(t("idle.s1_sub"))}</p></div>
-      <div class="gstep"><span class="gnum">2</span><b>${esc(t("idle.s2"))}</b>
-        <p>${esc(t("idle.s2_sub"))}</p></div>
-      <div class="gstep"><span class="gnum">3</span><b>${esc(t("idle.s3"))}</b>
-        <p>${esc(t("idle.s3_sub"))}</p></div>
-      <div class="gstep"><span class="gnum">4</span><b>${esc(t("idle.s4"))}</b>
-        <p>${esc(t("idle.s4_sub", { goal: S.cfg.goal }))}</p></div>
-    </div>
+    ${/* LAS CUATRO COLUMNAS QUIETAS PASAN A SER UN RECORRIDO. Un diagrama
+          que se lee a medias, con un punto que avanza se sigue entero: la
+          vista va a donde está pasando algo. Nace abierto, se reproduce
+          al apretar, y da la vuelta porque la búsqueda también la da. */ ""}
+    ${explicacionHTML("minar", PASOS_MINAR(), { abierta: true, fija: true, ciclico: true })}
   </div>${panelUltima()}`;
+  atarExplicacion(live, "minar", PASOS_MINAR(), { ciclico: true });
   if (bankBox) bankBox.innerHTML = "";
   // arranca una busqueda nueva: lo que se vio en la anterior no cuenta
   S.vistasBanco = null;
@@ -7486,6 +7501,7 @@ function panelPrueba(ctx) {
         <p class="help-note">${esc(t("wf.untested_sub"))}</p>
       </div>
       <button class="btn" id="insp-probar">${esc(t("wf.test_it"))}</button>
+      ${explicacionHTML("prueba", PASOS_PRUEBA())}
     </section>`;
   }
 
@@ -7517,6 +7533,7 @@ function panelPrueba(ctx) {
     </div>
 
     ${dibujosPrueba(v)}
+    ${explicacionHTML("prueba", PASOS_PRUEBA())}
 
     <p class="v-pie">${t("wf.tested_on", {
       desde: esc(v.periodo?.from || "—"), hasta: esc(v.periodo?.to || "—"),
@@ -7938,6 +7955,7 @@ function renderInspector(box, row, res, ctx) {
 
   mostrarResultado(res);
   dibujarPrueba(box, ctx && ctx.validacion);
+  atarExplicacion(box, "prueba", PASOS_PRUEBA());
   cablearMuestras(box, row, ctx, mostrarResultado);
 
   cablearNota(box, ctx);
