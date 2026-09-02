@@ -2907,7 +2907,9 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 .insp-guardada {
   display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px;
   color: var(--pos); font-size: 13px; font-weight: 600;
+  border-radius: var(--r-sm); background: var(--pos-soft); border: 1px solid var(--pos-line);
 }
+.insp-guardada.recien { animation: chip-pop .4s var(--ease) both; }
 .fld-fijo { display: block; padding: 8px 0; font-size: 13px; color: var(--text-2); }
 /* el reparto entre lo que la búsqueda mira y lo que guarda para después */
 .oos-barra { display: flex; gap: 2px; margin-top: 12px; height: 26px; border-radius: var(--r-sm); overflow: hidden; }

@@ -1790,7 +1790,13 @@ function abrirGuiaBingx(nombreEstrategia, simbolo) {
   document.body.appendChild(host);
   const close = () => host.remove();
   $(".sheet-close", host).onclick = close;
-  $("#guia-operar", host).onclick = () => { close(); navigate("operar", "claves"); };
+  /* CIERRA TODO LO QUE HAY ENCIMA, no sólo la guía: abajo suele estar la
+     ficha de la estrategia, y con ella abierta "Ir a Operar" parecía volver
+     a la pantalla anterior en vez de ir a Operar (2 de septiembre). */
+  $("#guia-operar", host).onclick = () => {
+    $$(".overlay").forEach(o => o.remove());
+    navigate("operar", "claves");
+  };
   host.onclick = (e) => { if (e.target === host) close(); };
   document.addEventListener("keydown", function esckey(e) {
     if (e.key === "Escape") { close(); document.removeEventListener("keydown", esckey); }
@@ -8118,6 +8124,14 @@ function renderInspector(box, row, res, ctx) {
       toast(t("saved.added", { nombre: row.name }), "ok");
       if (guardada && guardada.id) RECIEN_GUARDADAS.add(guardada.id);
       refreshSavedCount();
+      /* EL BOTÓN SE CONVIERTE EN "GUARDADA". Un aviso abajo a la derecha se
+         va; el botón pintado se queda, y es lo que dice de un vistazo que
+         esta estrategia ya está en Mis estrategias. */
+      const chip = document.createElement("span");
+      chip.className = "insp-guardada recien";
+      chip.innerHTML = `${icono("tilde", "ico-sm")} ${esc(t("insp.ya_guardada"))}`;
+      btn.replaceWith(chip);
+      return;
     } catch (e) { toast(e.message, "err"); }
     btn.disabled = false;
   };
