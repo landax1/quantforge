@@ -6080,6 +6080,9 @@ const vistaBuscar = async (main) => {
   });
 
   function updateNotes() {
+    // el resumen del panel de espera sigue a lo elegido
+    const idlePlan = $("#idle-plan");
+    if (idlePlan && !S.mining) idlePlan.innerHTML = textoPlanIdle();
     const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
     const dsNote = $("#m-dsnote");
     if (ds && dsNote) {
@@ -6534,18 +6537,16 @@ function pintarPausa(on) {
 
 /* La columna de resultados antes de la primera corrida: explica el flujo y
    confirma qué se va a buscar, en vez de mostrar un hueco vacío. */
-function renderIdle() {
-  const live = $("#m-live"), bankBox = $("#m-bank");
-  if (!live) return;
+/* EL RESUMEN DE LO QUE SE VA A BUSCAR, en una función aparte porque se
+   vuelve a escribir con cada cambio. Antes se escribía una sola vez al
+   dibujar el panel: se cambiaba la temporalidad a 1d y el texto seguía
+   diciendo "en velas de 1h" (2 de septiembre). Un resumen que no dice lo
+   que está elegido es peor que ninguno. */
+function textoPlanIdle() {
   const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
   const on = CRITERIA().filter(cr => S.cfg.critOn[cr.key]);
   const ses = sesionesElegidas();
-  live.innerHTML = `
-  <div class="idle-card">
-    <div class="idle-ready">
-      <span class="idle-ic">${icono("pico","ico-xl")}</span>
-      <div>
-        <h2>${esc(t("idle.title"))}</h2>
+  return `<h2>${esc(t("idle.title"))}</h2>
         <p>${t("idle.plan", {
           goal: S.cfg.goal,
           mercado: esc(ds ? ds.name.replace(/ M1.*/, "") : "—"),
@@ -6565,7 +6566,17 @@ function renderIdle() {
             ? `<p class="idle-ses">${icono("info","ico-sm")} ${esc(t("idle.session_many", { n: ses.length }))}</p>`
             : ""}
         ${on.length ? "" : `<p class="idle-warn">${t("idle.no_filters")}</p>`}
-      </div>
+`;
+}
+
+function renderIdle() {
+  const live = $("#m-live"), bankBox = $("#m-bank");
+  if (!live) return;
+  live.innerHTML = `
+  <div class="idle-card">
+    <div class="idle-ready">
+      <span class="idle-ic">${icono("pico","ico-xl")}</span>
+      <div id="idle-plan">${textoPlanIdle()}</div>
     </div>
     ${/* LAS CUATRO COLUMNAS QUIETAS PASAN A SER UN RECORRIDO. Un diagrama
           que se lee a medias, con un punto que avanza se sigue entero: la
