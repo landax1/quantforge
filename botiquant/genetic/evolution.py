@@ -125,7 +125,7 @@ def evolve(
         if hit is not None:
             return hit
         spec = build_spec(genome, direction=direction, risk=risk)
-        res = run_backtest(df, spec, settings, cache=cache)
+        res = run_backtest(df, spec, settings, cache=cache, con_marcas=False)
         m = res.metrics
         score = float(fitness(m, fitness_mode)) if m["trades"] >= min_trades else -1e9
         eval_cache[key] = (score, m)

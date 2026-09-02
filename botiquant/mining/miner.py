@@ -359,7 +359,7 @@ def mine(
         profit factor y no sobre la ganancia porque no depende de cuántos años
         tenga cada tramo.
         """
-        res_oos = run_backtest(df_oos, spec, settings, cache=cache_oos)
+        res_oos = run_backtest(df_oos, spec, settings, cache=cache_oos, con_marcas=False)
         mo = res_oos.metrics
         pf_is = None
         return {
@@ -658,7 +658,7 @@ def mine(
         """Backtest one genome, update every counter, return its fitness."""
         nonlocal tested, passed, too_few_trades
         spec = build_spec(genome, direction=direction, risk=risk)
-        res = run_backtest(df, spec, settings, cache=cache)
+        res = run_backtest(df, spec, settings, cache=cache, con_marcas=False)
         m = res.metrics
         tested += 1
         score = -1e9

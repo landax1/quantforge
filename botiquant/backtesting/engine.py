@@ -53,8 +53,15 @@ def run_backtest(
     spec: StrategySpec,
     settings: BacktestSettings | None = None,
     cache: IndicatorCache | None = None,
+    con_marcas: bool = True,
 ) -> BacktestResult:
-    """Run one backtest of ``spec`` over ``df`` (UTC DatetimeIndex OHLCV)."""
+    """Run one backtest of ``spec`` over ``df`` (UTC DatetimeIndex OHLCV).
+
+    ``con_marcas=False`` deja la lista de marcas de tiempo vacía. Es para
+    quien corre miles de backtests y sólo mira métricas —el minero, la
+    validación—: convertir 35.000 marcas a texto costaba más que el
+    backtest entero, y el minero las tiraba sin mirarlas.
+    """
     settings = settings or BacktestSettings()
     ctx = EvalContext(df, cache)
     n = ctx.n
@@ -273,7 +280,12 @@ def run_backtest(
         _close_trade(n - 1, c[n - 1], "end")
         equity[n - 1] = cash
 
-    timestamps = [str(t) for t in df.index]
+    # EL TEXTO DE LAS MARCAS ES LO MÁS CARO DEL BACKTEST. Medido sobre
+    # ADAUSDT a una hora (35.065 velas): `str()` una por una eran 3,5 s de
+    # cada 21 en el perfil, más de lo que tarda el bucle de barras. La
+    # conversión vectorizada da el mismo texto en una fracción, y el minero
+    # ni siquiera la pide.
+    timestamps = df.index.astype(str).tolist() if con_marcas else []
     eq_series = pd.Series(equity, index=df.index)
     metrics = compute_metrics(eq_series, trades, settings.initial_capital)
     monthly = _monthly_returns(eq_series, settings.initial_capital)

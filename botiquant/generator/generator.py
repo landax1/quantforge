@@ -285,7 +285,7 @@ def generate_strategies(
     total = len(combos)
     for i, genome in enumerate(combos):
         spec = build_spec(genome, direction=direction, risk=risk)
-        res = run_backtest(df, spec, settings, cache=cache)
+        res = run_backtest(df, spec, settings, cache=cache, con_marcas=False)
         m = res.metrics
         score = fitness(m, fitness_mode) if m["trades"] >= min_trades else -1e9
         results.append({
