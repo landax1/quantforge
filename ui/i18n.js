@@ -415,6 +415,7 @@ const STR = {
   /* -------------------------------------------- corrida en curso y resultado */
   "run.in_bank": ["in the databank", "en el databank"],
   "run.tested": ["Tested", "Probadas"],
+  "run.pie": ["{n} tested", "{n} probadas"],
   "run.done": ["Search finished", "Búsqueda terminada"],
   "run.searching": ["Searching for strategies", "Buscando estrategias"],
   "run.trying": ["trying candidate #{n}", "probando candidata #{n}"],

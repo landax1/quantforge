@@ -2992,9 +2992,13 @@ const vistaClaves = async (main, por) => {
         <li><b>${esc(t("ex.regla3_t"))}</b><span>${esc(t("ex.regla3"))}</span></li>
       </ul>
     </div>
+    ${/* BINANCE PRIMERO. Es el único exchange con demo que el bot sabe
+          encender y donde todo esto se prueba; alguien que eligió "cripto"
+          llegaba acá y lo primero que veía eran dos tarjetas de BingX, con
+          la de Binance debajo del pliegue. */ ""}
+    ${tarjeta("practica", "binance", "ex.bn", enlacesBinance)}
     ${tarjeta("practica")}
-    ${tarjeta("real")}
-    ${tarjeta("practica", "binance", "ex.bn", enlacesBinance)}`;
+    ${tarjeta("real")}`;
 
   const campo = (casa, entorno, cual) =>
     $(`[data-ex="${cual}"][data-casa="${casa}"][data-entorno="${entorno}"]`, main);
@@ -6252,8 +6256,8 @@ function pintarCorrida(snap, finished) {
   caja.innerHTML = `
     <div class="corrida-rot">${esc(t("nav.active_run"))}</div>
     <div class="corrida-cifra">${meta ? `${hechas}<u>/${meta}</u>` : fmtInt(snap.tested || 0)}</div>
-    <div class="corrida-pie">${meta ? "en el databank" : "probadas"} ·
-      ${fmtInt(snap.tested || 0)} probadas</div>
+    <div class="corrida-pie">${meta ? esc(t("run.in_bank")) + " · " : ""}${
+      esc(t("run.pie", { n: fmtInt(snap.tested || 0) }))}</div>
     ${meta ? `<div class="corrida-barra"><i style="width:${(frac * 100).toFixed(1)}%"></i></div>` : ""}`;
 }
 
