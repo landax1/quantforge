@@ -2342,6 +2342,10 @@ function atarCiclo(main, c) {
 
 function panelBot(e, hayClave) {
   const on = e.encendido;
+  const hc = hayClave || {};
+  const casaInicial = ((hc.binance || {}).practica
+                       && !((hc.bingx || {}).practica || (hc.bingx || {}).real))
+    ? "binance" : "bingx";
   /* SOLO las estrategias minadas sobre un perpetuo. Un exchange de cripto no
      opera el S&P ni el oro: encender una de esas mandaria un simbolo que
      BingX no conoce, y el error llegaria recien al intentar operar. Se filtra
@@ -2420,9 +2424,14 @@ function panelBot(e, hayClave) {
            BTC-USDT y Binance BTCUSDT, y adivinar por el guion convertiria un
            error de tipeo en una orden al exchange equivocado. -->
       <label class="fld"><span>${esc(t("bot.casa"))}</span>
+        ${/* ARRANCA EN LA CASA QUE TIENE CLAVE. Con la única clave cargada
+              en Binance, el desplegable abría en BingX y el modo decía "sin
+              clave": el usuario tenía que adivinar que había que cambiar de
+              casa antes de elegir el modo. Si hay clave en las dos, o en
+              ninguna, queda BingX como antes. */ ""}
         <select id="bot-casa">
-          <option value="bingx">${esc(t("bot.casa_bingx"))}</option>
-          <option value="binance">${esc(t("bot.casa_binance"))}</option>
+          <option value="bingx"${casaInicial === "bingx" ? " selected" : ""}>${esc(t("bot.casa_bingx"))}</option>
+          <option value="binance"${casaInicial === "binance" ? " selected" : ""}>${esc(t("bot.casa_binance"))}</option>
         </select></label>
       <label class="fld"><span>${esc(t("bot.modo"))}</span>
         <select id="bot-modo">
@@ -4417,7 +4426,7 @@ function pintarBanco() {
         const m = f.metrics || {}, c = porId[f.corrida_id] || {};
         return `<tr class="clickable ${b.sel.has(f.banco_id) ? "tildada" : ""}" data-fila="${esc(f.banco_id)}">
           <td class="tick"><input type="checkbox" data-tick="${esc(f.banco_id)}"
-            ${b.sel.has(f.banco_id) ? "checked" : ""} aria-label="Seleccionar ${esc(f.name)}"></td>
+            ${b.sel.has(f.banco_id) ? "checked" : ""} aria-label="${esc(t("ui.select_one", { n: f.name }))}"></td>
           <td><span class="strat-name">${esc(f.name)}</span>${sesionTag(f)}
               <div class="strat-genes">${esc(etiquetaGenes(f))}</div></td>
           ${todas

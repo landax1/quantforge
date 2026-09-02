@@ -669,8 +669,8 @@ const STR = {
   "bank.run_deleted": ["Run deleted", "Corrida borrada"],
   "bank.confirm_remove": ["Remove {n} strategies from the databank?",
                           "¿Quitar {n} estrategias del banco?"],
-  "bank.copied": ["{n} strategies in My strategies — they also stay in the databank",
-                  "{n} estrategias en Mis estrategias — siguen también en el banco"],
+  "bank.copied": ["Saved to My strategies: {n} — they also stay in the databank",
+                  "Guardadas en Mis estrategias: {n} — siguen también en el banco"],
   /* --------------------------------------- las reglas, en palabras
      El operador de una condicion se lee como parte de una frase —"EMA(20)
      cruza arriba de EMA(60)"— asi que se traduce. El indicador y sus
@@ -1917,6 +1917,7 @@ const STR = {
   "ui.save": ["Save", "Guardar"],
   "ui.delete": ["Delete", "Borrar"],
   "ui.select_all": ["Select all", "Seleccionar todas"],
+  "ui.select_one": ["Select {n}", "Seleccionar {n}"],
   "ui.clear": ["Clear selection", "Limpiar selección"],
   "ui.loading": ["Loading…", "Cargando…"],
   "ui.none": ["Nothing to show", "Nada para mostrar"],
