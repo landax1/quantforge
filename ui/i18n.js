@@ -67,6 +67,8 @@ const STR = {
               "cada una configura la búsqueda entera, no sólo los filtros"],
   "rec.puesta": ["Set up for: {nombre}. You can still change anything below.",
                  "Configurado para: {nombre}. Podés cambiar lo que quieras abajo."],
+  "rec.congelada": ["The search is running with its own settings. Stop it to pick another recipe.",
+                   "La búsqueda corre con su propia configuración. Detenela para elegir otra receta."],
 
   "rec.fondeo": ["Pass a funded-account challenge", "Pasar un desafío de fondeo"],
   /* Comparativa y no absoluta, a propósito por dos razones.
@@ -416,6 +418,7 @@ const STR = {
   "run.in_bank": ["in the databank", "en el databank"],
   "run.tested": ["Tested", "Probadas"],
   "run.pie": ["{n} tested", "{n} probadas"],
+  "run.progreso": ["{k}/{meta} in the databank · {n} tested", "{k}/{meta} en el banco · {n} probadas"],
   "run.done": ["Search finished", "Búsqueda terminada"],
   "run.searching": ["Searching for strategies", "Buscando estrategias"],
   "run.trying": ["trying candidate #{n}", "probando candidata #{n}"],

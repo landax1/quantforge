@@ -5722,6 +5722,12 @@ const vistaBuscar = async (main) => {
   });
 
   $$("[data-receta]", main).forEach(b => b.onclick = () => {
+    /* CON UNA BÚSQUEDA CORRIENDO, LA RECETA NO SE CAMBIA. El panel dice que
+       la configuración está congelada mientras busca, pero las tarjetas de
+       arriba seguían aplicándose: la receta nueva se pintaba como elegida
+       mientras la búsqueda seguía con la anterior, y el resumen de al lado
+       decía una cosa y el progreso otra. Se dice, y no se hace. */
+    if (S.mining) { toast(t("rec.congelada"), "err"); return; }
     const r = RECETAS().find(x => x.id === b.dataset.receta);
     if (r) aplicarReceta(r);
   });
@@ -5822,7 +5828,14 @@ const vistaBuscar = async (main) => {
            encontrar cosas nuevas — con la misma configuración devolvería
            siempre lo mismo, que es lo contrario de lo que hace. */
         SEMILLA_REINTENTO = null;
-        setProgress("m-prog", j);
+        /* LA LÍNEA DE PROGRESO SE ESCRIBE ACÁ, NO EN EL SERVIDOR. El mensaje
+           del trabajo viene en español ("3/25 estrategias en el databank ·
+           130 probadas") y se mostraba tal cual con la interfaz en inglés.
+           Los números vienen aparte, así que el texto se arma en el idioma
+           de la pantalla; sin números todavía, queda el mensaje del servidor. */
+        setProgress("m-prog", j.partial ? { progress: j.progress, message: t("run.progreso", {
+          k: Math.min((j.partial.databank || []).length, j.partial.kept ?? Infinity),
+          meta: j.partial.target_keep ?? cfg.goal, n: fmtInt(j.partial.tested || 0) }) } : j);
         // el botón se sincroniza con el servidor y no con el clic: si el pedido
         // de pausa se perdió, la pantalla no puede seguir diciendo que pausó
         pintarPausa(!!j.paused);
