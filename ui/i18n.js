@@ -228,6 +228,8 @@ const STR = {
   "data.library": ["Instrument library", "Biblioteca de instrumentos"],
   "data.library_hint": ["real 1-minute data from Dukascopy, in server time (NY+7)",
                         "M1 real de Dukascopy, en hora del servidor (NY+7)"],
+  "data.library_hint_cripto": ["1-hour candles from Binance with their funding, in UTC",
+                               "velas de 1 hora de Binance con su funding, en UTC"],
   "data.search_this": ["Search this one", "Minar este"],
   "data.history_since": ["1-minute history since {fecha}", "Historial M1 desde {fecha}"],
   "data.unavailable": ["Not available for this instrument", "No disponible en este instrumento"],

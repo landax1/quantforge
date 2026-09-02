@@ -556,8 +556,11 @@ const api = {
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-async function runJob(url, payload, onTick, onJobId) {
-  const { job_id } = await api.post(url, payload);
+async function runJob(url, payload, onTick, onJobId, reanudar = null) {
+  /* `reanudar` es el id de un trabajo que ya corre en el servidor: no se
+     manda nada, sólo se lo vuelve a seguir. Es lo que permite que recargar
+     la página no pierda de vista una búsqueda en curso. */
+  const job_id = reanudar || (await api.post(url, payload)).job_id;
   if (onJobId) onJobId(job_id);
   for (;;) {
     const j = await api.get(`/api/jobs/${job_id}`);
@@ -3282,7 +3285,7 @@ PAGES.data = async (main) => {
        no agrupara ya. Es el caso mas claro de tarjeta dentro de tarjeta que
        tenia la aplicacion. -->
   <div class="card llana">
-    <h2>${esc(t("data.library"))} <span class="hint">${esc(t("data.library_hint"))}</span></h2>
+    <h2>${esc(t("data.library"))} <span class="hint">${esc(t(S.mundo === "exchange" ? "data.library_hint_cripto" : "data.library_hint"))}</span></h2>
     ${cards}
     ${progressHtml("dl-prog")}
   </div>
@@ -5774,15 +5777,21 @@ const vistaBuscar = async (main) => {
     btn.disabled = false;
   };
 
-  $("#m-run").onclick = async () => {
+  /* LA BÚSQUEDA SOBREVIVE A UNA RECARGA. El trabajo corre en el servidor;
+     lo que se perdía era el hilo desde la pantalla: al recargar, "lista
+     para buscar" con la búsqueda viva detrás y sin forma de pausarla ni
+     detenerla. El id del trabajo se guarda al arrancar y, al abrir Minado,
+     si ese trabajo sigue corriendo se lo vuelve a seguir con la misma
+     pantalla que si nunca se hubiera ido. */
+  const correrMinado = async (reanudar = null) => {
     // se normaliza acá también: si alguien toca "Minar" con el cursor todavía
     // dentro de un campo, el `change` nunca llegó a saltar y la corrida saldría
     // con un valor a medio escribir o por debajo del piso
-    harvestCfg(main, { normalizar: true });
+    if (!reanudar) harvestCfg(main, { normalizar: true });
     const checked = (sel) => $$(`${sel} .blockitem input`, main)
       .filter(cb => cb.checked).map(cb => cb.dataset.tid);
     const drivers = checked("#m-drivers");
-    if (!drivers.length) { toast(t("mine.need_trigger"), "err"); return; }
+    if (!reanudar && !drivers.length) { toast(t("mine.need_trigger"), "err"); return; }
     S.mining = true; S.mineResult = null; S.mineLive = null;
     pintarEstadoMinado(true);
     pintarPausa(false);
@@ -5840,7 +5849,10 @@ const vistaBuscar = async (main) => {
         // de pausa se perdió, la pantalla no puede seguir diciendo que pausó
         pintarPausa(!!j.paused);
         if (j.partial) { S.mineLive = j.partial; renderMining(j.partial, false); }
-      }, id => { S.mineJobId = id; });
+      }, id => {
+        S.mineJobId = id;
+        try { localStorage.setItem("qf.mineJob", id); } catch (e) { /* modo privado */ }
+      }, reanudar);
       S.mineResult = result;
       hideProgress("m-prog");
       renderMining(result, true);
@@ -5872,8 +5884,20 @@ const vistaBuscar = async (main) => {
       renderIdle();
     }
     S.mining = false; S.mineJobId = null; S.minePaused = false;
+    try { localStorage.removeItem("qf.mineJob"); } catch (e) { /* modo privado */ }
     pintarEstadoMinado(false);
   };
+  $("#m-run").onclick = () => correrMinado(null);
+
+  // Si quedó una búsqueda corriendo de antes de recargar, se la sigue.
+  let pendiente = null;
+  try { pendiente = localStorage.getItem("qf.mineJob"); } catch (e) { /* modo privado */ }
+  if (pendiente && !S.mining) {
+    api.get(`/api/jobs/${pendiente}`).then(j => {
+      if (j && j.status === "running") correrMinado(pendiente);
+      else { try { localStorage.removeItem("qf.mineJob"); } catch (e) { /* nada */ } }
+    }).catch(() => { try { localStorage.removeItem("qf.mineJob"); } catch (e) { /* nada */ } });
+  }
 };
 
 /* El botón de pausa dice qué va a pasar si lo apretás, no en qué estado está:
