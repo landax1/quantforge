@@ -4235,7 +4235,7 @@ PAGES.saved = async (main) => {
         m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
       <td class="num ${nivelDD(m.max_drawdown_pct, riesgoDeCtx(ctx))}">${
         m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
-      ${PRUEBAS ? `<td class="${RECIEN_PROBADAS.delete(s.id) ? "chip-cambia" : ""}">${chipEtapa(s)}</td>` : ""}
+      ${PRUEBAS ? `<td class="celda-estado ${RECIEN_PROBADAS.delete(s.id) ? "chip-cambia" : ""}">${chipEtapa(s)}</td>` : ""}
       <td class="num" style="white-space:nowrap">
         ${PRUEBAS && !estaRetirada(s) ? `<button class="btn ghost small" data-probar="${esc(s.id)}">${
           esc(t(estadoDe(s) === "sin_probar" ? "wf.test_it" : "wf.retest"))}</button>` : ""}
@@ -4465,15 +4465,14 @@ async function probarVarias(lista, main) {
   toast(t("sel.en_cola", { n: lista.length }), "ok");
   for (const [i, s] of lista.entries()) {
     const boton = $(`[data-probar="${s.id}"]`, document);
+    let avance = () => {};
     if (boton) {
       boton.disabled = true;
-      boton.innerHTML = `<span class="spinner"></span>${i + 1}/${lista.length}`;
+      boton.innerHTML = `${i + 1}/${lista.length}`;
+      avance = barraPrueba(boton.closest("tr")?.querySelector(".celda-estado") || null, boton);
     }
     try {
-      const r = await probarEstrategia(s.id, (j) => {
-        const b = $(`[data-probar="${s.id}"]`, document);
-        if (b) b.innerHTML = `<span class="spinner"></span>${Math.round((j.progress || 0) * 100)}%`;
-      });
+      const r = await probarEstrategia(s.id, avance);
       // el trabajo devuelve el veredicto arriba o bajo `validacion`, según
       // el camino; se acepta cualquiera de los dos
       const v = (r && (r.validacion || r)) || {};
@@ -4496,15 +4495,33 @@ async function probarVarias(lista, main) {
 /* Corre la prueba desde un botón cualquiera y deja el botón contando.
    El walk-forward reajusta la estrategia en cada tramo, así que tarda: sin
    avisar del progreso se ve igual que un botón roto. */
+/* LA PRUEBA SE VE AVANZAR: una barra que se llena y "Probando…" con los
+   puntos moviéndose, en lugar de un circulito que gira igual al segundo
+   que al minuto tres. Va en la celda de estado de la fila —donde después
+   aparece el veredicto— o al lado del botón, en la ficha. */
+function barraPrueba(anfitrion, boton) {
+  const barra = document.createElement("div");
+  barra.className = "prueba-progreso";
+  barra.innerHTML = `<span class="pp-txt">${esc(t("wf.testing"))}<i class="puntos" aria-hidden="true"></i></span>
+    <div class="pp-bar"><i style="width:2%"></i></div><span class="pp-det"></span>`;
+  if (anfitrion) { anfitrion.innerHTML = ""; anfitrion.appendChild(barra); }
+  else boton.insertAdjacentElement("afterend", barra);
+  return (j) => {
+    const pct = Math.max(2, Math.round((j.progress || 0) * 100));
+    $(".pp-bar i", barra).style.width = pct + "%";
+    $(".pp-det", barra).textContent = `${pct}%` + (j.message ? ` · ${j.message}` : "");
+  };
+}
+
 async function correrPrueba(s, boton) {
   const original = boton.innerHTML;
   boton.disabled = true;
-  boton.innerHTML = `<span class="spinner"></span>${esc(t("wf.testing"))}`;
+  boton.innerHTML = esc(t("wf.testing"));
+  const celda = boton.closest("tr")?.querySelector(".celda-estado") || null;
+  const chipOriginal = celda ? celda.innerHTML : "";
+  const avance = barraPrueba(celda, boton);
   try {
-    await probarEstrategia(s.id, (j) => {
-      const pct = Math.round((j.progress || 0) * 100);
-      boton.innerHTML = `<span class="spinner"></span>${pct}%`;
-    });
+    await probarEstrategia(s.id, avance);
     toast(t("wf.done", { nombre: s.name }), "ok");
     RECIEN_PROBADAS.add(s.id);
     await navigate("saved");
@@ -4512,6 +4529,8 @@ async function correrPrueba(s, boton) {
     if (!pedirCuenta(e.status)) toast(e.message, "err");
     boton.disabled = false;
     boton.innerHTML = original;
+    if (celda) celda.innerHTML = chipOriginal;
+    else $(".prueba-progreso", boton.parentElement)?.remove();
   }
 }
 

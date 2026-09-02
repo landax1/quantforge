@@ -2437,6 +2437,17 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 .veredicto .tramo:nth-child(4) .tr-out { animation: llena .35s var(--ease) both .41s; }
 .veredicto .v-cabeza > div > b { display: inline-block; animation: aparece .3s var(--ease) both .5s; }
 
+/* la prueba se ve avanzar: barra que se llena y puntos que caminan */
+.prueba-progreso { display: grid; gap: 4px; min-width: 150px; }
+.pp-txt { font-size: 12px; font-weight: 600; color: var(--accent); }
+.pp-txt .puntos::after { content: ""; display: inline-block; width: 1.2em; text-align: left; animation: puntos 1.2s steps(4, end) infinite; }
+@keyframes puntos { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+.pp-bar { height: 6px; border-radius: 4px; background: var(--bg-soft); overflow: hidden; }
+.pp-bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; transition: width .5s var(--ease); }
+.pp-det { font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.veredicto .prueba-progreso, .prueba-invita .prueba-progreso { flex-basis: 100%; margin-top: 8px; }
+@media (prefers-reduced-motion: reduce) { .pp-txt .puntos::after { animation: none; content: "…"; } }
+
 /* una fila recién guardada llega a Mis estrategias como llega al banco */
 .guardadas tr.llegando > td { animation: llega .55s var(--ease) both; }
 /* un chip que acaba de cambiar de etapa */
