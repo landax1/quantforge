@@ -36,10 +36,6 @@
     <!-- los rótulos los pone app.js: dependen del idioma elegido -->
     <div class="nav-rotulo" id="nav-rotulo"></div>
     <nav id="nav">
-      <button data-page="data">
-        <span class="punto" aria-hidden="true"></span>
-        <span data-i18n="nav.data"></span>
-      </button>
       <!-- Los tres pasos, numerados y en el orden en que se usan.
            Antes había siete entradas sin orden, y tres de ellas —Monte Carlo,
            Walk-forward, Portafolio— eran la MISMA pantalla con otro verbo: el
@@ -47,12 +43,12 @@
            los que ir: son cosas que se le hacen a una estrategia, y ahora
            viven dentro de ella. -->
       <button data-page="mining">
-        <span class="punto" aria-hidden="true"></span>
+        <span class="nav-num" aria-hidden="true">1</span>
         <span data-i18n="nav.mining"></span>
         <span class="nav-count" id="banco-count"></span>
       </button>
       <button data-page="saved">
-        <span class="punto" aria-hidden="true"></span>
+        <span class="nav-num" aria-hidden="true">2</span>
         <span data-i18n="nav.saved"></span>
         <span class="nav-count" id="saved-count"></span>
       </button>
@@ -62,10 +58,22 @@
            es la segunda vista de adentro. Un menu tiene que leerse como el
            orden en que se usan las cosas. -->
       <button data-page="operar" id="nav-operar">
-        <span class="punto" aria-hidden="true"></span>
+        <span class="nav-num" aria-hidden="true">3</span>
         <span data-i18n="nav.operar"></span>
       </button>
-      <button data-page="consejos">
+      <!-- LO QUE NO ES UN PASO DEL CAMINO va abajo, como ajuste: los mercados
+           se eligen dentro de Buscar, la cuenta se conecta una vez, y
+           Aprender está siempre a mano sin estar en el medio. -->
+      <div class="nav-sep" data-i18n="nav.ajustes"></div>
+      <button data-page="data" class="nav-ajuste">
+        <span class="punto" aria-hidden="true"></span>
+        <span data-i18n="nav.mercados"></span>
+      </button>
+      <button data-page="operar" data-vista="claves" class="nav-ajuste" id="nav-cuenta">
+        <span class="punto" aria-hidden="true"></span>
+        <span id="nav-cuenta-txt"></span>
+      </button>
+      <button data-page="consejos" class="nav-ajuste">
         <span class="punto" aria-hidden="true"></span>
         <span data-i18n="nav.tips"></span>
       </button>

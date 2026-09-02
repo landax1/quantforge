@@ -2328,6 +2328,32 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 .sel-rapida .linkbtn { font-size: 12px; }
 .barra-sel .barra-acciones { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* ---- el menú: tres pasos numerados, y los ajustes abajo ---- */
+.nav-num {
+  width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+  background: var(--bg-soft); color: var(--text-dim); flex: none;
+}
+#nav button.active .nav-num { background: var(--accent); color: var(--bg); }
+.nav-sep { font-family: var(--mono, ui-monospace, monospace); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-dim); margin: 16px 0 4px; padding-left: 12px; }
+#nav button.nav-ajuste { font-size: 13px; color: var(--text-2); }
+#nav button.nav-ajuste.conectada .punto { background: var(--pos); }
+/* la búsqueda en modo simple: los ajustes, plegados y con su propio signo */
+.sect.avanzado > summary .sect-num { color: var(--accent); }
+.sect.avanzado > .sect { border-top: 1px solid var(--border-soft); }
+.sect.avanzado > .sect:first-of-type { border-top: 1px solid var(--border-soft); }
+.sect.avanzado[open] > summary { border-bottom: 1px dashed var(--border-strong); }
+.conectar { margin-top: 16px; }
+
+/* ---- qué hace la prueba: plegado, siempre a un clic ---- */
+.que-es { margin: 0 0 16px; padding: 12px 16px; border-radius: var(--r); background: var(--card); border: 1px solid var(--border-soft); }
+.que-es summary { cursor: pointer; list-style: none; font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+.que-es summary::-webkit-details-marker { display: none; }
+.que-es summary::after { content: "▸"; color: var(--accent); margin-left: auto; }
+.que-es[open] summary::after { content: "▾"; }
+.que-es > p { margin: 12px 0 0; font-size: 13px; color: var(--text-2); max-width: 78ch; line-height: 1.6; }
+.que-es > p b { color: var(--text); }
+
 /* ---- el camino: cuatro etapas con cuentas, que también filtran ---- */
 .camino {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;

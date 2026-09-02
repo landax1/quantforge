@@ -1644,7 +1644,7 @@ async function navigate(page, vista) {
 const TITULOS = () => ({
   bienvenida: t("wel.title"), data: t("nav.data"), mining: t("nav.mining"),
   saved: t("nav.saved"), consejos: t("nav.tips"),
-  operar: t("nav.operar"),
+  operar: t(S.mundo === "metatrader" ? "nav.operar_cfd" : "nav.operar"),
 });
 
 /* Todo lo que vive fuera del <main> y por lo tanto no se repinta al navegar:
@@ -1664,10 +1664,17 @@ function pintarMundo() {
     <div class="mundo-btns">${MUNDOS().map(m => `
       <button data-mundo="${m.id}" class="${S.mundo === m.id ? "on" : ""}"
         title="${esc(m.sub)}">${esc(m.rotulo)}</button>`).join("")}</div>`;
+  /* EL MENÚ SIGUE A LA SECCIÓN: en CFDs no hay tercer paso ni cuenta que
+     conectar. Se hace acá, que es lo que se llama cada vez que cambia. */
+  const cfd = S.mundo === "metatrader";
+  const navOp = $("#nav-operar"); if (navOp) navOp.hidden = cfd;
+  const navCu = $("#nav-cuenta"); if (navCu) navCu.hidden = cfd;
   $$("[data-mundo]", caja).forEach(b => b.onclick = () => {
     if (b.dataset.mundo === S.mundo) return;
     S.mundo = b.dataset.mundo;
     recordarEleccionDeMundo();
+    // en CFDs no existe Operar: quien estaba ahí vuelve a Probar
+    if (S.mundo === "metatrader" && S.page === "operar") S.page = "saved";
     /* CAMBIAR DE SECCION OLVIDA EL INSTRUMENTO ELEGIDO. Si no, se queda
        apuntando a uno que en la sección nueva no existe, y la pantalla de
        minado abre mostrando un instrumento que no está en su propia lista. */
@@ -1692,6 +1699,14 @@ function pintarMundo() {
 function pintarChrome() {
   document.documentElement.setAttribute("lang", idioma());
   $$("[data-i18n]").forEach(el => { el.textContent = t(el.dataset.i18n); });
+  /* EL CUARTO VERBO CAMBIA CON LA SECCIÓN: en CFDs no se opera desde la
+     aplicación, se exporta un robot a MetaTrader. Decir "Operar" ahí era
+     prometer algo que la pantalla no hace. */
+  const op = $("#nav-operar [data-i18n]");
+  if (op) op.textContent = t("nav.operar");
+  /* EN CFDs NO HAY TERCER PASO: se exporta el robot desde Probar. Operar y
+     la cuenta del exchange desaparecen del menú en esa sección. */
+  pintarCuenta();
   pintarMundo();
   const rot = $("#nav-rotulo");
   if (rot) rot.textContent = t("nav.section");
@@ -2784,7 +2799,7 @@ function panelBot(e, hayClave) {
         <select id="bot-cual">
           <option value="">${esc(t("bot.elegir"))}</option>
           ${operables.map(x =>
-            `<option value="${esc(x.id)}">${esc(x.name)} · ${
+            `<option value="${esc(x.id)}" ${PREELEGIDA === x.id ? "selected" : ""}>${esc(x.name)} · ${
               esc(String((x.meta || {}).dataset_name || "").split(" ")[0])}</option>`).join("")}
         </select></label>
       <label class="fld"><span>${esc(t("bot.tope"))}</span>
@@ -2936,7 +2951,7 @@ function planConjuntoHTML(plan) {
 
    El bot es la vista de arranque porque es la que se abre seguido. */
 PAGES.operar = async (main) => {
-  const vista = ["claves", "tablero"].includes(S.vistaOperar)
+  const vista = ["claves", "tablero", "piloto"].includes(S.vistaOperar)
     ? S.vistaOperar : "bot";
   const estado = await api.get("/api/exchanges");
   /* POR EXCHANGE Y ENTORNO, no sólo por entorno. Indexado por entorno solo,
@@ -2959,16 +2974,17 @@ PAGES.operar = async (main) => {
   const sinClaves = !Object.values(hayClave)
     .some(x => x.practica || x.real);
 
+  /* TRES PESTAÑAS CON UNA SOLA PREGUNTA: qué está corriendo y cómo le va.
+     La cuenta se conecta desde el menú (abajo, "Cuenta Binance") y se
+     muestra acá sólo cuando se llega a ella. */
   main.innerHTML = `<div class="vistas" role="tablist">
       <button role="tab" data-vista="bot" aria-selected="${vista === "bot"}"
         class="${vista === "bot" ? "on" : ""}">${esc(t("op.tab_bot"))}</button>
+      <button role="tab" data-vista="piloto" aria-selected="${vista === "piloto"}"
+        class="${vista === "piloto" ? "on" : ""}">${esc(t("op.tab_piloto"))}</button>
       <button role="tab" data-vista="tablero" aria-selected="${vista === "tablero"}"
         class="${vista === "tablero" ? "on" : ""}">${esc(t("op.tab_tablero"))}</button>
-      <button role="tab" data-vista="claves" aria-selected="${vista === "claves"}"
-        class="${vista === "claves" ? "on" : ""}">${esc(t("op.tab_claves"))}${
-        sinClaves ? `<span class="vista-punto" role="img"
-          aria-label="${esc(t("op.sin_claves"))}"
-          title="${esc(t("op.sin_claves"))}"></span>` : ""}</button>
+      ${vista === "claves" ? `<button role="tab" data-vista="claves" aria-selected="true" class="on">${esc(t("op.tab_claves"))}</button>` : ""}
     </div>
     <div id="vista-host"></div>`;
 
@@ -2980,6 +2996,7 @@ PAGES.operar = async (main) => {
   const host = $("#vista-host", main);
   await (vista === "claves" ? vistaClaves(host, por)
          : vista === "tablero" ? vistaTablero(host, hayClave)
+         : vista === "piloto" ? vistaPiloto(host)
          : vistaBot(host, hayClave));
   acomodarVistas(main, host);
 };
@@ -3005,11 +3022,24 @@ const vistaBot = async (main, hayClave) => {
      Se dice arriba, una vez. */
   const notaCfd = S.mundo === "metatrader"
     ? `<div class="card ex-aviso"><p class="help-note">${esc(t("op.cfd_nota"))}</p></div>` : "";
+  /* SIN CUENTA NO HAY ROBOTS: una sola tarjeta que dice qué hacer, y nada
+     más. El formulario de encender aparece recién con la cuenta conectada. */
+  if (!hayClave.binance.practica && S.mundo !== "metatrader") {
+    main.innerHTML = pageHead(t("nav.operar"), esc(t("op.sub_bot"))) + `
+      <div class="card conectar">
+        <div class="empty-state">
+          <div class="big">${icono("candado", "ico-xl")}</div>
+          <b>${esc(t("op.conectar_t"))}</b>
+          <p class="mt">${esc(t("op.conectar_sub"))}</p>
+          <button class="btn mt" id="ir-conectar">${esc(t("op.conectar_btn"))}</button>
+        </div>
+      </div>`;
+    $("#ir-conectar", main).onclick = () => navigate("operar", "claves");
+    return;
+  }
   main.innerHTML = pageHead(t("nav.operar"), esc(t("op.sub_bot")))
     + notaCfd
-    + panelAgentes(bot, ciclo)
     + panelBot(bot, hayClave);
-  atarCiclo(main, ciclo);
   atarReencender(main);
 
   /* Que destinos puede tomar la estrategia elegida, y por que no los otros.
@@ -3217,6 +3247,26 @@ const vistaBot = async (main, hayClave) => {
 
 };
 
+
+/* ---- vista: el piloto automático, en su propia pestaña ---- */
+const vistaPiloto = async (main) => {
+  const [bot, ciclo] = await Promise.all([
+    api.get("/api/bot"), api.get("/api/ciclo").catch(() => null)]);
+  if (!(S.datasets || []).length) await refreshDatasets();
+  const apagado = !(ciclo && ciclo.corriendo && (ciclo.params || {}).encendido);
+  main.innerHTML = pageHead(t("op.tab_piloto"), esc(t("ag.ciclo_sub")))
+    + (apagado ? `<div class="pista mb">${icono("idea", "ico-sm")}<div>${esc(t("pil.oferta"))}</div></div>` : "")
+    + panelAgentes(bot, ciclo);
+  atarCiclo(main, ciclo);
+  const refresco = setInterval(async () => {
+    const ag = $("#ag-zona", main);
+    if (!ag || !document.body.contains(ag)) { clearInterval(refresco); return; }
+    try {
+      const [e, c] = await Promise.all([api.get("/api/bot"), api.get("/api/ciclo").catch(() => null)]);
+      if (c) { ag.innerHTML = zonaAgentes(e, c); atarCiclo(main, c); }
+    } catch (err) { /* la próxima vuelta lo reintenta */ }
+  }, 30000);
+};
 
 /* ---- vista: el tablero ----
 
@@ -3476,7 +3526,11 @@ const vistaClaves = async (main, por) => {
         campo(casa, entorno, "key").value = "";
         campo(casa, entorno, "secret").value = "";
         toast(t("ex.guardada"), "ok");
-        await navigate("operar");
+        await refreshCuenta();
+        /* Recién conectada la cuenta es el momento de ofrecer el Piloto: es
+           la función más fuerte del producto, y escondida no existe. Si
+           venía de "Encender" en Probar, vuelve ahí con la elegida. */
+        await navigate("operar", PREELEGIDA ? "bot" : "piloto");
       } catch (e) { toast(e.message, "err"); }
       b.disabled = false;
     };
@@ -3912,6 +3966,23 @@ async function refreshMt5() {
   } catch (e) { S.mt5.terminales = []; }
 }
 
+/* LA CUENTA, ABAJO EN EL MENÚ: conectada o por conectar. Se pregunta al
+   servidor porque es la única verdad; el menú no adivina. */
+let CUENTA_OK = null;
+async function refreshCuenta() {
+  try {
+    const ex = await api.get("/api/exchanges");
+    CUENTA_OK = ex.some(x => x.exchange === "binance" && x.entorno === "practica" && x.configurada);
+  } catch (e) { CUENTA_OK = null; }
+  pintarCuenta();
+}
+function pintarCuenta() {
+  const el = $("#nav-cuenta-txt");
+  if (!el) return;
+  el.textContent = t(CUENTA_OK ? "nav.cuenta_ok" : "nav.cuenta_no");
+  const b = $("#nav-cuenta"); if (b) b.classList.toggle("conectada", !!CUENTA_OK);
+}
+
 async function refreshBancoCount() {
   try {
     const r = await api.get("/api/corridas?" + new URLSearchParams({ mundo: S.mundo || "" }));
@@ -4083,9 +4154,60 @@ function chipEtapa(s) {
     : `<span class="est est-ok">${icono("tilde", "ico-sm")}${esc(t("est.aprobada"))}</span>`;
 }
 
-/* El filtro elegido en Mis estrategias. Vive fuera de la página porque la
+/* El filtro elegido en Probar. Vive fuera de la página porque la
    pantalla se repinta después de cada prueba y no puede perderlo. */
-let FILTRO_ETAPA = "todas";
+let FILTRO_ETAPA = "vigentes";
+
+/* La estrategia que Probar manda a encender: Operar la preelige. */
+let PREELEGIDA = null;
+
+/* ENCENDER ES UN CLIC. La porción sale de la misma regla del Piloto —la
+   cuenta repartida entre los robots que puede haber— y el modo es demo,
+   siempre. Sin cuenta conectada, manda a conectarla y guarda la elegida. */
+async function encenderDirecto(s, boton) {
+  if (!s) return;
+  boton.disabled = true;
+  try {
+    const ex = await api.get("/api/exchanges");
+    const hay = ex.some(x => x.exchange === "binance" && x.entorno === "practica" && x.configurada);
+    if (!hay) { PREELEGIDA = s.id; toast(t("op.conectar_primero"), "err"); navigate("operar", "claves"); return; }
+    const m = s.meta || {};
+    const obj = await api.post("/api/export/bingx/objeto", {
+      spec: s.spec, name: s.name, dataset_id: m.dataset_id, timeframe: m.timeframe,
+      settings: { commission_pct: m.commission }, metrics: m.metrics, oos: m.oos,
+    });
+    const [e, c] = await Promise.all([api.get("/api/bot"), api.get("/api/ciclo").catch(() => null)]);
+    const libre = typeof e.porcion_libre === "number" ? e.porcion_libre : 1;
+    const max = (c && c.params && c.params.max_en_practica) || e.maximo || 8;
+    const porcion = Math.max(0.01, Math.min(libre, Math.round(100 / max) / 100));
+    await api.post("/api/bot/encender", { bot: obj, modo: "practica", exchange: "binance",
+                                          estrategia_id: s.id, porcion, perdida_maxima: 0 });
+    toast(t("saved.encendida", { nombre: s.name }), "ok");
+    await refreshSavedCount();
+    navigate("operar", "bot");
+  } catch (err) {
+    if (!pedirCuenta(err.status)) toast(err.message, "err");
+    boton.disabled = false;
+  }
+}
+
+function accionEtapa(s) {
+  const et = etapaDe(s);
+  const cripto = mundoDeDataset((s.meta || {}).dataset_name || "") !== "metatrader";
+  if (et === "por_probar") {
+    return `<button class="btn small" data-probar="${esc(s.id)}">${esc(t("wf.test_it"))}</button>`;
+  }
+  if (et === "aprobadas") {
+    return `${cripto ? `<button class="btn small" data-encender="${esc(s.id)}">${icono("seguir", "ico-sm")} ${esc(t("saved.acc_encender"))}</button>` : ""}
+      <button class="btn ghost small" data-probar="${esc(s.id)}">${esc(t("wf.retest"))}</button>`;
+  }
+  if (et === "operando") {
+    return `<button class="btn ghost small" data-ver-robot="${esc(s.id)}">${esc(t("saved.acc_ver_robot"))}</button>`;
+  }
+  if (estaRetirada(s)) return "";
+  return `<button class="btn ghost small" data-retirar="${esc(s.id)}">${esc(t("saved.acc_retirar"))}</button>
+    <button class="btn ghost small" data-probar="${esc(s.id)}">${esc(t("wf.retest"))}</button>`;
+}
 
 /* Las claves ENTERAS, como en CAMINO_ROTULO: el examen de textos no puede
    seguir una clave armada pegando el prefijo con el nombre de la etapa. */
@@ -4237,8 +4359,11 @@ PAGES.saved = async (main) => {
         m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
       ${PRUEBAS ? `<td class="celda-estado ${RECIEN_PROBADAS.delete(s.id) ? "chip-cambia" : ""}">${chipEtapa(s)}</td>` : ""}
       <td class="num" style="white-space:nowrap">
-        ${PRUEBAS && !estaRetirada(s) ? `<button class="btn ghost small" data-probar="${esc(s.id)}">${
-          esc(t(estadoDe(s) === "sin_probar" ? "wf.test_it" : "wf.retest"))}</button>` : ""}
+        ${/* LA ACCIÓN DICE EL PASO SIGUIENTE, según la etapa: probar las
+              nuevas, encender las aprobadas, ver el robot de las que operan,
+              retirar las que no pasaron. Volver a probar queda como acción
+              secundaria en todas las probadas. */
+          PRUEBAS ? accionEtapa(s) : ""}
         <button class="btn ghost small" data-export="${esc(s.id)}">${icono("bajar")} MQL5</button>
         <button class="btn ghost small" data-del-strat="${esc(s.id)}"
           title="${esc(t("ui.delete"))}">${icono("cerrar")}</button>
@@ -4267,8 +4392,13 @@ PAGES.saved = async (main) => {
     operando: t("etapa.operando_sub"),
     descartadas: retiradas ? t("etapa.descartadas_sub", { n: retiradas }) : t("etapa.descartadas_sub0"),
   };
-  if (FILTRO_ETAPA !== "todas" && !porEtapa[FILTRO_ETAPA].length) FILTRO_ETAPA = "todas";
-  const visibles = FILTRO_ETAPA === "todas" ? items : porEtapa[FILTRO_ETAPA];
+  /* LAS DESCARTADAS NO SE VEN POR DEFECTO: la lista que se mira es la de
+     las que valen. Están a un clic, en su etapa o en "ver todas". */
+  const vigentes = items.filter(x => etapaDe(x) !== "descartadas");
+  if (!["todas", "vigentes"].includes(FILTRO_ETAPA) && !porEtapa[FILTRO_ETAPA].length) FILTRO_ETAPA = "vigentes";
+  if (FILTRO_ETAPA === "vigentes" && !vigentes.length && items.length) FILTRO_ETAPA = "todas";
+  const visibles = FILTRO_ETAPA === "todas" ? items
+    : FILTRO_ETAPA === "vigentes" ? vigentes : porEtapa[FILTRO_ETAPA];
   const camino = PRUEBAS ? `
     <div class="camino" role="tablist">
       ${ETAPAS.map(e => `
@@ -4280,13 +4410,19 @@ PAGES.saved = async (main) => {
       </button>`).join("")}
     </div>
     <div class="camino-todas">
-      <button class="linkbtn ${FILTRO_ETAPA === "todas" ? "on" : ""}" data-etapa="todas">${
-        esc(t("etapa.todas", { n: items.length }))}</button>
+      <button class="linkbtn" data-etapa="${FILTRO_ETAPA === "todas" ? "vigentes" : "todas"}">${
+        esc(FILTRO_ETAPA === "todas" ? t("etapa.vigentes") : t("etapa.todas", { n: items.length }))}</button>
     </div>` : "";
 
-  main.innerHTML = pageHead(t("nav.saved"), esc(retiradas
-    ? t("saved.sub_retiradas", { n: enJuego, r: retiradas })
-    : t("saved.sub", { n: enJuego }))) + camino +
+  main.innerHTML = pageHead(t("nav.saved"), esc(t("saved.sub_probar"))) + camino +
+    `${/* QUÉ HACE LA PRUEBA, en dos preguntas y sin jerga, plegado para no
+          tapar la lista pero siempre a un clic. Con el recorrido animado
+          adentro. */ ""}
+    <details class="que-es" ${localStorage.getItem("qf.vio_prueba") === "1" ? "" : "open"}>
+      <summary>${icono("idea", "ico-sm")} ${esc(t("saved.que_es_t"))}</summary>
+      <p>${t("saved.que_es")}</p>
+      ${explicacionHTML("prueba-pagina", PASOS_PRUEBA())}
+    </details>` +
     `${PRUEBAS && sinProbar ? `<div class="pista mb pista-accion">${icono("idea", "ico-sm")}
        <div>${esc(t("saved.pending", { n: sinProbar }))}</div>
        <button class="btn small" id="probar-faltan">${esc(t("saved.probar_faltan", { n: sinProbar }))}</button></div>` : ""}
@@ -4334,6 +4470,10 @@ PAGES.saved = async (main) => {
     FILTRO_ETAPA = b.dataset.etapa;
     navigate("saved");
   });
+  atarExplicacion(main, "prueba-pagina", PASOS_PRUEBA());
+  /* ABIERTA LA PRIMERA VEZ, PLEGADA DESPUÉS: la primera vez es la única en
+     que hace falta leerla; después molesta. */
+  try { localStorage.setItem("qf.vio_prueba", "1"); } catch (e) { /* nada */ }
   const faltan = $("#probar-faltan", main);
   if (faltan) faltan.onclick = () => probarVarias(
     items.filter(x => !estaRetirada(x) && estadoDe(x) === "sin_probar"), main);
@@ -4439,6 +4579,19 @@ PAGES.saved = async (main) => {
     const s = items.find(x => x.id === b.dataset.probar);
     await correrPrueba(s, b);
   });
+  $$("[data-encender]", main).forEach(b => b.onclick = () => encenderDirecto(
+    items.find(x => x.id === b.dataset.encender), b));
+  $$("[data-ver-robot]", main).forEach(b => b.onclick = () => navigate("operar", "bot"));
+  $$("[data-retirar]", main).forEach(b => b.onclick = async () => {
+    const s = items.find(x => x.id === b.dataset.retirar);
+    const motivo = prompt(t("saved.retirar_motivo", { nombre: s.name }));
+    if (motivo == null || !motivo.trim()) return;
+    try {
+      await api.post(`/api/strategies/${s.id}/estado`, { estado: "retirada", motivo: motivo.trim() });
+      toast(t("saved.retirada"), "ok");
+      navigate("saved");
+    } catch (e) { toast(e.message, "err"); }
+  });
 
   $$("[data-del-strat]", main).forEach(b => b.onclick = async () => {
     const s = items.find(x => x.id === b.dataset.delStrat);
@@ -4457,13 +4610,28 @@ PAGES.saved = async (main) => {
    el resto de la aplicación mientras tanto: la cola vive fuera de la
    pantalla, y si la pantalla se repinta, la cola sigue. */
 let COLA_PRUEBAS = null;
+const COLA_PENDIENTE = [];
+
+/* GUARDAR YA ES PROBAR. Nadie guarda una estrategia para no probarla: lo
+   que se manda a Probar entra en la cola y llega con su veredicto. La cola
+   admite agregados mientras corre. */
+function encolarPruebas(ids) {
+  const nuevos = (ids || []).filter(id => id && !COLA_PENDIENTE.some(x => x.id === id));
+  if (!nuevos.length) return;
+  const porId = Object.fromEntries((S.saved || []).map(x => [x.id, x]));
+  nuevos.forEach(id => COLA_PENDIENTE.push(porId[id] || { id, name: "" }));
+  if (COLA_PRUEBAS) { toast(t("saved.en_cola", { n: COLA_PENDIENTE.length }), "ok"); return; }
+  probarVarias(COLA_PENDIENTE.splice(0), document);
+}
 
 async function probarVarias(lista, main) {
-  if (!lista.length || COLA_PRUEBAS) return;
+  if (!lista.length || COLA_PRUEBAS) { COLA_PENDIENTE.push(...lista); return; }
   COLA_PRUEBAS = { total: lista.length, hechas: 0 };
   const cuenta = { aprobada: 0, aceptable: 0, no_paso: 0, error: 0 };
   toast(t("sel.en_cola", { n: lista.length }), "ok");
-  for (const [i, s] of lista.entries()) {
+  for (let i = 0; i < lista.length; i++) {
+    const s = lista[i];
+    if (!s.name) { const f = (S.saved || []).find(x => x.id === s.id); if (f) Object.assign(s, f); }
     const boton = $(`[data-probar="${s.id}"]`, document);
     let avance = () => {};
     if (boton) {
@@ -4483,6 +4651,8 @@ async function probarVarias(lista, main) {
       if (pedirCuenta(e.status)) break;
     }
     COLA_PRUEBAS.hechas = i + 1;
+    // lo que se agregó mientras corría, al final de esta misma cola
+    if (COLA_PENDIENTE.length) { lista.push(...COLA_PENDIENTE.splice(0)); COLA_PRUEBAS.total = lista.length; }
   }
   COLA_PRUEBAS = null;
   toast(t("sel.resumen", { a: cuenta.aprobada, m: cuenta.aceptable, f: cuenta.no_paso })
@@ -5311,6 +5481,8 @@ function cablearBanco(host) {
     btn.disabled = true;
     try {
       const r = await api.post("/api/banco/guardar", { ids });
+      await refreshSavedCount();
+      encolarPruebas((r.guardadas || []).map(g => g.id));
       const n = r.guardadas.length;
       // guardar es COPIAR: la fila sigue en el banco. Si además la sacara,
       // revisar una corrida la iría vaciando a medida que uno la mira.
@@ -5723,6 +5895,15 @@ const vistaBuscar = async (main) => {
           </div>
         </details>
 
+        ${/* MODO SIMPLE POR DEFECTO: mercado, receta y buscar. Los otros
+              cinco pasos —bloques, riesgo, costos, filtros, avanzado— quedan
+              plegados bajo "Ajustar la búsqueda": la receta ya los dejó
+              puestos, y quien quiera tocarlos los abre. Se recuerda si se
+              abrió, para no volver a plegárselo a quien ya los usa. */ ""}
+        <details class="sect avanzado" id="m-avanzado" ${localStorage.getItem("qf.avanzado") === "1" ? "open" : ""}>
+          <summary><span class="sect-num">+</span>
+            <span class="sect-t"><b>${esc(t("mine.avanzado"))}</b><em>${esc(t("mine.avanzado_sub"))}</em></span>
+            <span class="chev">›</span></summary>
         <details class="sect">
           <summary><span class="sect-num">2</span>
             <span class="sect-t"><b>${esc(t("mine.blocks"))}</b><em id="sum-blocks">—</em></span>
@@ -5912,6 +6093,7 @@ const vistaBuscar = async (main) => {
                 <input type="number" data-cfg="maxCandidates" value="${c.maxCandidates}" min="100" step="1000"></label>
             </div>
           </div>
+        </details>
         </details>
       </div>
 
@@ -6154,6 +6336,8 @@ const vistaBuscar = async (main) => {
   });
 
   tfSel.onchange = () => { S.sel.timeframe = tfSel.value; saveCfg(); updateNotes(); };
+  const avz = $("#m-avanzado", main);
+  if (avz) avz.ontoggle = () => { try { localStorage.setItem("qf.avanzado", avz.open ? "1" : "0"); } catch (e) { /* nada */ } };
 
   /* dirección: tres opciones excluyentes se eligen mejor viéndolas todas que
      abriendo un desplegable para descubrir cuáles hay */
@@ -7349,7 +7533,8 @@ function renderMining(snap, finished) {
         const r = await api.post("/api/banco/guardar", { ids: filas.map(f => f.banco_id) });
         (r.guardadas || []).forEach(g => RECIEN_GUARDADAS.add(g.id));
         toast(t("bank.guardadas_n", { n: (r.guardadas || []).length }), "ok");
-        refreshSavedCount();
+        await refreshSavedCount();
+        encolarPruebas((r.guardadas || []).map(g => g.id));
         todasAlBanco.replaceWith(Object.assign(document.createElement("span"),
           { className: "insp-guardada recien", innerHTML: `${icono("tilde", "ico-sm")} ${esc(t("bank.guardadas_n", { n: (r.guardadas || []).length }))}` }));
       } catch (e) { toast(e.message, "err"); todasAlBanco.disabled = false; }
@@ -8233,7 +8418,8 @@ function renderInspector(box, row, res, ctx) {
       });
       toast(t("saved.added", { nombre: row.name }), "ok");
       if (guardada && guardada.id) RECIEN_GUARDADAS.add(guardada.id);
-      refreshSavedCount();
+      await refreshSavedCount();
+      if (guardada && guardada.id) encolarPruebas([guardada.id]);
       /* EL BOTÓN SE CONVIERTE EN "GUARDADA". Un aviso abajo a la derecha se
          va; el botón pintado se queda, y es lo que dice de un vistazo que
          esta estrategia ya está en Mis estrategias. */
@@ -8755,7 +8941,8 @@ function pedirCuenta(status) {
   refreshSavedCount();
   refreshBancoCount();
   refreshMt5();
-  $$("#nav button").forEach(b => b.onclick = () => navigate(b.dataset.page));
+  refreshCuenta();
+  $$("#nav button").forEach(b => b.onclick = () => navigate(b.dataset.page, b.dataset.vista || undefined));
   // los contadores ya se pidieron arriba, pero sin esperarlos: la bienvenida
   // necesita saber si hay algo hecho ANTES de decidir si aparece
   await Promise.allSettled([refreshSavedCount(), refreshBancoCount()]);

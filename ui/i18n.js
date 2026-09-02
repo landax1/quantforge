@@ -26,7 +26,24 @@ const STR = {
   /* ------------------------------------------------------------- navegación */
   "nav.section": ["Workspace", "Trabajo"],
   "nav.data": ["Data", "Datos"],
-  "nav.mining": ["Mining", "Minado"],
+  "nav.mining": ["Search", "Buscar"],
+  "nav.operar_cfd": ["Take to MetaTrader", "Llevar a MetaTrader"],
+  "nav.ajustes": ["Settings", "Ajustes"],
+  "nav.mercados": ["Markets", "Mercados"],
+  "nav.cuenta_ok": ["Binance account · demo connected", "Cuenta Binance · demo conectada"],
+  "nav.cuenta_no": ["Connect Binance account", "Conectar cuenta Binance"],
+  "mine.avanzado": ["Fine-tune the search", "Ajustar la búsqueda"],
+  "mine.avanzado_sub": ["blocks, risk, costs, filters — the recipe already set them", "bloques, riesgo, costos, filtros — la receta ya los dejó puestos"],
+  "etapa.vigentes": ["Hide discarded", "Ocultar descartadas"],
+  "op.tab_piloto": ["Autopilot", "Piloto automático"],
+  "op.conectar_t": ["Connect your Binance demo account", "Conectá tu cuenta demo de Binance"],
+  "op.conectar_sub": ["Robots trade on it with play money. It takes two minutes and you only do it once.", "Los robots operan ahí con plata de juguete. Lleva dos minutos y se hace una sola vez."],
+  "op.conectar_btn": ["Connect account", "Conectar cuenta"],
+  "op.conectar_primero": ["Connect your Binance demo account first; it takes two minutes.", "Primero conectá tu cuenta demo de Binance; lleva dos minutos."],
+  "saved.encendida": ["{nombre} is on, in demo. Watch it under Trade.", "{nombre} quedó encendida en demo. Miralo en Operar."],
+  "saved.en_cola": ["Testing in the background: {n} in the queue.", "Probando de fondo: {n} en cola."],
+  "pil.oferta": ["Want BotiQuant to search, test and turn robots on by itself? Turn the autopilot on whenever you like.", "¿Querés que BotiQuant busque, pruebe y encienda robots solo? Encendé el piloto cuando quieras."],
+  "nav.paso": ["Step {n}", "Paso {n}"],
   // el numero de al lado cuenta TODO el Databank, no la ultima corrida:
   // pegado a la palabra "Minado" y solo, se leia como "91 minados"
   "nav.bank_count": ["{n} strategies in the Databank",
@@ -35,7 +52,7 @@ const STR = {
   "nav.montecarlo": ["Monte Carlo", "Monte Carlo"],
   "nav.walkforward": ["Walk-forward", "Walk-forward"],
   "nav.portfolio": ["Portfolio", "Portafolio"],
-  "nav.saved": ["My strategies", "Mis estrategias"],
+  "nav.saved": ["Test", "Probar"],
   "nav.offline": ["offline · local", "sin conexión · local"],
   /* Corto a proposito: la barra lateral tiene 200px utiles y la frase larga
      partia en dos renglones, que en una fila de menu se lee como un error. */
@@ -151,7 +168,8 @@ const STR = {
   "insp.g_rinde": ["How much does it make?", "¿Cuánto rinde?"],
   "insp.g_duele": ["How much does it hurt?", "¿Cuánto duele?"],
   "insp.g_opera": ["How does it trade?", "¿Cómo opera?"],
-  "insp.ya_guardada": ["Saved in My strategies", "Guardada en Mis estrategias"],
+  "insp.ya_guardada": ["In Test", "En Probar"],
+  "insp.save": ["Send to Test", "Mandar a Probar"],
   "bot.solo_demo": ["demo account", "cuenta demo"],
   "m.years": ["Years", "Años"],
 
@@ -472,8 +490,8 @@ const STR = {
   "run.open_full": ["Open the full analysis", "Ver análisis completo"],
   "run.history": ["How the best score improved", "Evolución del mejor score"],
   "run.history_hint": ["how the search got better over time", "cómo fue mejorando la búsqueda"],
-  "bank.guardar_todas": ["Save all {n} to My strategies", "Guardar las {n} en Mis estrategias"],
-  "bank.guardadas_n": ["{n} saved to My strategies", "{n} guardadas en Mis estrategias"],
+  "bank.guardar_todas": ["Send all {n} to Test", "Mandar las {n} a Probar"],
+  "bank.guardadas_n": ["{n} sent to Test", "{n} mandadas a Probar"],
   "run.bank_hint": [
     "{n} strategies ranked by score (robustness, not profit) · click any of them for the full analysis",
     "{n} estrategias ordenadas por score (robustez, no rentabilidad) · clic en cualquiera para analizarla a fondo"],
@@ -796,7 +814,7 @@ const STR = {
   "data.exits_fixed": ["Exits adjusted to the scale of {mercado}",
                        "Salidas ajustadas a la escala de {mercado}"],
 
-  "saved.added": ["{nombre} saved to My strategies",
+  "saved.added": ["{nombre} sent to Test",
                   "{nombre} guardada en Mis estrategias"],
 
   "bank.pruned": ["The databank was full: the {n} oldest runs were dropped",
@@ -835,6 +853,20 @@ const STR = {
     + "por eso el color se lee contra ese riesgo: ámbar pasando 15% al 1% por operación, rojo pasando 25%."],
 
   /* ------------------------------------------------------- mis estrategias */
+  /* PROBAR: la bajada dice qué se hace acá y qué es la prueba, en una
+     frase. Las palabras del motor (walk-forward, Monte Carlo) no aparecen. */
+  "saved.sub_probar": [
+    "The ones you kept, put to the test on data they never saw. Each one gets a word: passed, partly held or did not hold.",
+    "Las que guardaste, puestas a prueba sobre datos que nunca vieron. Cada una recibe una palabra: aprobada, a medias o no pasó."],
+  "saved.que_es_t": ["What the test does", "Qué hace la prueba"],
+  "saved.que_es": [
+    "Two questions, and both are answered by numbers the strategy never had a chance to fit. <b>Does it still work where it never looked?</b> The history is cut into four stretches; in each one the strategy re-tunes itself on the first part and is judged on the last part, blind. <b>How rough can the ride get?</b> Its trades are dealt in a different order 1,000 times to see how deep the hole could have been. Passing means it made money in most stretches and kept most of its edge outside.",
+    "Dos preguntas, y las dos se contestan con números que la estrategia nunca pudo acomodar. <b>¿Sigue funcionando donde no miró?</b> La historia se corta en cuatro tramos; en cada uno la estrategia se reajusta sobre la primera parte y se la juzga sobre la última, a ciegas. <b>¿Qué tan feo puede ponerse el camino?</b> Sus operaciones se reparten en otro orden 1000 veces para ver qué tan hondo pudo ser el pozo. Aprobar es ganar en la mayoría de los tramos y conservar la mayor parte de la ventaja afuera."],
+  "saved.acc_encender": ["Turn on", "Encender"],
+  "saved.acc_ver_robot": ["See robot", "Ver robot"],
+  "saved.acc_retirar": ["Retire", "Retirar"],
+  "saved.retirar_motivo": ["Why retire \"{nombre}\"? One line, so it is not turned on again in six months.", "¿Por qué retirás \"{nombre}\"? Una línea, para no volver a encenderla en seis meses."],
+  "saved.retirada": ["Retired with its reason.", "Retirada con su motivo."],
   "saved.sub": ["{n} saved. They survive any new search.",
                 "{n} guardadas. Sobreviven a cualquier corrida nueva."],
   "saved.sub_retiradas": ["{n} in play · {r} retired. They survive any new search.",
@@ -915,7 +947,6 @@ const STR = {
   "insp.short_entry": ["Short entry", "Entrada corta"],
   "insp.last_n": ["(last {n} of {total})", "(últimas {n} de {total})"],
   "insp.copy_pine": ["Copy Pine", "Copiar Pine"],
-  "insp.save": ["Save to My strategies", "Guardar en Mis estrategias"],
   "insp.export_note": [
     "The <b>.mq5</b> compiles in MetaEditor (F7) and runs in the Strategy Tester. The <b>.pine</b> goes into TradingView's Pine Editor and onto the chart. In both cases, use the same spread you used here.",
     "El <b>.mq5</b> se compila en MetaEditor (F7) y se prueba en el Strategy Tester. El <b>.pine</b> se pega en el Pine Editor de TradingView y se agrega al gráfico. En los dos casos, poné el mismo spread que usaste acá."],
@@ -1643,7 +1674,7 @@ const STR = {
                       "Esto va a operar con plata DE VERDAD. ¿La cuenta de práctica te convenció antes?"],
   "bot.panico_seguro": ["Stop the bot and close the open position at market?",
                         "¿Apagar el bot y cerrar la posición abierta a mercado?"],
-  "nav.tips": ["Tips", "Consejos"],
+  "nav.tips": ["Learn", "Aprender"],
   "tips.sub": [
     "What we learned measuring, not what gets repeated around.",
     "Lo que aprendimos midiendo, no lo que se repite por ahí."],
@@ -1825,7 +1856,7 @@ const STR = {
   "data.broker_saved": ["Saved. Robots exported from now on carry it.",
                         "Guardado. Los robots que exportes de ahora en más la llevan."],
   "mine.tab_search": ["Search", "Buscar"],
-  "mine.tab_results": ["Results", "Resultados"],
+  "mine.tab_results": ["Found", "Encontradas"],
   "exp.pine_copied": ["Pine copied — paste it into TradingView's Pine Editor",
                       "Pine copiado — pegalo en el Pine Editor de TradingView"],
   "saved.mined_on": ["Mined on {fecha}", "Minada el {fecha}"],

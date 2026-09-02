@@ -103,7 +103,11 @@ def test_el_menu_tiene_cinco_secciones():
     # "operar" y no "exchanges": la sección dejó de llamarse por la casa y pasó
     # a llamarse por lo que uno va a hacer ahí. El nombre viejo describía la
     # plomería —un exchange— y el nuevo describe la intención.
-    assert paginas == ["data", "mining", "saved", "operar", "consejos"], (
+    # TRES VERBOS Y LOS AJUSTES ABAJO (2 de septiembre de 2026): Buscar,
+    # Probar y Operar son el camino; Mercados, la cuenta de Binance y Aprender
+    # van después, como ajustes. La cuenta apunta a la vista de claves de
+    # Operar, por eso "operar" aparece dos veces.
+    assert paginas == ["mining", "saved", "operar", "data", "operar", "consejos"], (
         f"el menú cambió sin querer: {paginas}")
 
 
