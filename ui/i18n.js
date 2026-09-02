@@ -634,8 +634,8 @@ const STR = {
   /* Las busquedas que no encontraron nada se conservan como registro —dicen que
      con esa vara ese mercado no da— pero agrupadas: con quince, la pantalla se
      llenaba de burbujas iguales y parecia que algo estaba roto. */
-  "bank.vacias": ["{n} searches that found nothing",
-                  "{n} b\u00fasquedas que no encontraron nada"],
+  "bank.viejas": ["{n} older runs", "{n} corridas anteriores"],
+  "bank.vacias": ["{n} with no results", "{n} sin resultados"],
   "bank.buscar": ["Filter by name or block\u2026", "Filtrar por nombre o bloque\u2026"],
   "bank.filtradas": ["{n} of {total} shown", "{n} de {total} a la vista"],
   "bank.sin_coincidencias": ["Nothing matches \u201c{q}\u201d", "Nada coincide con \u201c{q}\u201d"],

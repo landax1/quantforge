@@ -1691,15 +1691,6 @@ PAGES.bienvenida = async (main) => {
       <h1>${esc(t("wel.title"))}</h1>
       <p>${esc(t("wel.sub"))}</p>
     </div>
-    <ol class="wel-pasos">
-      ${PASOS_BIENVENIDA().map(p => `
-        <li>
-          <span class="wel-num">${p.n}</span>
-          <span class="wel-ico">${icono(p.ico, "ico-lg")}</span>
-          <b>${esc(t(p.clave))}</b>
-          <p>${esc(t(p.clave + "_sub"))}</p>
-        </li>`).join("")}
-    </ol>
     <!-- LA PRIMERA DECISION ES QUE SE OPERA, y va acá y no escondida en un
          interruptor de la barra lateral. No son dos filtros de lo mismo: son
          dos productos que comparten el buscador y no comparten nada más —otro
@@ -1719,6 +1710,15 @@ PAGES.bienvenida = async (main) => {
         </button>`).join("")}
     </div>
     <p class="wel-fina">${esc(t("wel.cambiar"))}</p>
+    <ol class="wel-pasos">
+      ${PASOS_BIENVENIDA().map(p => `
+        <li>
+          <span class="wel-num">${p.n}</span>
+          <span class="wel-ico">${icono(p.ico, "ico-lg")}</span>
+          <b>${esc(t(p.clave))}</b>
+          <p>${esc(t(p.clave + "_sub"))}</p>
+        </li>`).join("")}
+    </ol>
   </div>`;
 
   $$("[data-elegir]", main).forEach(b => b.onclick = () => {
@@ -4291,19 +4291,39 @@ function pintarCorridas() {
      detrás de una línea que se abre si hacen falta. */
   const conAlgo = b.corridas.filter(c => c.n);
   const vacias = b.corridas.filter(c => !c.n);
+  /* Y LAS VIEJAS TAMPOCO PESAN LO MISMO QUE LAS DE HOY. Con cuarenta
+     búsquedas la pantalla era una pared de burbujas iguales —"SP500 · 1h ·
+     30 · 23 ago" ocho veces— y la corrida recién terminada se perdía entre
+     ellas. Quedan a la vista las doce últimas; las demás, detrás de una
+     línea que se abre, y abierta de entrada si la elegida está ahí. */
+  const RECIENTES = 12;
+  const recientes = conAlgo.slice(0, RECIENTES);
+  const viejas = conAlgo.slice(RECIENTES);
+  const viejaElegida = viejas.some(c => c.id === b.corrida);
 
   host.innerHTML = `<div class="card">
     <h2>${esc(t("bank.runs"))} <span class="hint">${esc(t("bank.runs_hint"))}</span></h2>
     <div class="corridas-lista">
       <button class="corrida-chip ${b.corrida ? "" : "on"}" data-corrida="">
         <b>${esc(t("bank.all"))}</b><span>${fmtInt(b.total)} ${esc(t("ui.strategies"))}</span></button>
-      ${conAlgo.map(c => `
+      ${recientes.map(c => `
         <button class="corrida-chip ${b.corrida === c.id ? "on" : ""}"
           data-corrida="${esc(c.id)}" title="${esc(varaDe(c))}">
           <b>${esc(etiquetaCorrida(c))}<i class="chip-n">${fmtInt(c.n)}</i></b>
           <span>${esc(cuando(c.created))} · ${esc(t("bank.risk"))} ${esc(riesgoDe(c))}</span>
         </button>`).join("")}
     </div>
+      ${viejas.length ? `<details class="corridas-vacias"${viejaElegida ? " open" : ""}>
+        <summary>${esc(t("bank.viejas", { n: viejas.length }))}</summary>
+        <div class="corridas-lista">
+          ${viejas.map(c => `
+            <button class="corrida-chip ${b.corrida === c.id ? "on" : ""}"
+              data-corrida="${esc(c.id)}" title="${esc(varaDe(c))}">
+              <b>${esc(etiquetaCorrida(c))}<i class="chip-n">${fmtInt(c.n)}</i></b>
+              <span>${esc(cuando(c.created))} · ${esc(t("bank.risk"))} ${esc(riesgoDe(c))}</span>
+            </button>`).join("")}
+        </div>
+      </details>` : ""}
       ${vacias.length ? `<details class="corridas-vacias">
         <summary>${esc(t("bank.vacias", { n: vacias.length }))}</summary>
         <div class="corridas-lista">
