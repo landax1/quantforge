@@ -3732,7 +3732,12 @@ const SEL_PF = new Set();
 PAGES.saved = async (main) => {
   await refreshDatasets();
   await refreshSavedCount();
-  const items = S.saved || [];
+  /* LAS RETIRADAS AL FINAL. Llegan primero por ser las más nuevas —el
+     ciclo retira lo que acaba de encontrar sobre un histórico borrado— y
+     entonces la lista abría con el cementerio: la primera fila era una
+     estrategia que ya no juega. Adentro de cada grupo se conserva el orden. */
+  const items = [...(S.saved || [])].sort(
+    (x, y) => (estaRetirada(x) ? 1 : 0) - (estaRetirada(y) ? 1 : 0));
 
   if (!items.length) {
     main.innerHTML = pageHead(t("nav.saved"), esc(t("saved.empty_sub"))) +
