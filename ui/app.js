@@ -3293,7 +3293,10 @@ PAGES.data = async (main) => {
   <!-- El reloj del bróker. Va en Datos y no en Minado porque es una propiedad
        de la máquina y de la cuenta, no de una búsqueda: se pone una vez y
        vale para todos los robots que se exporten después. -->
-  <div class="card">
+  ${/* SOLO EN CFD. El reloj del bróker es una propiedad de MetaTrader; en
+        cripto Binance habla en UTC, el bot no lo usa, y la tarjeta hacía
+        creer que faltaba configurar algo. */ ""}
+  <div class="card"${S.mundo === "exchange" ? " hidden" : ""}>
     <h2>${esc(t("data.broker"))} <span class="hint">${esc(t("data.broker_hint"))}</span></h2>
     <p class="help-note">${t("data.broker_help")}</p>
     <div class="reloj">
