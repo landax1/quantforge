@@ -354,6 +354,11 @@ const RECETAS = () => [
        por eso ésta es la receta donde más importa no concentrar. */
     cartera: { bots: 5, usarPct: 75 },
     cfg: {
+      /* TREINTA MINUTOS SOLO EN CFD: en cripto, `aplicarReceta` la sube a
+         una hora. En un perpetuo de Binance el costo por operación (0,04%
+         por lado más deslizamiento) pesa entre el 98% y el 146% del rango de
+         una vela de 30 minutos, medido sobre trece pares: ninguna candidata
+         pasa la vara. A una hora sí salen. */
       timeframe: "30m", direction: "both", maxFilters: 1,
       anios: 4, maxCandidates: 1400,
       rrBuscado: [0.75, 1.0, 1.25, 1.5],
@@ -443,7 +448,15 @@ function aplicarReceta(r) {
   const c = S.cfg;
   c.critOn = {};
   for (const [k, v] of Object.entries(r.cfg)) {
-    if (k === "timeframe") { S.sel.timeframe = v; continue; }
+    if (k === "timeframe") {
+      /* EN CRIPTO NADA POR DEBAJO DE UNA HORA. Medido sobre trece perpetuos
+         de Binance: a 30 minutos el costo por operación pesa entre el 98% y
+         el 146% del rango de la vela y ninguna candidata pasa la vara. Una
+         receta que ahí pidiera 30 minutos prometería una búsqueda vacía. */
+      const cripto = S.mundo === "exchange";
+      S.sel.timeframe = (cripto && (v === "30m" || v === "15m" || v === "5m" || v === "1m")) ? "1h" : v;
+      continue;
+    }
     if (k === "critOn") { c.critOn = { ...v }; continue; }
     if (k === "anios") { acortarVentana(v); continue; }
     /* El rendimiento anual pedido, como MÚLTIPLO del piso del instrumento y no
