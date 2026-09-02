@@ -3740,6 +3740,53 @@ const ESTADO_UI = {
 
 const estadoDe = (s) => (s.validacion && s.validacion.estado) || "sin_probar";
 
+/* EN QUÉ ETAPA DEL CAMINO ESTÁ, dicho de una sola vez.
+
+   La fila mostraba dos chips que se leían como una contradicción:
+   "Validada" (dónde está) y "No pasó" (cómo le fue). Para quien mira la
+   lista son la misma pregunta —¿qué hago con ésta?— y la respuesta es una
+   sola: probarla, encenderla, ya está operando, o descartarla. Las cuatro
+   etapas son también los filtros de la cabecera. */
+const ETAPAS = ["por_probar", "aprobadas", "operando", "descartadas"];
+
+function etapaDe(s) {
+  if (estaRetirada(s)) return "descartadas";
+  const e = s.estado || "";
+  if (e === "practica" || e === "produccion") return "operando";
+  const v = estadoDe(s);
+  if (v === "sin_probar") return "por_probar";
+  if (v === "no_paso") return "descartadas";
+  return "aprobadas";                      // aprobada, o aguantó a medias
+}
+
+/* El chip único de la fila: la etapa, y dentro de ella el matiz que importa
+   (a medias va en ámbar dentro de Aprobadas; retirada en gris dentro de
+   Descartadas, con el motivo al pasar el mouse). */
+function chipEtapa(s) {
+  const et = etapaDe(s);
+  if (et === "operando") return caminoChip(s);
+  if (et === "por_probar") return `<span class="est est-none">${esc(t("est.sin_probar"))}</span>`;
+  if (et === "descartadas") {
+    if (estaRetirada(s)) return caminoChip(s);
+    return `<span class="est est-bad">${icono("alerta", "ico-sm")}${esc(t("est.no_paso"))}</span>`;
+  }
+  const v = estadoDe(s);
+  return v === "aceptable"
+    ? `<span class="est est-mid">${icono("info", "ico-sm")}${esc(t("est.aceptable"))}</span>`
+    : `<span class="est est-ok">${icono("tilde", "ico-sm")}${esc(t("est.aprobada"))}</span>`;
+}
+
+/* El filtro elegido en Mis estrategias. Vive fuera de la página porque la
+   pantalla se repinta después de cada prueba y no puede perderlo. */
+let FILTRO_ETAPA = "todas";
+
+/* Las claves ENTERAS, como en CAMINO_ROTULO: el examen de textos no puede
+   seguir una clave armada pegando el prefijo con el nombre de la etapa. */
+const ETAPA_ROTULO = () => ({
+  por_probar: t("etapa.por_probar"), aprobadas: t("etapa.aprobadas"),
+  operando: t("etapa.operando"), descartadas: t("etapa.descartadas"),
+});
+
 /* DONDE ESTA en el camino, que es OTRA COSA que cómo le fue en la prueba.
 
    La columna se llamaba "Estado" y mostraba el veredicto del walk-forward, así
@@ -3873,7 +3920,7 @@ PAGES.saved = async (main) => {
         m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
       <td class="num ${nivelDD(m.max_drawdown_pct, riesgoDeCtx(ctx))}">${
         m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
-      ${PRUEBAS ? `<td>${caminoChip(s)}${estadoChip(s)}</td>` : ""}
+      ${PRUEBAS ? `<td>${chipEtapa(s)}</td>` : ""}
       <td class="num" style="white-space:nowrap">
         ${PRUEBAS && !estaRetirada(s) ? `<button class="btn ghost small" data-probar="${esc(s.id)}">${
           esc(t(estadoDe(s) === "sin_probar" ? "wf.test_it" : "wf.retest"))}</button>` : ""}
@@ -3893,11 +3940,41 @@ PAGES.saved = async (main) => {
      Las retiradas se nombran aparte, que es lo que son. */
   const retiradas = items.filter(x => estaRetirada(x)).length;
   const enJuego = items.length - retiradas;
+  /* EL CAMINO, ARRIBA Y CON CUENTAS. Cuatro etapas que también filtran la
+     lista: quien entra ve de un vistazo cuántas hay por probar y cuántas ya
+     operan, y con un clic se queda con las que le importan. "Todas" sigue
+     existiendo, pero deja de ser la única vista. */
+  const porEtapa = Object.fromEntries(ETAPAS.map(e => [e, items.filter(x => etapaDe(x) === e)]));
+  const aMedias = porEtapa.aprobadas.filter(x => estadoDe(x) === "aceptable").length;
+  const subEtapa = {
+    por_probar: t("etapa.por_probar_sub"),
+    aprobadas: aMedias ? t("etapa.aprobadas_sub", { n: aMedias }) : t("etapa.aprobadas_sub0"),
+    operando: t("etapa.operando_sub"),
+    descartadas: retiradas ? t("etapa.descartadas_sub", { n: retiradas }) : t("etapa.descartadas_sub0"),
+  };
+  if (FILTRO_ETAPA !== "todas" && !porEtapa[FILTRO_ETAPA].length) FILTRO_ETAPA = "todas";
+  const visibles = FILTRO_ETAPA === "todas" ? items : porEtapa[FILTRO_ETAPA];
+  const camino = PRUEBAS ? `
+    <div class="camino" role="tablist">
+      ${ETAPAS.map(e => `
+      <button class="camino-et ${FILTRO_ETAPA === e ? "on" : ""} ${porEtapa[e].length ? "" : "vacia"}"
+        role="tab" aria-selected="${FILTRO_ETAPA === e}" data-etapa="${e}">
+        <b>${esc(ETAPA_ROTULO()[e])}</b>
+        <span class="camino-n">${porEtapa[e].length}</span>
+        <span class="camino-sub">${esc(subEtapa[e])}</span>
+      </button>`).join("")}
+    </div>
+    <div class="camino-todas">
+      <button class="linkbtn ${FILTRO_ETAPA === "todas" ? "on" : ""}" data-etapa="todas">${
+        esc(t("etapa.todas", { n: items.length }))}</button>
+    </div>` : "";
+
   main.innerHTML = pageHead(t("nav.saved"), esc(retiradas
     ? t("saved.sub_retiradas", { n: enJuego, r: retiradas })
-    : t("saved.sub", { n: enJuego }))) +
-    `${PRUEBAS && sinProbar ? `<div class="pista mb">${icono("idea", "ico-sm")}
-       <div>${esc(t("saved.pending", { n: sinProbar }))}</div></div>` : ""}
+    : t("saved.sub", { n: enJuego }))) + camino +
+    `${PRUEBAS && sinProbar ? `<div class="pista mb pista-accion">${icono("idea", "ico-sm")}
+       <div>${esc(t("saved.pending", { n: sinProbar }))}</div>
+       <button class="btn small" id="probar-faltan">${esc(t("saved.probar_faltan", { n: sinProbar }))}</button></div>` : ""}
     ${/* QUE EL PORTAFOLIO SE SEPA QUE EXISTE, sin ponerse en el camino.
 
            El conjunto ya se arma tildando dos o más, y esa casilla no se ve
@@ -3922,28 +3999,58 @@ PAGES.saved = async (main) => {
           <th class="num">${esc(t("col.maxdd"))}</th>
           ${PRUEBAS ? `<th title="${esc(t("est.help"))}">${esc(t("col.status"))}</th>` : ""}
           <th></th></tr></thead>
-        <tbody>${items.map(fila).join("")}</tbody>
+        <tbody>${visibles.length ? visibles.map(fila).join("")
+          : `<tr><td colspan="7"><div class="empty-state" style="padding:24px">${
+              esc(t("etapa.vacia"))}</div></td></tr>`}</tbody>
       </table></div>
     </div>
     <div class="barra-sel" id="barra-pf" hidden></div>`;
 
+  $$("[data-etapa]", main).forEach(b => b.onclick = () => {
+    FILTRO_ETAPA = b.dataset.etapa;
+    navigate("saved");
+  });
+  const faltan = $("#probar-faltan", main);
+  if (faltan) faltan.onclick = () => probarVarias(
+    items.filter(x => !estaRetirada(x) && estadoDe(x) === "sin_probar"), main);
+
+  /* LA BARRA DE SELECCIÓN SIRVE DESDE UNA. Antes aparecía recién con dos y
+     sólo para combinar; ahora con una o más ofrece probar, combinar (dos o
+     más) y borrar, que es lo que se quiere hacer con varias a la vez. */
   const pintarBarra = () => {
     const barra = $("#barra-pf", main);
     const n = SEL_PF.size;
-    barra.hidden = !PORTAFOLIO || n < 2;
-    if (n >= 2) {
-      barra.innerHTML = `<span>${esc(t("ui.selected", { n }))}</span>
-        <button class="linkbtn" id="pf-nada">${esc(t("ui.clear"))}</button>
-        <button class="btn" id="pf-ver">${esc(t("pf.build"))}</button>`;
-      $("#pf-nada", barra).onclick = () => {
+    barra.hidden = n < 1;
+    if (n < 1) return;
+    const elegidas = items.filter(x => SEL_PF.has(x.id));
+    const probables = elegidas.filter(x => !estaRetirada(x));
+    barra.innerHTML = `<span>${esc(t("ui.selected", { n }))}</span>
+      <button class="linkbtn" id="pf-nada">${esc(t("ui.clear"))}</button>
+      <span class="barra-acciones">
+        <button class="btn ghost" id="sel-borrar">${icono("cerrar")} ${esc(t("sel.borrar", { n }))}</button>
+        ${PORTAFOLIO && n >= 2 ? `<button class="btn ghost" id="pf-ver">${esc(t("pf.build"))}</button>` : ""}
+        ${PRUEBAS && probables.length ? `<button class="btn" id="sel-probar">${
+          esc(t("sel.probar", { n: probables.length }))}</button>` : ""}
+      </span>`;
+    $("#pf-nada", barra).onclick = () => {
+      SEL_PF.clear();
+      $$("[data-pf]", main).forEach(cb => { cb.checked = false; });
+      $$("tr[data-sid]", main).forEach(tr => tr.classList.remove("elegida"));
+      pintarBarra();
+    };
+    const ver = $("#pf-ver", barra);
+    if (ver) ver.onclick = () => abrirPortafolio(elegidas);
+    const probar = $("#sel-probar", barra);
+    if (probar) probar.onclick = () => probarVarias(probables, main);
+    $("#sel-borrar", barra).onclick = async () => {
+      if (!confirm(t("sel.confirm_delete", { n }))) return;
+      try {
+        for (const s of elegidas) await api.del(`/api/strategies/${s.id}`);
         SEL_PF.clear();
-        $$("[data-pf]", main).forEach(cb => { cb.checked = false; });
-        $$("tr[data-sid]", main).forEach(tr => tr.classList.remove("elegida"));
-        pintarBarra();
-      };
-      $("#pf-ver", barra).onclick = () => abrirPortafolio(
-        items.filter(x => SEL_PF.has(x.id)));
-    }
+        toast(t("sel.borradas", { n }), "ok");
+        navigate("saved");
+      } catch (e) { toast(e.message, "err"); }
+    };
   };
   pintarBarra();
 
@@ -3992,6 +4099,47 @@ PAGES.saved = async (main) => {
     } catch (e) { toast(e.message, "err"); }
   });
 };
+
+/* VARIAS EN COLA, UNA POR VEZ. El servidor corre una prueba por usuario a
+   la vez, así que en paralelo no ganaría nada; en cola cada fila muestra su
+   avance y al final un resumen dice cuántas pasaron. Se puede seguir usando
+   el resto de la aplicación mientras tanto: la cola vive fuera de la
+   pantalla, y si la pantalla se repinta, la cola sigue. */
+let COLA_PRUEBAS = null;
+
+async function probarVarias(lista, main) {
+  if (!lista.length || COLA_PRUEBAS) return;
+  COLA_PRUEBAS = { total: lista.length, hechas: 0 };
+  const cuenta = { aprobada: 0, aceptable: 0, no_paso: 0, error: 0 };
+  toast(t("sel.en_cola", { n: lista.length }), "ok");
+  for (const [i, s] of lista.entries()) {
+    const boton = $(`[data-probar="${s.id}"]`, document);
+    if (boton) {
+      boton.disabled = true;
+      boton.innerHTML = `<span class="spinner"></span>${i + 1}/${lista.length}`;
+    }
+    try {
+      const r = await probarEstrategia(s.id, (j) => {
+        const b = $(`[data-probar="${s.id}"]`, document);
+        if (b) b.innerHTML = `<span class="spinner"></span>${Math.round((j.progress || 0) * 100)}%`;
+      });
+      // el trabajo devuelve el veredicto arriba o bajo `validacion`, según
+      // el camino; se acepta cualquiera de los dos
+      const v = (r && (r.validacion || r)) || {};
+      cuenta[v.estado in cuenta ? v.estado : "error"] += 1;
+    } catch (e) {
+      cuenta.error += 1;
+      if (pedirCuenta(e.status)) break;
+    }
+    COLA_PRUEBAS.hechas = i + 1;
+  }
+  COLA_PRUEBAS = null;
+  toast(t("sel.resumen", { a: cuenta.aprobada, m: cuenta.aceptable, f: cuenta.no_paso })
+        + (cuenta.error ? ` · ${t("sel.errores", { n: cuenta.error })}` : ""), "ok");
+  SEL_PF.clear();
+  if (S.page === "saved") await navigate("saved");
+  else await refreshSavedCount();
+}
 
 /* Corre la prueba desde un botón cualquiera y deja el botón contando.
    El walk-forward reajusta la estrategia en cada tramo, así que tarda: sin

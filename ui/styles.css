@@ -2323,7 +2323,31 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
   box-shadow: 0 -4px 16px var(--sombra-color);
   font-size: 13px;
 }
-.barra-sel .btn { margin-left: auto; }
+.barra-sel .barra-acciones { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ---- el camino: cuatro etapas con cuentas, que también filtran ---- */
+.camino {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;
+  margin: 4px 0 8px;
+}
+@media (max-width: 900px) { .camino { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.camino-et {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: baseline;
+  text-align: left; padding: 12px 16px; border-radius: var(--r);
+  background: var(--card); border: 1px solid var(--border-soft);
+  color: var(--text); cursor: pointer; font: inherit;
+  transition: border-color .15s var(--ease), background .15s var(--ease);
+}
+.camino-et:hover { border-color: var(--border-strong); }
+.camino-et.on { border-color: var(--accent); background: var(--accent-soft); }
+.camino-et.vacia { color: var(--text-dim); }
+.camino-et b { font-size: 14px; }
+.camino-n { font-size: 20px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.camino-et.on .camino-n { color: var(--accent); }
+.camino-sub { grid-column: 1 / -1; font-size: 12px; color: var(--text-2); }
+.camino-todas { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.camino-todas .linkbtn.on { color: var(--accent); font-weight: 600; }
+.pista-accion { grid-template-columns: 18px 1fr auto; align-items: center; }
 
 /* --- la invitación a probar, cuando todavía no se probó */
 .prueba-invita {
