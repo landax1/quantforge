@@ -74,7 +74,13 @@ class Parametros:
     #: opuestas —una de tendencia y una de reversión— y prohibirlo del todo
     #: dejaría afuera diversificación real. Dos es el punto donde todavía se
     #: puede argumentar y tres ya es concentración.
-    max_por_instrumento: int = 2
+    #: UNA POR INSTRUMENTO. El piloto admite un bot por símbolo, así que la
+    #: segunda promovida del mismo par no se puede encender: quedaba en
+    #: "práctica" sin bot, invisible para el botón de reencender (el símbolo
+    #: ya tiene bot) y ocupando un lugar. Pasó con UNI y XMR la primera noche
+    #: que el ciclo promovió solo. Dos sigue siendo configurable para quien
+    #: opere en dos casas.
+    max_por_instrumento: int = 1
 
     # ------------------------------------------------------------ retirar
     #: Con el semáforo en naranja, cuántas vueltas espera antes de retirar.

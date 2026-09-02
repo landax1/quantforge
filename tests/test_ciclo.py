@@ -292,7 +292,7 @@ def test_sin_instrumento_conocido_no_se_frena():
 
 def test_el_tope_por_instrumento_es_configurable_y_acotado():
     from botiquant.ciclo import Parametros
-    assert Parametros().max_por_instrumento == 2
+    assert Parametros().max_por_instrumento == 1   # un bot por símbolo en el piloto
     assert Parametros.from_dict({"max_por_instrumento": 0}).max_por_instrumento == 1
     assert Parametros.from_dict({"max_por_instrumento": 99}).max_por_instrumento == 10
 
