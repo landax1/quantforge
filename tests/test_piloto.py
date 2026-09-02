@@ -659,3 +659,34 @@ def test_tres_tropiezos_seguidos_si_apagan_y_dicen_por_que(piloto, monkeypatch):
     assert e["encendido"] is False
     assert cuenta["n"] == 3
     assert "-1021" in e["vuelos"][0]["error"]
+
+
+
+# ------------------------------------------- adoptar la posición al reencender
+
+def test_al_reencender_el_bot_adopta_la_posicion_que_ya_tenia(piloto):
+    """Reiniciar la aplicación con una posición abierta dejaba al bot detenido
+    en su primera vuelta —"posición que este bot no abrió"— aunque fuera la
+    suya, con su stop y su objetivo puestos. Con `adoptar` la toma como propia
+    y sigue; sin `adoptar`, la guarda manda, como siempre."""
+    ex = _Exchange(posicion_lado=-1)
+    b = Bot(doc=_doc(), adaptador=ex, modo=PRACTICA, adoptar=True)
+    piloto.encender(b)
+    for _ in range(60):
+        if b.registro:
+            break
+        time.sleep(0.05)
+    time.sleep(0.2)
+    assert b.detenido is False
+    assert b.estado.posicion_propia is True
+    assert any("adoptó" in (f.get("motivo") or "") for f in b.registro)
+
+    piloto.apagar(espera=3.0)
+    ex2 = _Exchange(posicion_lado=-1)
+    b2 = Bot(doc=_doc(), adaptador=ex2, modo=PRACTICA)
+    piloto.encender(b2)
+    for _ in range(60):
+        if b2.detenido:
+            break
+        time.sleep(0.05)
+    assert b2.detenido is True

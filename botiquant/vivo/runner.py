@@ -125,6 +125,15 @@ class Bot:
     #: va a hacer la práctica en vez de otra cosa.
     porcion: float = 1.0
 
+    #: Tomar como propia la posición que haya en el símbolo al arrancar.
+    #:
+    #: Sin esto, reiniciar la aplicación con una posición abierta dejaba al
+    #: bot detenido en su primera vuelta —"hay una posición que este bot no
+    #: abrió"— aunque fuera la suya, con su stop y su objetivo puestos. La
+    #: guarda sigue existiendo para lo que no es suyo; esto es para el clic
+    #: de reencender, que es una persona decidiendo después de mirar.
+    adoptar: bool = False
+
     #: A quién avisarle cada vez que se anota algo. Opcional.
     #:
     #: ES UN CALLABLE Y NO UNA BASE DE DATOS, a propósito: `vivo/` no sabe que
@@ -219,6 +228,15 @@ class Bot:
 
         # LA POSICIÓN SE PREGUNTA, NO SE RECUERDA.
         pos: Posicion = self.adaptador.posicion(self.simbolo)
+        if self.adoptar:
+            # Una sola vez: la primera vuelta decide qué había al arrancar.
+            self.adoptar = False
+            if pos.lado != 0 and not self.estado.posicion_propia:
+                self.estado.posicion_propia = True
+                self._anotar(Decision(motivo=(
+                    f"adoptó la posición abierta en {self.simbolo} "
+                    f"({'larga' if pos.lado > 0 else 'corta'}, {pos.cantidad}): "
+                    f"la maneja desde ahora")))
         capital = self.capital
         if self.manda_ordenes:
             try:

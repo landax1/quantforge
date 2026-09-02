@@ -2815,7 +2815,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         candidatos.sort(key=lambda d: (cuantas.get(d["id"], 0), d["name"]))
         return candidatos[0]
 
-    def _encender_del_ciclo(fila: dict[str, Any], meta: dict[str, Any]) -> None:
+    def _encender_del_ciclo(fila: dict[str, Any], meta: dict[str, Any],
+                            adoptar: bool = False) -> None:
         """Pone a operar una estrategia recién promovida. Binance demo, siempre.
 
         LA PORCION SALE DEL TOPE DEL CICLO Y NO DE LO QUE QUEDE LIBRE. Con "lo
@@ -2847,7 +2848,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
         PILOTO.encender(Bot(
             doc=doc, adaptador=Binance(api_key, secret), modo=PRACTICA,
-            porcion=porcion, oyente=anotar))
+            porcion=porcion, oyente=anotar, adoptar=adoptar))
 
     def _orq():
         """El ciclo del proceso, armado la primera vez que se lo pide."""
@@ -3061,7 +3062,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         for a in _promovidas_sin_bot():
             fila = db.get_strategy(a["id"], None)
             try:
-                _encender_del_ciclo(fila, fila.get("meta") or {})
+                # Reencender es una persona decidiendo después de mirar: si
+                # en el símbolo hay una posición —la suya, con su stop—, el
+                # bot la adopta en vez de detenerse por "posición ajena".
+                _encender_del_ciclo(fila, fila.get("meta") or {}, adoptar=True)
                 encendidas.append(a)
             except Exception as exc:                        # noqa: BLE001
                 fallos.append({**a, "motivo": str(exc)})
