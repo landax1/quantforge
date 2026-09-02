@@ -1951,10 +1951,14 @@ const CONSEJOS = () => [
      una perilla que no existe en la pantalla es peor que no tenerlo — manda a
      buscar algo que no se va a encontrar. */
   ...(SESIONES ? [{ id: "horario", ico: "diana", clave: "tip.horario" }] : []),
-  { id: "spread",   ico: "alerta", clave: "tip.spread" },
+  /* DOS CONSEJOS SON DE CFD Y NADA MÁS: el del spread por instrumento y el
+     del reloj del bróker. En cripto el costo es comisión y funding, y
+     Binance habla en UTC; un consejo sobre una perilla que en este mundo no
+     existe manda a buscar algo que no se va a encontrar. */
+  { id: "spread",   ico: "alerta", clave: "tip.spread", mundo: "metatrader" },
   { id: "vara",     ico: "estrella", clave: "tip.vara" },
   { id: "riesgo",   ico: "baja", clave: "tip.riesgo" },
-  { id: "zona",     ico: "info", clave: "tip.zona" },
+  { id: "zona",     ico: "info", clave: "tip.zona", mundo: "metatrader" },
 ];
 
 /* ============================================================ LA ESCALERA ===
@@ -3132,7 +3136,7 @@ const vistaClaves = async (main, por) => {
 PAGES.consejos = async (main) => {
   main.innerHTML = pageHead(t("nav.tips"), esc(t("tips.sub"))) + `
     <div class="consejos">
-      ${CONSEJOS().map(c => `
+      ${CONSEJOS().filter(c => !c.mundo || c.mundo === S.mundo).map(c => `
         <article class="consejo">
           <span class="c-ico">${icono(c.ico, "ico-lg")}</span>
           <div class="c-cuerpo">
