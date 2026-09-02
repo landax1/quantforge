@@ -105,6 +105,15 @@ def esperar_al_servidor(puerto: int, timeout: float = 30.0) -> bool:
     return False
 
 
+def perfil_del_navegador(workdir: Path) -> Path:
+    """Dónde guarda el navegador interno lo suyo: cookies, preferencias,
+    almacenamiento local. Dentro del espacio de trabajo, por encima de la
+    carpeta temporal que pywebview usaría —y abandonaría— si no se le dice."""
+    perfil = Path(workdir) / "navegador"
+    perfil.mkdir(parents=True, exist_ok=True)
+    return perfil
+
+
 def main() -> int:
     import uvicorn
 
@@ -171,7 +180,15 @@ def main() -> int:
         servidor.should_exit = True
 
     ventana.events.closed += al_cerrar
-    webview.start()
+    # EL NAVEGADOR INTERNO TIENE QUE RECORDAR. pywebview abre en modo privado
+    # por defecto: cada arranque estrenaba un perfil en %TEMP% y lo dejaba
+    # ahí (41 carpetas, 99 MB, medido el 2 de septiembre), y ninguna
+    # preferencia sobrevivía a cerrar: idioma, tema, qué sección se opera,
+    # la búsqueda que había que retomar. El perfil vive junto a la base de
+    # datos, así que borrar el espacio de trabajo también lo borra.
+    from botiquant.api.app import WORK_DIR
+
+    webview.start(private_mode=False, storage_path=str(perfil_del_navegador(WORK_DIR)))
     return 0
 
 

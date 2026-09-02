@@ -11,6 +11,7 @@ import threading
 import time
 
 import pytest
+from pathlib import Path
 
 import desktop
 
@@ -153,3 +154,20 @@ def test_el_icono_trae_los_tamanos_que_windows_pide():
         lados.add(ancho or 256)
     for necesario in (16, 32, 48):
         assert necesario in lados, f"le falta la resolución de {necesario}px: {sorted(lados)}"
+
+
+# ------------------------------------------------- lo que el navegador recuerda
+def test_el_navegador_interno_guarda_su_perfil_en_el_espacio_de_trabajo(tmp_path):
+    """pywebview abre en modo privado por defecto: cada arranque estrenaba un
+    perfil temporal, lo abandonaba en %TEMP% (41 carpetas, 99 MB) y ninguna
+    preferencia sobrevivía a cerrar la ventana: idioma, tema, sección elegida."""
+    import desktop
+
+    perfil = desktop.perfil_del_navegador(tmp_path / "ws")
+
+    assert perfil == tmp_path / "ws" / "navegador"
+    assert perfil.is_dir()
+
+    fuente = Path(desktop.__file__).read_text(encoding="utf-8")
+    assert "private_mode=False" in fuente
+    assert "storage_path=str(perfil_del_navegador(" in fuente
