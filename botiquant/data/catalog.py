@@ -647,6 +647,28 @@ CATALOG: list[dict[str, Any]] = [
     },
 ]
 
+#: LOS PERPETUOS VAN POR CAPITALIZACIÓN, de lo que todo el mundo conoce a lo
+#: que no. La lista se había escrito en el orden en que se fueron midiendo
+#: los funding, y con eso la vitrina y el desplegable de Minar mostraban
+#: LINK o ADA antes que Bitcoin (2 de septiembre: "es raro que aparezca
+#: LINK primera"). Los CFD no se tocan: son cuatro y ya van del más conocido
+#: al menos. Un perpetuo que no esté acá va al final, no desaparece.
+_POR_CAPITALIZACION = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT",
+                       "DOGEUSDT", "ADAUSDT", "LINKUSDT", "SUIUSDT", "ARBUSDT",
+                       "UNIUSDT", "XMRUSDT", "ZECUSDT"]
+
+
+def _puesto(entry: dict[str, Any]) -> int:
+    if entry.get("fuente") != "binance":
+        return -1
+    try:
+        return _POR_CAPITALIZACION.index(entry["label"].upper())
+    except ValueError:
+        return len(_POR_CAPITALIZACION)
+
+
+CATALOG.sort(key=_puesto)   # estable: los CFD conservan su orden entre sí
+
 BY_KEY = {c["key"]: c for c in CATALOG}
 
 

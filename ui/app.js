@@ -307,12 +307,24 @@ function mundoDeDataset(nombre) {
   return enCat ? (enCat.mundo || "metatrader") : null;
 }
 
-/* Los históricos que se ven en el mundo elegido, en el orden de la lista. */
+/* Los históricos que se ven en el mundo elegido, EN EL ORDEN DEL CATÁLOGO.
+
+   No en el orden en que se cargaron: el servidor los manda del más nuevo al
+   más viejo, y con eso el desplegable de Minar —y el elegido por defecto—
+   arrancaba en el último perpetuo que se sembró, LINK o ADA, antes que
+   Bitcoin. El catálogo va del más conocido al menos; lo que no está en el
+   catálogo (un CSV propio) va al final, en su orden de carga. */
 function datasetsDelMundo() {
-  return (S.datasets || []).filter(d => {
-    const m = mundoDeDataset(d.name);
-    return m === null || m === S.mundo;
-  });
+  const puesto = (d) => {
+    const token = String(d.name || "").trim().split(/\s+/)[0].toLowerCase();
+    const i = (S.catalog || []).findIndex(c => c.label.toLowerCase() === token);
+    return i < 0 ? 1e6 : i;
+  };
+  return (S.datasets || [])
+    .filter(d => { const m = mundoDeDataset(d.name); return m === null || m === S.mundo; })
+    .map((d, i) => [puesto(d), i, d])
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1])
+    .map(x => x[2]);
 }
 
 const RECETAS = () => [
@@ -1469,10 +1481,23 @@ function pintarIdiomas() {
    adentro; adivinar el formato produciría órdenes que el exchange descarta en
    silencio, que es el peor resultado posible porque parece que está
    operando. */
+/* HOY EL CAMINO PRINCIPAL ES EL BOT DE LA APLICACION contra la demo de
+   Binance (Operar → Claves → Encender): se mide en vivo con stop y take
+   profit en el exchange, y es lo que ya operó de verdad. El webhook de
+   TradingView queda como alternativa, plegada, para quien no puede dejar la
+   computadora prendida — y se dice que Binance no lo recibe directo. */
 function abrirGuiaBingx(nombreEstrategia, simbolo) {
   const host = document.createElement("div");
   host.className = "overlay";
-  const pasos = [
+  const lista = (pasos) => `<ol class="guia-pasos">
+        ${pasos.map(([tt, dd]) => `<li><b>${esc(tt)}</b><span>${esc(dd)}</span></li>`).join("")}
+      </ol>`;
+  const enApp = [
+    [t("bx.a1_t"), t("bx.a1_d")],
+    [t("bx.a2_t"), t("bx.a2_d")],
+    [t("bx.a3_t"), t("bx.a3_d")],
+  ];
+  const conWebhook = [
     [t("bx.p1_t"), t("bx.p1_d")],
     [t("bx.p2_t"), t("bx.p2_d")],
     [t("bx.p3_t"), t("bx.p3_d")],
@@ -1487,19 +1512,24 @@ function abrirGuiaBingx(nombreEstrategia, simbolo) {
     </div>
     <div class="guia-bx">
       <p class="help-note">${esc(t("bx.intro"))}</p>
-      <ol class="guia-pasos">
-        ${pasos.map(([tt, dd]) => `<li><b>${esc(tt)}</b><span>${esc(dd)}</span></li>`).join("")}
-      </ol>
+      <h3 class="guia-tit">${esc(t("bx.app_t"))}</h3>
+      ${lista(enApp)}
+      <div class="controls mt"><button class="btn" id="guia-operar">${icono("seguir")} ${esc(t("bx.ir_operar"))}</button></div>
       <div class="guia-aviso">
         <b>${esc(t("bx.demo_t"))}</b>
         <span>${esc(t("bx.demo_d"))}</span>
       </div>
-      <p class="help-note">${esc(t("bx.compara"))}</p>
+      <details class="guia-alt">
+        <summary><b>${esc(t("bx.alt_t"))}</b><span>${esc(t("bx.alt_sub"))}</span></summary>
+        ${lista(conWebhook)}
+        <p class="help-note">${esc(t("bx.compara"))}</p>
+      </details>
     </div>
   </div>`;
   document.body.appendChild(host);
   const close = () => host.remove();
   $(".sheet-close", host).onclick = close;
+  $("#guia-operar", host).onclick = () => { close(); navigate("operar", "claves"); };
   host.onclick = (e) => { if (e.target === host) close(); };
   document.addEventListener("keydown", function esckey(e) {
     if (e.key === "Escape") { close(); document.removeEventListener("keydown", esckey); }
@@ -2390,9 +2420,11 @@ function atarCiclo(main, c) {
 function panelBot(e, hayClave) {
   const on = e.encendido;
   const hc = hayClave || {};
-  const casaInicial = ((hc.binance || {}).practica
-                       && !((hc.bingx || {}).practica || (hc.bingx || {}).real))
-    ? "binance" : "bingx";
+  /* BINANCE ES EL EXCHANGE POR DEFECTO: es el único que la aplicación opera
+     hoy (en demo). BingX sólo se preselecciona si es el único con clave. */
+  const casaInicial = (((hc.bingx || {}).practica || (hc.bingx || {}).real)
+                       && !(hc.binance || {}).practica)
+    ? "bingx" : "binance";
   /* SOLO las estrategias minadas sobre un perpetuo. Un exchange de cripto no
      opera el S&P ni el oro: encender una de esas mandaria un simbolo que
      BingX no conoce, y el error llegaria recien al intentar operar. Se filtra
@@ -2695,7 +2727,7 @@ const vistaBot = async (main, hayClave) => {
     [...selModo.options].forEach(o => {
       if (!o.value) return;
       const p = puertas[o.value] || {};
-      const casaSel = ($("#bot-casa", main) || {}).value || "bingx";
+      const casaSel = ($("#bot-casa", main) || {}).value || "binance";
       const faltaClave = o.value !== "simulacro"
         && !(hayClave[casaSel] || {})[o.value];
       // Sin estrategia elegida no se bloquea nada: sería decir que no antes
@@ -2781,7 +2813,7 @@ const vistaBot = async (main, hayClave) => {
         oos: (fila.meta || {}).oos,
       });
       const tope = parseFloat(($("#bot-tope", main) || {}).value) || 0;
-      const casa = ($("#bot-casa", main) || {}).value || "bingx";
+      const casa = ($("#bot-casa", main) || {}).value || "binance";
       const pct = parseFloat(($("#bot-porcion", main) || {}).value);
       await api.post("/api/bot/encender",
                      { bot: archivo, modo, exchange: casa,
@@ -2998,7 +3030,7 @@ const vistaClaves = async (main, por) => {
      cada URL; con dos, olvidarse de cambiarlo en una sola de las tres
      llamadas —guardar, probar, borrar— manda la clave de Binance al archivo
      de BingX sin que nada avise. */
-  const tarjeta = (entorno, casa = "bingx", cabecera = null, extra = "") => {
+  const tarjeta = (entorno, casa = "binance", cabecera = null, extra = "") => {
     const e = por[`${casa}-${entorno}`] || { configurada: false };
     const real = entorno === "real";
     return `
@@ -3292,24 +3324,42 @@ PAGES.data = async (main) => {
     familias.push({ cat: "_otro", rotulo: t("cat.otros"), sub: "", xs: sueltas });
   }
 
-  const cards = familias.map(f => `
+  /* LAS FAMILIAS DE UN SOLO INSTRUMENTO VAN JUNTAS. En CFDs hay un índice,
+     un par, un metal y una cripto: cuatro familias de una tarjeta, cada una
+     con su título y su fila, y la pantalla quedaba como una columna apilada
+     con todo el ancho vacío a la derecha (2 de septiembre). La familia sigue
+     escrita en la tarjeta —el chip "INDICES"—, así que juntarlas no pierde
+     nada; separarlas sólo servía cuando había varias por familia. */
+  const chicas = familias.filter(f => f.xs.length < 2);
+  const secciones = chicas.length >= 2
+    ? [...familias.filter(f => f.xs.length >= 2), {
+        cat: "_juntas",
+        rotulo: t(S.mundo === "exchange" ? "mundo.cripto" : "mundo.cfds"),
+        sub: chicas.map(f => f.rotulo).join(" · "),
+        xs: chicas.flatMap(f => f.xs),
+      }]
+    : familias;
+
+  const agregar = `
+        <button class="inst-card add-card" id="inst-add">
+          <span class="add-plus">+</span>
+          <b>${esc(t("data.add"))}</b>
+          <span>${esc(t("data.add_sub"))}</span>
+        </button>`;
+  /* La tarjeta de "agregar CSV" cierra la última grilla en vez de abrir una
+     sección propia: sola en su fila era una tarjeta más apilada. */
+  const cards = secciones.length
+    ? secciones.map((f, i) => `
     <section class="inst-fam">
       <h3 class="fam-tit">
         <span>${esc(f.rotulo)}</span>
         <span class="fam-sub">${esc(f.sub)}</span>
         <span class="fam-n">${f.xs.filter(c => c.dataset_id).length}/${f.xs.length}</span>
       </h3>
-      <div class="inst-grid">${f.xs.map(tarjeta).join("")}</div>
-    </section>`).join("") + `
-    <section class="inst-fam">
-      <div class="inst-grid">
-        <button class="inst-card add-card" id="inst-add">
-          <span class="add-plus">+</span>
-          <b>${esc(t("data.add"))}</b>
-          <span>${esc(t("data.add_sub"))}</span>
-        </button>
-      </div>
-    </section>`;
+      <div class="inst-grid">${f.xs.map(tarjeta).join("")}${
+        i === secciones.length - 1 ? agregar : ""}</div>
+    </section>`).join("")
+    : `<section class="inst-fam"><div class="inst-grid">${agregar}</div></section>`;
 
   const rows = S.datasets.map(d => `
     <tr>

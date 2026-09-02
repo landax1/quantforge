@@ -483,23 +483,51 @@ const STR = {
   "export.installed": ["Robot installed in {terminal} — open it and compile with F7",
                        "Robot instalado en {terminal} — abrilo y compilá con F7"],
   "export.bot_saved": ["Bot file saved", "Archivo del bot guardado"],
-  "insp.bingx_btn": ["Connect it to an exchange", "Conectarla a un exchange"],
+  "insp.bingx_btn": ["Trade it on Binance", "Operarla en Binance"],
+  /* LA GUIA DE "OPERARLA SOLA" EMPIEZA POR BOTIQUANT Y BINANCE. Antes era
+     una guía de TradingView→BingX; hoy el camino principal es el bot de la
+     aplicación contra la demo de Binance (Operar → Claves → Encender), y el
+     webhook queda como alternativa para quien no puede dejar la computadora
+     prendida. Binance no recibe alertas de TradingView directamente, y eso
+     se dice, no se esconde. */
   "bx.title": ["Run this strategy automatically", "Operar esta estrategia sola"],
-  "bx.intro": ["TradingView evaluates the rules on its own servers and notifies the exchange when they trigger. Your computer does not need to stay on, and Botiquant never handles your exchange keys.", "TradingView evalúa las reglas en sus propios servidores y le avisa al exchange cuando se cumplen. Tu computadora no tiene que quedar prendida, y Botiquant no toca nunca las claves de tu exchange."],
+  "bx.intro": [
+    "The simplest way is to let Botiquant run it against your Binance demo account. TradingView with a webhook is the alternative for when the computer cannot stay on.",
+    "Lo más simple es dejar que Botiquant la corra contra tu cuenta demo de Binance. TradingView con webhook es la alternativa para cuando la computadora no puede quedar prendida."],
+  "bx.app_t": ["In Botiquant, on your Binance demo", "En Botiquant, con tu demo de Binance"],
+  "bx.a1_t": ["Save it to My strategies", "Guardala en Mis estrategias"],
+  "bx.a1_d": [
+    "Only saved strategies can be turned on: the bot needs the instrument, the timeframe and the costs it was measured with.",
+    "Sólo se encienden las guardadas: el bot necesita el instrumento, la temporalidad y los costos con los que se midió."],
+  "bx.a2_t": ["Paste your Binance demo keys under Trade → Exchange keys", "Pegá tus claves demo de Binance en Operar → Claves de exchange"],
+  "bx.a2_d": [
+    "They are created on demo.binance.com, never on binance.com. Botiquant stores them encrypted on this computer and only accepts Binance in demo.",
+    "Se crean en demo.binance.com, nunca en binance.com. Botiquant las guarda cifradas en esta computadora y sólo acepta Binance en demo."],
+  "bx.a3_t": ["Turn it on under Trade → Bot", "Encendela en Operar → Bot"],
+  "bx.a3_d": [
+    "Botiquant checks every closed candle and sends the orders, with the stop and the take profit placed on the exchange. The computer has to stay on.",
+    "Botiquant mira cada vela cerrada y manda las órdenes, con el stop y el take profit puestos en el exchange. La computadora tiene que quedar prendida."],
+  "bx.ir_operar": ["Go to Trade", "Ir a Operar"],
+  "bx.alt_t": ["Alternative: TradingView with a webhook", "Alternativa: TradingView con webhook"],
+  "bx.alt_sub": [
+    "For when the computer cannot stay on. Binance does not receive TradingView alerts directly: this path needs an exchange with signal trading, such as BingX or Bybit, or a webhook bridge.",
+    "Para cuando la computadora no puede quedar prendida. Binance no recibe alertas de TradingView directamente: este camino necesita un exchange con trading de señales, como BingX o Bybit, o un puente de webhooks."],
   "bx.p1_t": ["Get a TradingView plan with alerts", "Conseguir un plan de TradingView con alertas"],
   "bx.p1_d": ["Webhooks are not in the free plan: you need Essential or higher. This is the only cost of the whole setup, and it is worth knowing before you start.", "Los webhooks no están en el plan gratis: hace falta Essential o superior. Es el único costo de todo esto, y conviene saberlo antes de empezar."],
   "bx.p2_t": ["Paste the strategy into the Pine Editor", "Pegar la estrategia en el Pine Editor"],
-  "bx.p2_d": ["Open the chart for your symbol, paste the script you just exported and add it to the chart. Check the Strategy Tester against the numbers Botiquant measured before going any further.", "Abrí el gráfico de tu símbolo, pegá el script que acabás de exportar y agregalo al gráfico. Compará el Strategy Tester contra los números que midió Botiquant antes de seguir."],
-  "bx.p3_t": ["Copy the webhook URL and message from your exchange", "Copiar la URL y el mensaje de tu exchange"],
-  "bx.p3_d": ["On BingX: open the USD-M perpetual chart and click the signal trading icon. It gives you a URL and a message that are yours alone. Bybit has the same thing under Webhook Signal Trading. Never share that URL.", "En BingX: abrí el gráfico de perpetuos USD-M y tocá el ícono de trading de señales. Te da una URL y un mensaje que son sólo tuyos. Bybit tiene lo mismo en Webhook Signal Trading. Esa URL no se comparte con nadie."],
+  "bx.p2_d": ["Open the chart for your symbol, paste the exported script and add it to the chart. Check the Strategy Tester against the numbers Botiquant measured before going any further.", "Abrí el gráfico de tu símbolo, pegá el script exportado y agregalo al gráfico. Compará el Strategy Tester contra los números que midió Botiquant antes de seguir."],
+  "bx.p3_t": ["Copy the webhook URL and message from the exchange", "Copiar la URL y el mensaje del exchange"],
+  "bx.p3_d": ["In the exchange's signal trading screen, on the USD-M perpetual chart, you get a URL and a message that are yours alone. Never share that URL.", "En la pantalla de trading de señales del exchange, sobre el gráfico de perpetuos USD-M, te dan una URL y un mensaje que son sólo tuyos. Nunca compartas esa URL."],
   "bx.p4_t": ["Paste the exchange's messages into the strategy settings", "Pegar los mensajes del exchange en la estrategia"],
   "bx.p4_d": ["The script has three boxes: open long, open short and close. Paste the exchange's message in each. Botiquant does not invent that format on purpose: a made-up message produces orders the exchange discards silently.", "El script tiene tres casillas: abrir largo, abrir corto y cerrar. Pegá en cada una el mensaje del exchange. Botiquant no inventa ese formato a propósito: un mensaje inventado produce órdenes que el exchange descarta en silencio."],
   "bx.p5_t": ["Create the alert with the webhook", "Crear la alerta con el webhook"],
   "bx.p5_d": ["New alert on the strategy, condition \"Order fills only\", message {{strategy.order.alert_message}}, and paste the URL under Notifications. From then on it trades on its own.", "Alerta nueva sobre la estrategia, condición \"Order fills only\", mensaje {{strategy.order.alert_message}}, y pegá la URL en Notificaciones. Desde ahí opera sola."],
-  "bx.demo_t": ["Start on a demo account", "Empezá en una cuenta de práctica"],
-  "bx.demo_d": ["BingX has a demo environment and so do most exchanges. Run it there for a few weeks first: that is what tells you whether it does live what it did in the backtest, and it costs nothing to find out.", "BingX tiene entorno de práctica, y la mayoría de los exchanges también. Corrila ahí unas semanas primero: eso es lo que te dice si hace en vivo lo mismo que hizo en el backtest, y averiguarlo no cuesta nada."],
-  "bx.compara": ["One warning worth repeating: the Pine script is a translation of the strategy into another language. Compare TradingView's Strategy Tester against Botiquant's numbers over the same dates. If they differ a lot, do not turn it on.", "Un aviso que vale repetir: el script de Pine es una traducción de la estrategia a otro lenguaje. Compará el Strategy Tester de TradingView contra los números de Botiquant sobre las mismas fechas. Si difieren mucho, no la enciendas."],
-  "insp.bingx_hint": ["Save the link file for the BingX runner", "Guarda el archivo de enlace para el runner de BingX"],
+  "bx.demo_t": ["Demo first, always", "Primero en demo, siempre"],
+  "bx.demo_d": [
+    "Botiquant only trades Binance in demo, on purpose. Run it there for a few weeks: that is what tells you whether it does live what it did in the backtest, and it costs nothing to find out.",
+    "Botiquant sólo opera Binance en demo, a propósito. Corrila ahí unas semanas: eso es lo que te dice si hace en vivo lo mismo que hizo en el backtest, y no cuesta nada averiguarlo."],
+  "bx.compara": ["One warning worth repeating: the Pine script is a translation of the strategy into another language. Compare TradingView's Strategy Tester against Botiquant's numbers over the same dates. If they differ a lot, do not turn it on.", "Un aviso que vale repetir: el script de Pine es una traducción de la estrategia a otro lenguaje. Compará el Strategy Tester de TradingView contra los números de Botiquant en las mismas fechas. Si difieren mucho, no la enciendas."],
+  "insp.bingx_hint": ["How to leave it running on your Binance demo account", "Cómo dejarla operando en tu cuenta demo de Binance"],
   "insp.bingx_solo_cripto": ["Only for perpetual futures: a crypto exchange does not trade indices or metals", "Sólo para perpetuos: un exchange de cripto no opera índices ni metales"],
   "export.mq5_saved": ["Expert Advisor saved — copy it to MQL5/Experts and compile",
                        "Expert Advisor guardado — copialo a MQL5/Experts y compilá"],
@@ -1436,8 +1464,8 @@ const STR = {
                 "Con lectura y trading alcanza. Sin retiro, ni siquiera una clave robada puede sacarte los fondos."],
   "ex.regla3_t": ["Start on the practice account",
                   "Empezá en la cuenta de práctica"],
-  "ex.regla3": ["BingX has a demo environment with play money and the same API. Run it there for a few weeks before risking anything.",
-                "BingX tiene un entorno demo con plata de juguete y la misma API. Corrila ahí unas semanas antes de arriesgar nada."],
+  "ex.regla3": ["Binance has a demo environment with play money and the same API, and Botiquant only accepts Binance in demo. Run it there for a few weeks before risking anything anywhere.",
+                "Binance tiene un entorno demo con plata de juguete y la misma API, y Botiquant sólo acepta Binance en demo. Corrila ahí unas semanas antes de arriesgar nada en ningún lado."],
   "ex.practica": ["Practice account", "Cuenta de práctica"],
   "ex.practica_sub": ["Play money, real market data", "Plata de juguete, mercado real"],
   "ex.real": ["Live account", "Cuenta real"],
