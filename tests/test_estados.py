@@ -314,6 +314,13 @@ def test_registra_CUANTO_PEOR_puede_ser_el_mismo_conjunto_de_operaciones(tmp_pat
         # ficha decía "Probada sobre — → —" para todo lo que validó el ciclo.
         if "estado" in v:
             assert v["periodo"]["from"] < v["periodo"]["to"]
+            # y el detalle para dibujarla: un tramo por fold, la curva fuera
+            # de muestra y las bandas de Monte Carlo, muestreadas
+            d = v["detalle"]
+            assert len(d["tramos"]) == v["tramos"]
+            assert d["tramos"][0]["juzga"][0] > d["tramos"][0]["entrena"][0]
+            assert 2 <= len(d["afuera"]["curva"]) <= 120
+            assert len(d["mc"]["bandas"]["p50"]) <= 60
     finally:
         c.__exit__(None, None, None)
 

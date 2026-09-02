@@ -1786,6 +1786,24 @@ const STR = {
     "It made money in {g} of {n} stretches, but almost none of its edge survived outside the data it was found on.",
     "Ganó en {g} de {n} tramos, pero casi nada de su ventaja sobrevivió fuera de los datos donde se la encontró."],
 
+  /* LOS DIBUJOS DE LA PRUEBA. Las palabras van con su definición al pasar
+     el mouse: "tramo" y "fuera de muestra" no se explican solas. */
+  "wf.tramo": ["Stretch {n}", "Tramo {n}"],
+  "wf.tramo_tip": [
+    "Re-fitted there: {adentro}. Judged on data it never saw: {afuera} over {ops} trades, worst fall {caida}%.",
+    "Reajustada ahí: {adentro}. Juzgada sobre datos que nunca vio: {afuera} en {ops} operaciones, peor caída {caida}%."],
+  "wf.d_tramos": ["The four stretches", "Los cuatro tramos"],
+  "wf.d_tramos_help": [
+    "The history is cut in four. In each stretch the strategy is re-fitted on the grey part and then judged on the coloured part, which it had never seen. Green: it made money there. Red: it did not.",
+    "La historia se corta en cuatro. En cada tramo la estrategia se reajusta sobre la parte gris y después se la juzga sobre la parte de color, que nunca había visto. Verde: ganó ahí. Rojo: no."],
+  "wf.d_afuera": ["Equity on data it never saw", "Capital sobre datos que nunca vio"],
+  "wf.d_afuera_help": [
+    "The four judged stretches stitched together, one after another. This is the closest thing to how it would have done live.",
+    "Los cuatro tramos de juicio cosidos uno tras otro. Es lo más parecido a cómo le habría ido en vivo."],
+  "wf.d_mc": ["Same trades, shuffled 1,000 times", "Las mismas operaciones, barajadas 1000 veces"],
+  "wf.d_mc_help": [
+    "The total profit is identical every time; what changes is the path. The band shows how deep the hole could have been before it paid off.",
+    "La ganancia total es idéntica siempre; lo que cambia es el camino. La banda muestra qué tan hondo pudo ser el pozo antes de que pagara."],
   "wf.test_it": ["Put it to the test", "Poner a prueba"],
   "wf.retest": ["Test again", "Volver a probar"],
   "wf.testing": ["Testing", "Probando"],

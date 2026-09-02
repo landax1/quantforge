@@ -1535,6 +1535,49 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             "operaciones": mc.get("trades_per_sim"),
         }
 
+    def _detalle_prueba(wf: dict[str, Any], mc: dict[str, Any] | None) -> dict[str, Any]:
+        """Lo justo para DIBUJAR la prueba después, no la distribución entera.
+
+        Hasta acá el detalle viajaba una vez y se tiraba: quedaban tres
+        números y una frase, y "cuatro tramos" no se entendía sin verlos. Se
+        guarda muestreado —la curva a 120 puntos, las bandas a 60— y pesa
+        unos pocos KB por estrategia, que es lo que cuesta poder mostrar los
+        tramos, la curva fuera de muestra y el abanico de Monte Carlo cada
+        vez que se abre la ficha.
+        """
+        def muestra(xs, n):
+            xs = list(xs)
+            if len(xs) <= n:
+                return xs
+            paso = (len(xs) - 1) / (n - 1)
+            return [xs[round(i * paso)] for i in range(n)]
+
+        tramos = [{
+            "n": int(f["fold"]),
+            "entrena": [str(f["train_start"])[:10], str(f["train_end"])[:10]],
+            "juzga": [str(f["test_start"])[:10], str(f["test_end"])[:10]],
+            "adentro_pct": round(float(f["is_net_profit_pct"]), 2),
+            "afuera_pct": round(float(f["oos_net_profit_pct"]), 2),
+            "operaciones": int(f["oos_trades"]),
+            "caida_pct": round(float(f["oos_max_dd_pct"]), 2),
+        } for f in wf.get("folds", [])]
+        detalle: dict[str, Any] = {
+            "tramos": tramos,
+            "afuera": {
+                "curva": [round(float(v), 2) for v in muestra(wf.get("oos_equity", []), 120)],
+                "fechas": [str(x)[:10] for x in muestra(wf.get("oos_timestamps", []), 120)],
+            },
+        }
+        if mc:
+            b = mc["bands"]
+            detalle["mc"] = {
+                "bandas": {k: [round(float(v), 2) for v in muestra(b[k], 60)]
+                           for k in ("p5", "p25", "p50", "p75", "p95")},
+                "capital": float(mc["initial_capital"]),
+                "caidas": mc["max_drawdown_pct"]["histogram"],
+            }
+        return detalle
+
     @app.post("/api/probar")
     def probar(request: Request, payload: dict[str, Any]) -> dict[str, str]:
         """Corre las dos pruebas sobre una estrategia GUARDADA y archiva el veredicto.
@@ -1598,6 +1641,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "probada": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "periodo": {"from": str(df.index[0])[:10], "to": str(df.index[-1])[:10]},
                 "mc": _resumen_mc(mc) if mc else None,
+                # y lo justo para dibujarla cada vez que se abra la ficha
+                "detalle": _detalle_prueba(wf, mc),
             }
             try:
                 db.guardar_validacion(sid, salida, dueno)
@@ -1605,10 +1650,9 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 # que falle el archivado no puede tirar el resultado: la prueba
                 # ya tardó sus minutos y está en pantalla
                 traceback.print_exc()
-            # el detalle viaja para dibujar, pero NO se guarda: son cientos de
-            # puntos de curva por estrategia y lo que hace falta después es el
-            # veredicto, no el gráfico
-            return {**salida, "detalle": {"folds": wf["folds"],
+            # el detalle crudo viaja además entero, para quien lo pida ahora
+            return {**salida, "detalle": {**salida["detalle"],
+                                          "folds": wf["folds"],
                                           "oos_equity": wf["oos_equity"],
                                           "oos_timestamps": wf["oos_timestamps"]}}
 
@@ -2028,6 +2072,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 # esto la ficha decía "Probada sobre — → —" para todo lo que
                 # validó el ciclo.
                 "periodo": {"from": str(df.index[0])[:10], "to": str(df.index[-1])[:10]},
+                "mc": _resumen_mc(mc),
+                "detalle": _detalle_prueba(wf, mc),
             })
         except Exception as exc:                            # noqa: BLE001
             validacion["prueba_error"] = str(exc)[:200]

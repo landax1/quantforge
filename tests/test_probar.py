@@ -80,7 +80,12 @@ def test_probar_deja_un_veredicto_que_sobrevive(guardada):
     v = fila["validacion"]
     assert v["estado"] == out["estado"]
     assert v["eficiencia"] == out["eficiencia"]
-    assert "detalle" not in v, "la curva no se guarda: son cientos de puntos por fila"
+    # el detalle SÍ se guarda, pero muestreado: lo justo para dibujar los
+    # tramos, la curva fuera de muestra y el abanico cada vez que se abre
+    d = v["detalle"]
+    assert len(d["tramos"]) == v["tramos"]
+    assert 2 <= len(d["afuera"]["curva"]) <= 120
+    assert "oos_equity" not in d, "la curva cruda no se guarda: son cientos de puntos por fila"
     assert v["probada"], "tiene que quedar cuándo se probó"
 
 

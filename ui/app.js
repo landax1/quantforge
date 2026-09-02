@@ -1408,6 +1408,10 @@ function pintarMundo() {
     pintarMundo();
     /* Los números del menú son de la sección: 236 al lado de "Minado" en
        cripto, con cero perpetuos minados, prometía lo que no había. */
+    /* Un fundido corto al cambiar de sección: cambió TODO lo de la
+       pantalla, y sin movimiento parecía que no había pasado nada. */
+    const main = $("#main");
+    if (main) { main.classList.remove("cruza"); void main.offsetWidth; main.classList.add("cruza"); }
     Promise.allSettled([refreshSavedCount(), refreshBancoCount()])
       .then(() => navigate(S.page));
   });
@@ -3583,7 +3587,11 @@ async function refreshSavedCount() {
        volvía a mezclar, así que el número prometía el doble de lo que hay. */
     if (el) {
       const vivas = S.saved.filter(x => (x.estado || "") !== "retirada").length;
+      const antes = +el.textContent || 0;
       el.textContent = vivas || "";
+      if (vivas > antes && antes) {
+        el.classList.remove("sube"); void el.offsetWidth; el.classList.add("sube");
+      }
     }
   } catch (e) { /* si el backend no responde ya hay un aviso arriba */ }
 }
@@ -3868,6 +3876,13 @@ async function probarEstrategia(sid, onTick) {
    se repinta al probar una estrategia y no se puede perder lo tildado. */
 const SEL_PF = new Set();
 
+/* LO QUE ACABA DE PASAR SE VE PASAR. Una fila recién guardada llega a la
+   lista como llega al banco; un chip que acaba de cambiar de etapa lo
+   marca. Es la misma familia de movimiento que el minado, y por el mismo
+   motivo: responde a algo que el usuario hizo hace un segundo. */
+const RECIEN_GUARDADAS = new Set();
+const RECIEN_PROBADAS = new Set();
+
 PAGES.saved = async (main) => {
   await refreshDatasets();
   await refreshSavedCount();
@@ -3903,7 +3918,8 @@ PAGES.saved = async (main) => {
      confusión que se vino a sacar. */
   const fila = (s) => {
     const ctx = s.meta || {}, m = ctx.metrics || {};
-    return `<tr class="clickable ${SEL_PF.has(s.id) ? "elegida" : ""}" data-sid="${esc(s.id)}">
+    const llega = RECIEN_GUARDADAS.delete(s.id) ? " llegando" : "";
+    return `<tr class="clickable ${SEL_PF.has(s.id) ? "elegida" : ""}${llega}" data-sid="${esc(s.id)}">
       ${PORTAFOLIO ? `<td class="tick"><input type="checkbox" data-pf="${esc(s.id)}"
             ${SEL_PF.has(s.id) ? "checked" : ""}
             aria-label="${esc(t("pf.pick_one", { nombre: s.name }))}"></td>` : ""}
@@ -3920,7 +3936,7 @@ PAGES.saved = async (main) => {
         m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
       <td class="num ${nivelDD(m.max_drawdown_pct, riesgoDeCtx(ctx))}">${
         m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
-      ${PRUEBAS ? `<td>${chipEtapa(s)}</td>` : ""}
+      ${PRUEBAS ? `<td class="${RECIEN_PROBADAS.delete(s.id) ? "chip-cambia" : ""}">${chipEtapa(s)}</td>` : ""}
       <td class="num" style="white-space:nowrap">
         ${PRUEBAS && !estaRetirada(s) ? `<button class="btn ghost small" data-probar="${esc(s.id)}">${
           esc(t(estadoDe(s) === "sin_probar" ? "wf.test_it" : "wf.retest"))}</button>` : ""}
@@ -4127,6 +4143,7 @@ async function probarVarias(lista, main) {
       // el camino; se acepta cualquiera de los dos
       const v = (r && (r.validacion || r)) || {};
       cuenta[v.estado in cuenta ? v.estado : "error"] += 1;
+      RECIEN_PROBADAS.add(s.id);
     } catch (e) {
       cuenta.error += 1;
       if (pedirCuenta(e.status)) break;
@@ -4154,6 +4171,7 @@ async function correrPrueba(s, boton) {
       boton.innerHTML = `<span class="spinner"></span>${pct}%`;
     });
     toast(t("wf.done", { nombre: s.name }), "ok");
+    RECIEN_PROBADAS.add(s.id);
     await navigate("saved");
   } catch (e) {
     if (!pedirCuenta(e.status)) toast(e.message, "err");
@@ -7321,6 +7339,8 @@ function panelPrueba(ctx) {
           fmtNum(mc.dd_malo_pct, 1)}%</b></div>` : ""}
     </div>
 
+    ${dibujosPrueba(v)}
+
     <p class="v-pie">${t("wf.tested_on", {
       desde: esc(v.periodo?.from || "—"), hasta: esc(v.periodo?.to || "—"),
       cuando: esc(String(v.probada || "").slice(0, 10)) })}</p>
@@ -7328,6 +7348,54 @@ function panelPrueba(ctx) {
       <span class="b-ic">${icono("alerta")}</span>
       <div>${t("wf.ruin_warn", { pct: fmtNum(mc.ruina_pct, 1) })}</div></div>` : ""}
   </section>`;
+}
+
+/* LA PRUEBA, DIBUJADA. Tres números y una frase no alcanzaban: "cuatro
+   tramos" no se entiende sin verlos. Con el detalle guardado se muestran
+   los tramos (gris donde se reajustó, color donde se la juzgó sin haberla
+   visto), la curva cosida de esos tramos de juicio y el abanico de Monte
+   Carlo. Las guardadas antes de esto no tienen detalle y muestran lo de
+   siempre hasta que se las vuelva a probar. */
+function dibujosPrueba(v) {
+  const d = v && v.detalle;
+  if (!d || !(d.tramos || []).length) return "";
+  const tramos = d.tramos.map(tr => {
+    const gana = tr.afuera_pct > 0;
+    return `<div class="tramo ${gana ? "gana" : "pierde"}"
+      title="${esc(t("wf.tramo_tip", { adentro: fmtPct(tr.adentro_pct), afuera: fmtPct(tr.afuera_pct),
+                                       ops: fmtInt(tr.operaciones), caida: fmtNum(tr.caida_pct, 1) }))}">
+      <span class="tramo-n">${esc(t("wf.tramo", { n: tr.n }))}</span>
+      <div class="tramo-bar"><i class="tr-in"></i><i class="tr-out"></i></div>
+      <small><span>${esc(tr.juzga[0])} → ${esc(tr.juzga[1])}</span>
+        <b>${fmtPct(tr.afuera_pct)}</b></small>
+    </div>`;
+  }).join("");
+  return `<div class="v-dibujos">
+    <div>
+      <h4>${esc(t("wf.d_tramos"))} <em class="ayuda" title="${esc(t("wf.d_tramos_help"))}">?</em></h4>
+      <div class="tramos">${tramos}</div>
+    </div>
+    <div class="v-graficos">
+      ${d.afuera && (d.afuera.curva || []).length > 1 ? `<div>
+        <h4>${esc(t("wf.d_afuera"))} <em class="ayuda" title="${esc(t("wf.d_afuera_help"))}">?</em></h4>
+        <div class="chart-box" id="v-afuera"></div></div>` : ""}
+      ${d.mc ? `<div>
+        <h4>${esc(t("wf.d_mc"))} <em class="ayuda" title="${esc(t("wf.d_mc_help"))}">?</em></h4>
+        <div class="chart-box" id="v-mc"></div></div>` : ""}
+    </div>
+  </div>`;
+}
+
+function dibujarPrueba(box, v) {
+  const d = v && v.detalle;
+  if (!d) return;
+  const a = $("#v-afuera", box);
+  if (a && d.afuera) {
+    Charts.line(a, { height: 200, baseline: d.afuera.curva[0], labels: d.afuera.fechas,
+                     series: [{ values: d.afuera.curva, fill: true }] });
+  }
+  const m = $("#v-mc", box);
+  if (m && d.mc) Charts.fan(m, d.mc.bandas, d.mc.capital);
 }
 
 /* Abre la ficha de una estrategia: el backtest se recalcula entero en el
@@ -7692,6 +7760,7 @@ function renderInspector(box, row, res, ctx) {
   };
 
   mostrarResultado(res);
+  dibujarPrueba(box, ctx && ctx.validacion);
   cablearMuestras(box, row, ctx, mostrarResultado);
 
   cablearNota(box, ctx);
@@ -7714,7 +7783,7 @@ function renderInspector(box, row, res, ctx) {
       const g = (ctx && ctx.guardar) || null;
       const dsId = g ? g.dataset_id : S.sel.dataset_id;
       const ds = S.datasets.find(d => d.id === dsId);
-      await api.post("/api/strategies", {
+      const guardada = await api.post("/api/strategies", {
         spec: row.spec, name: row.name,
         dataset_id: dsId,
         /* El campo de notas es del usuario. Antes salía de fábrica con
@@ -7759,6 +7828,7 @@ function renderInspector(box, row, res, ctx) {
         },
       });
       toast(t("saved.added", { nombre: row.name }), "ok");
+      if (guardada && guardada.id) RECIEN_GUARDADAS.add(guardada.id);
       refreshSavedCount();
     } catch (e) { toast(e.message, "err"); }
     btn.disabled = false;
