@@ -329,7 +329,10 @@ function datasetsDelMundo() {
 
 const RECETAS = () => [
   {
-    id: "fondeo", ico: "diana",
+    /* SÓLO EN CFD. Un desafío de fondeo es cosa de las firmas que fondean
+       cuentas de MetaTrader; en un exchange de cripto no existe, y la
+       tarjeta ahí no significaba nada (2 de septiembre). */
+    id: "fondeo", ico: "diana", mundo: "metatrader",
     /* La más difícil de las cuatro, y los números explican por qué.
 
        Un desafío tiene fecha de vencimiento, así que no alcanza con que la
@@ -442,7 +445,47 @@ const RECETAS = () => [
       minPf: 1.15, maxDd: 10, minRetDd: 2,
     },
   },
+  {
+    id: "agresiva", ico: "sube",
+    /* Para quien quiere más: se arriesga el triple por operación y se le
+       exige más retorno anual, a cambio de aceptar caídas hondas. No se pide
+       drawdown a propósito: pedirlo es pedir lo contrario. Tres robots y el
+       90% de la cuenta, porque el que elige esto no quiere colchón. */
+    cartera: { bots: 3, usarPct: 90 },
+    cfg: {
+      timeframe: "1h", direction: "both", maxFilters: 1,
+      maxCandidates: 2000,
+      rrBuscado: [1.5, 2.0, 2.5, 3.0],
+      minTrades: 40,
+      riskPct: 3,
+      critOn: { minPf: true, minCagr: true },
+      minPf: 1.2, minCagrFactor: 2.5,
+    },
+  },
+  {
+    /* SÓLO EN CRIPTO, y con los ojos abiertos: en un perpetuo el costo por
+       operación pesa casi lo mismo que el rango de una vela corta, así que
+       la ventaja que sobrevive es chica. La receta existe para VER OPERAR
+       al robot varias veces por día, no para ganar plata con ella, y la
+       tarjeta lo dice. Necesita velas de un minuto: los perpetuos de fábrica
+       vienen en una hora, y de una hora no salen velas de quince. */
+    id: "scalping", ico: "seguir", mundo: "exchange", permiteCorto: true,
+    cfg: {
+      timeframe: "15m", direction: "both", maxFilters: 1,
+      anios: 2, maxCandidates: 3000,
+      rrBuscado: [0.75, 1.0],
+      minTrades: 150,
+      riskPct: 0.5,
+      fitness: "activity",
+      critOn: { minPf: true, minTradesMonth: true },
+      minPf: 1.05, minTradesMonth: 40,
+    },
+  },
 ];
+
+/* Los minutos de cada temporalidad, para saber qué histórico puede darla:
+   de velas de una hora no salen velas de quince. */
+const MINUTOS_DE_TF = { "1m": 1, "5m": 5, "15m": 15, "30m": 30, "1h": 60, "4h": 240, "1d": 1440 };
 
 /* Acorta el período a los últimos N años.
 
@@ -483,7 +526,18 @@ function aplicarReceta(r) {
          el 146% del rango de la vela y ninguna candidata pasa la vara. Una
          receta que ahí pidiera 30 minutos prometería una búsqueda vacía. */
       const cripto = S.mundo === "exchange";
-      S.sel.timeframe = (cripto && (v === "30m" || v === "15m" || v === "5m" || v === "1m")) ? "1h" : v;
+      const corta = ["30m", "15m", "5m", "1m"].includes(v);
+      let tf = (cripto && corta && !r.permiteCorto) ? "1h" : v;
+      /* Y EL HISTÓRICO TIENE QUE PODER DARLA. Los perpetuos de fábrica son
+         de una hora: pedirles quince minutos dejaba la búsqueda pidiendo lo
+         imposible. Se queda en lo que el histórico da y se dice qué bajar. */
+      const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
+      const minsDs = MINUTOS_DE_TF[ds?.timeframe] || 1;
+      if ((MINUTOS_DE_TF[tf] || 60) < minsDs) {
+        tf = ds.timeframe;
+        setTimeout(() => toast(t("rec.necesita_m1", { ds: ds.name }), "err"), 600);
+      }
+      S.sel.timeframe = tf;
       continue;
     }
     if (k === "critOn") { c.critOn = { ...v }; continue; }
@@ -5251,7 +5305,7 @@ const vistaBuscar = async (main) => {
     <h2>${esc(t("rec.titulo"))}
       <span class="hint">${esc(t("rec.sub"))}</span></h2>
     <div class="recetas-lista">
-      ${RECETAS().map(r => `
+      ${RECETAS().filter(r => !r.mundo || r.mundo === S.mundo).map(r => `
         <button class="receta ${S.recetaPuesta === r.id ? "on" : ""}" data-receta="${r.id}">
           <span class="r-ico">${icono(r.ico)}</span>
           <b>${esc(t(`rec.${r.id}`))}</b>

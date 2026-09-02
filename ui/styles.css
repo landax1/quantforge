@@ -3213,7 +3213,7 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
   font-size: 14px; font-weight: 650; letter-spacing: -.015em; margin-bottom: 12px;
 }
 .recetas-lista {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px;
 }
 .receta {
   /* El ícono en su propia columna y no en su propio renglón: la tira entera
