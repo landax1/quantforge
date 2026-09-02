@@ -3362,3 +3362,25 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
   .ag-fila { grid-template-columns: 14px 1fr; }
   .ag-lado { grid-column: 2; margin-top: 8px; }
 }
+
+/* ---- la cabecera en un teléfono, compacta ----
+   Apilada, la barra medía 620 px de los 812 de un teléfono, y es fija: al
+   bajar tapaba tres cuartos de la pantalla con cosas que se tocan una vez
+   (licencia, idioma, soporte). Se queda arriba lo que se usa seguido —marca,
+   mundo, menú— y el resto baja a una fila chica al pie. */
+@media (max-width: 900px) {
+  .sidebar { gap: 6px 12px; padding: 8px 12px; }
+  .mundo-sw { order: 1; margin-left: auto; padding: 0; }
+  .mundo-rot { display: none; }
+  .mundo-btns { padding: 4px; }
+  .mundo-btns button { padding: 4px 12px; font-size: 12px; }
+  .soporte-link { order: 5; flex: 0 1 auto; font-size: 11px; margin: 0; padding: 0; }
+  .acct { order: 5; flex: 0 1 auto; margin: 0; padding: 0; max-width: none; }
+  .acct-in { padding: 4px 12px; font-size: 12px; }
+  .lang-box { order: 5; flex: 0 1 auto; margin: 0; }
+  .lang-sw button { padding: 4px 8px; font-size: 12px; }
+  .sidebar-foot { order: 6; flex: 1 1 100%; font-size: 11px; }
+}
+@media (max-width: 620px) {
+  .lang-box, .acct { flex: 0 1 auto; }
+}
