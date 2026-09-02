@@ -829,8 +829,12 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 {"detail": "El minado y el backtesting corren en la aplicación de "
                            "escritorio. Descargala desde tu cuenta."},
                 status_code=404)
+        # COMPARTIR NO PIDE CUENTA, ni para publicar ni para abrir: el enlace
+        # existe para quien no tiene BotiQuant, y publicar viene de la
+        # aplicación de escritorio, que no tiene sesión en el sitio.
+        publica = ruta.startswith("/api/s/") or ruta.startswith("/api/compartir")
         if (_auth_listo() and ruta.startswith("/api/") and ruta not in SIN_CUENTA
-                and usuario_actual(request) is None):
+                and not publica and usuario_actual(request) is None):
             return JSONResponse(
                 {"detail": "Entrá con tu cuenta para usar Botiquant."},
                 status_code=401)
