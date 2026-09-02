@@ -181,13 +181,22 @@ def run_backtest(
         pct = risk.size_value if risk.size_mode == "percent_equity" else 100.0
         return (eq * pct / 100.0) / px
 
+    # LAS FECHAS DE CADA OPERACIÓN SE ESCRIBEN UNA VEZ, NO POR OPERACIÓN.
+    # `str(df.index[i])` por cada cierre —un Timestamp de pandas y su texto—
+    # costaba más que todo el resto del cierre: medido sobre ADAUSDT a una
+    # hora, con cientos de operaciones por candidata, 17 de cada 36 segundos
+    # del minado se iban ahí. Con marcas, se convierten todas de una vez;
+    # sin marcas (el minero, que sólo mira métricas) quedan vacías.
+    marcas = df.index.astype(str) if con_marcas else None
+
     def _close_trade(i: int, px: float, reason: str) -> None:
         nonlocal cash, pos, units
         fill = px * (1.0 - pos * slip) - pos * abs_slip
         pnl = pos * units * (fill - entry_px) - comm * units * fill
         cash += pnl
         trades.append(Trade(
-            entry_time=str(df.index[entry_i]), exit_time=str(df.index[i]),
+            entry_time=marcas[entry_i] if marcas is not None else "",
+            exit_time=marcas[i] if marcas is not None else "",
             direction="long" if pos > 0 else "short",
             entry_price=round(entry_px, 6), exit_price=round(fill, 6),
             units=round(units, 6), pnl=round(pnl, 2),
@@ -285,7 +294,7 @@ def run_backtest(
     # cada 21 en el perfil, más de lo que tarda el bucle de barras. La
     # conversión vectorizada da el mismo texto en una fracción, y el minero
     # ni siquiera la pide.
-    timestamps = df.index.astype(str).tolist() if con_marcas else []
+    timestamps = marcas.tolist() if marcas is not None else []
     eq_series = pd.Series(equity, index=df.index)
     metrics = compute_metrics(eq_series, trades, settings.initial_capital)
     monthly = _monthly_returns(eq_series, settings.initial_capital)
