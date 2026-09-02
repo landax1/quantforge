@@ -353,3 +353,30 @@ def test_una_porcion_imposible_se_rechaza(client):
                     json={"bot": _con_respaldo(), "modo": "simulacro",
                           "porcion": 0})
     assert r.status_code == 400
+
+
+# ------------------------------------------- las promovidas que quedaron sin bot
+
+def test_las_promovidas_sin_bot_se_ven_y_se_reencienden_con_un_clic(client, tmp_path):
+    """Los bots mueren con la app y no se reencienden solos; la estrategia
+    sigue en "práctica". Sin esto la pantalla decía "8 en práctica" con cero
+    operando y ningún lugar donde verlo. Se listan, y un clic las reenciende
+    a todas; sin clave, cada fallo dice por qué en vez de fallar en silencio."""
+    import glob
+    from botiquant import estados
+    from botiquant.database.db import Database
+
+    ruta = glob.glob(str(tmp_path / "ws" / "*.sqlite"))[0]
+    db = Database(ruta)
+    ds = db.insert_dataset("ETHUSDT H1", "binance", 100, "2024-01-01", "2024-12-31", "1h")
+    sid = db.save_strategy("S-009", _doc()["estrategia"],
+                           meta={"dataset_id": ds, "timeframe": "1h"})
+    db.mover_estado(sid, estados.mover(estados.NUEVA, estados.VALIDADA), None)
+    db.mover_estado(sid, estados.mover(estados.VALIDADA, estados.PRACTICA), None)
+
+    e = client.get("/api/bot").json()
+    assert [(a["name"], a["simbolo"]) for a in e["apagadas"]] == [("S-009", "ETH-USDT")]
+
+    r = client.post("/api/bot/reencender").json()
+    assert r["encendidas"] == []
+    assert len(r["fallos"]) == 1 and "binance" in r["fallos"][0]["motivo"].lower()

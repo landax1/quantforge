@@ -2253,7 +2253,42 @@ function zonaAgentes(e, c) {
       <span class="ag-punto"></span>
       <div class="ag-que">${esc(t("ag.sin_bots"))}</div>
     </div>`;
-  return filaCiclo + filasBots;
+  /* LAS PROMOVIDAS QUE QUEDARON SIN BOT. Pasa cada vez que la app se cierra:
+     los bots mueren con el proceso y no se reencienden solos. Acá se ven, y
+     se reencienden con un clic —uno para todas, no uno por cada una. */
+  const apagadas = e.apagadas || [];
+  const filasApagadas = apagadas.length ? `
+    <div class="ag-fila">
+      <span class="ag-punto alerta"></span>
+      <div>
+        ${apagadas.map(a => `<div class="ag-quien"><b>${esc(a.name || "—")}</b> · ${
+          esc(a.simbolo || "")} · ${esc(t("ag.apagada"))}</div>`).join("")}
+        <div class="ag-que">${esc(t("ag.apagadas_sub"))}</div>
+      </div>
+      <div class="ag-lado">
+        <button class="btn" id="ag-reencender">${esc(t("ag.reencender", { n: apagadas.length }))}</button>
+      </div>
+    </div>` : "";
+  return filaCiclo + filasBots + filasApagadas;
+}
+
+function atarReencender(main) {
+  const b = $("#ag-reencender", main);
+  if (!b) return;
+  b.onclick = async () => {
+    b.disabled = true;
+    try {
+      const r = await api.post("/api/bot/reencender", {});
+      if ((r.fallos || []).length) {
+        toast(t("ag.reencender_fallo", { n: r.fallos.length,
+                                          motivo: r.fallos[0].motivo || "" }), "err");
+      } else {
+        toast(t("ag.reencendidas"), "ok");
+      }
+      await navigate("operar");
+    } catch (err) { toast(err.message, "err"); }
+    b.disabled = false;
+  };
 }
 
 function panelAgentes(e, c) {
@@ -2562,6 +2597,7 @@ const vistaBot = async (main, hayClave) => {
     + panelAgentes(bot, ciclo)
     + panelBot(bot, hayClave);
   atarCiclo(main, ciclo);
+  atarReencender(main);
 
   /* Que destinos puede tomar la estrategia elegida, y por que no los otros.
 
@@ -2758,7 +2794,7 @@ const vistaBot = async (main, hayClave) => {
       // La franja de agentes se redibuja SIEMPRE: el ciclo se mueve aunque no
       // haya ningún bot, y es justamente eso lo que hay que poder ver.
       const ag = $("#ag-zona", main);
-      if (ag) { ag.innerHTML = zonaAgentes(e, c); atarCiclo(main, c); }
+      if (ag) { ag.innerHTML = zonaAgentes(e, c); atarCiclo(main, c); atarReencender(main); }
       if (!(e.vuelos || []).length) return;
       zona.innerHTML = zonaVuelos(e);
       atarVuelos(main);

@@ -2946,11 +2946,63 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         return {"hizo": _orq().una_vuelta(a_mano=True).to_dict(),
                 "estado": _orq().estado()}
 
+    def _promovidas_sin_bot() -> list[dict[str, Any]]:
+        """Las que están en práctica y no tienen bot corriendo.
+
+        Pasa cada vez que la aplicación se cierra: los bots mueren con el
+        proceso y NO se reencienden solos —nadie retoma una posición sin
+        mirarla— pero la estrategia sigue en "práctica". Sin esto, la pantalla
+        decía "8 en práctica" con cero operando y ningún lugar donde verlo.
+        Se listan para que alguien las reencienda con un clic; sólo las de
+        Binance, que son las únicas que el piloto sabe encender.
+        """
+        from botiquant import estados as est
+        from botiquant.vivo.adaptador import a_simbolo
+        from botiquant.vivo.piloto import PILOTO
+
+        corriendo = {v.get("simbolo") for v in PILOTO.estado().get("vuelos", [])
+                     if v.get("encendido")}
+        fuera: list[dict[str, Any]] = []
+        for f in db.list_strategies(None):
+            if est.normalizar(f.get("estado")) != est.PRACTICA:
+                continue
+            meta = f.get("meta") or {}
+            ds = _ds_de(meta.get("dataset_id"))
+            if not ds or ds.get("source") != "binance":
+                continue
+            simbolo = a_simbolo(str(ds.get("name") or "").split()[0], con_guion=True)
+            if simbolo in corriendo:
+                continue
+            fuera.append({"id": f["id"], "name": f.get("name") or f["id"],
+                          "simbolo": simbolo})
+        return fuera
+
     @app.get("/api/bot")
     def bot_estado() -> dict[str, Any]:
         _solo_escritorio()
         from botiquant.vivo.piloto import PILOTO
-        return PILOTO.estado()
+        e = PILOTO.estado()
+        e["apagadas"] = _promovidas_sin_bot()
+        return e
+
+    @app.post("/api/bot/reencender")
+    def bot_reencender() -> dict[str, Any]:
+        """Enciende las promovidas que quedaron sin bot. Un clic, no solo.
+
+        Reencender solo al arrancar sería retomar posiciones sin que nadie
+        las mire; reencender de a una a mano es el clic de más que este
+        proyecto viene evitando. Un clic para todas, con el reparto del ciclo.
+        """
+        _solo_escritorio()
+        encendidas, fallos = [], []
+        for a in _promovidas_sin_bot():
+            fila = db.get_strategy(a["id"], None)
+            try:
+                _encender_del_ciclo(fila, fila.get("meta") or {})
+                encendidas.append(a)
+            except Exception as exc:                        # noqa: BLE001
+                fallos.append({**a, "motivo": str(exc)})
+        return {"encendidas": encendidas, "fallos": fallos}
 
     @app.get("/api/cuenta/rendimiento")
     def cuenta_rendimiento() -> dict[str, Any]:

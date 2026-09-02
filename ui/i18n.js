@@ -1361,6 +1361,12 @@ const STR = {
                   "Ningún bot corriendo. Encendé uno abajo, o dejá que lo haga el ciclo."],
   "ag.mirando": ["watching {sim} · next candle ~{h}", "mirando {sim} · próxima vela ~{h}"],
   "ag.detenido": ["stopped", "detenido"],
+  "ag.apagada": ["promoted, no bot running", "promovida, sin bot corriendo"],
+  "ag.apagadas_sub": ["They died with the app and nothing restarts them by itself: turn them back on when you have looked.",
+                     "Murieron con la app y nada las reenciende sola: reencendelas cuando hayas mirado."],
+  "ag.reencender": ["Turn {n} back on", "Reencender {n}"],
+  "ag.reencendidas": ["Turned back on.", "Reencendidas."],
+  "ag.reencender_fallo": ["{n} did not start: {motivo}", "{n} no arrancaron: {motivo}"],
 
   /* VARIOS BOTS. El rótulo dice CUANTOS y no "encendido": con cinco
      corriendo, "encendido" no dice si están los cinco o quedó uno. */
