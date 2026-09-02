@@ -107,7 +107,11 @@ def test_el_menu_tiene_cinco_secciones():
     # Probar y Operar son el camino; Mercados, la cuenta de Binance y Aprender
     # van después, como ajustes. La cuenta apunta a la vista de claves de
     # Operar, por eso "operar" aparece dos veces.
-    assert paginas == ["mining", "saved", "operar", "data", "operar", "consejos"], (
+    # CUATRO BANDEJAS: Buscar, Probar y Aprobadas (las dos últimas son la
+    # misma página con otra bandeja) y Operar. Abajo, los ajustes: Mercados,
+    # la cuenta de Binance y el Automático (vistas de Operar) y Aprender.
+    assert paginas == ["mining", "saved", "saved", "operar",
+                       "data", "operar", "operar", "consejos"], (
         f"el menú cambió sin querer: {paginas}")
 
 
@@ -615,17 +619,22 @@ def test_la_bienvenida_describe_la_aplicacion_que_existe():
 
 
 def test_ningun_texto_vivo_promete_una_funcion_apagada():
-    """Walk-forward, Monte Carlo y portafolio están construidos y apagados.
+    """Las palabras del motor no aparecen en pantalla.
 
-    Mientras AVANZADO sea false, ninguna pantalla puede nombrarlos: prometer un
-    botón que no está es peor que no tener el botón.
+    Walk-forward y Monte Carlo son cómo se hace la prueba; lo que el usuario
+    ve es "cuatro tramos que nunca vio" y "las operaciones barajadas mil
+    veces". Ningún texto vivo puede nombrarlos con el nombre del motor.
+
+    El portafolio SÍ es una función viva desde el 2 de septiembre de 2026
+    —en Aprobadas se tildan dos o más y se arma— así que su nombre está
+    permitido: es la palabra del usuario, no la del motor.
     """
     import re
     ini = DICC.index("const STR = {")
     fin = DICC.index(chr(10) + "};", ini)
     DORMIDAS = ("mc.", "wf.", "pf.", "est.", "nav.montecarlo",
                 "nav.walkforward", "nav.portfolio")
-    patron = re.compile(r"monte\s*carlo|walk.?forward|portfolio|portafolio", re.I)
+    patron = re.compile(r"monte\s*carlo|walk.?forward", re.I)
     clave, culpables, en_comentario = None, [], False
     for linea in DICC[ini:fin].split(chr(10)):
         # Los comentarios de bloque se saltean ENTEROS, no sólo su primera

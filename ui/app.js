@@ -1615,7 +1615,12 @@ async function navigate(page, vista) {
   S.page = page;
   // la vista pedida va a la memoria de SU sección, ver S.vista / S.vistaOperar
   if (vista) { if (page === "operar") S.vistaOperar = vista; else S.vista = vista; }
-  $$("#nav button").forEach(b => b.classList.toggle("active", b.dataset.page === page));
+  /* ACTIVO POR PÁGINA Y VISTA: Probar y Aprobadas son la misma página con
+     otra bandeja, y Operar tiene atajos abajo (cuenta, automático). */
+  const vistaAct = page === "operar" ? (S.vistaOperar || "bot") : (S.vista || "");
+  $$("#nav button").forEach(b => b.classList.toggle("active",
+    b.dataset.page === page && (!b.dataset.vista || b.dataset.vista === vistaAct
+      || (page === "saved" && b.dataset.vista === "por_probar" && !["aprobadas"].includes(vistaAct)))));
   const main = $("#main");
   main.innerHTML = "";
   try {
@@ -1643,7 +1648,8 @@ async function navigate(page, vista) {
 
 const TITULOS = () => ({
   bienvenida: t("wel.title"), data: t("nav.data"), mining: t("nav.mining"),
-  saved: t("nav.saved"), consejos: t("nav.tips"),
+  saved: t(S.vista === "aprobadas" ? "nav.aprobadas" : S.vista === "descartadas" ? "saved.descartadas_t" : "nav.saved"),
+  consejos: t("nav.tips"),
   operar: t(S.mundo === "metatrader" ? "nav.operar_cfd" : "nav.operar"),
 });
 
@@ -1669,6 +1675,7 @@ function pintarMundo() {
   const cfd = S.mundo === "metatrader";
   const navOp = $("#nav-operar"); if (navOp) navOp.hidden = cfd;
   const navCu = $("#nav-cuenta"); if (navCu) navCu.hidden = cfd;
+  const navPi = $("#nav-piloto"); if (navPi) navPi.hidden = cfd;
   $$("[data-mundo]", caja).forEach(b => b.onclick = () => {
     if (b.dataset.mundo === S.mundo) return;
     S.mundo = b.dataset.mundo;
@@ -1870,11 +1877,43 @@ async function abrirPortafolio(elegidas) {
     body.innerHTML = resultadoPF(r) + `
       <div class="pf-bajar">
         <div>
-          <b>${esc(t("pf.export_title"))}</b>
-          <p class="help-note">${esc(t("pf.export_sub", { n: elegidas.length }))}</p>
+          <b>${esc(t(S.mundo === "exchange" ? "pf.encender_title" : "pf.export_title"))}</b>
+          <p class="help-note">${esc(t(S.mundo === "exchange" ? "pf.encender_sub" : "pf.export_sub", { n: elegidas.length }))}</p>
         </div>
-        <button class="btn" id="pf-mql5">${icono("bajar")} ${esc(t("pf.export_btn"))}</button>
+        ${S.mundo === "exchange"
+          ? `<button class="btn" id="pf-encender">${icono("seguir")} ${esc(t("pf.encender_conjunto"))}</button>`
+          : `<button class="btn" id="pf-mql5">${icono("bajar")} ${esc(t("pf.export_btn"))}</button>`}
       </div>`;
+    /* ENCENDER EL CONJUNTO: el mismo plan que reparte la cuenta entre los
+       robots, y cada uno pasa por las mismas puertas que uno solo. */
+    const encConj = $("#pf-encender", body);
+    if (encConj) encConj.onclick = async () => {
+      encConj.disabled = true;
+      let prendidos = 0;
+      try {
+        const ex = await api.get("/api/exchanges");
+        if (!ex.some(x => x.exchange === "binance" && x.entorno === "practica" && x.configurada)) {
+          toast(t("op.conectar_primero"), "err"); close(); navigate("operar", "claves"); return;
+        }
+        const plan = await api.post("/api/bot/plan-conjunto", { ids: elegidas.map(x => x.id), usar_pct: 90 });
+        for (const d of plan.detalle) {
+          const fila = elegidas.find(x => x.id === d.id);
+          const archivo = await api.post("/api/export/bingx/objeto", {
+            spec: fila.spec, name: fila.name, dataset_id: (fila.meta || {}).dataset_id,
+            timeframe: (fila.meta || {}).timeframe, settings: { commission_pct: (fila.meta || {}).commission },
+            metrics: (fila.meta || {}).metrics, oos: (fila.meta || {}).oos,
+          });
+          await api.post("/api/bot/encender", { bot: archivo, modo: "practica", exchange: "binance",
+                                                estrategia_id: d.id, porcion: (plan.porciones[d.id] || 0) / 100 });
+          prendidos += 1;
+        }
+        toast(t("conj.encendido", { n: prendidos }), "ok");
+        close(); SEL_PF.clear(); navigate("operar", "bot");
+      } catch (e) {
+        toast(t("conj.fallo", { n: prendidos, err: e.message }), "err");
+        encConj.disabled = false;
+      }
+    };
     const caja = $("#pf-eq", body);
     if (caja) Charts.equity(caja, {
       values: r.combined_equity, labels: r.timestamps,
@@ -2977,15 +3016,9 @@ PAGES.operar = async (main) => {
   /* TRES PESTAÑAS CON UNA SOLA PREGUNTA: qué está corriendo y cómo le va.
      La cuenta se conecta desde el menú (abajo, "Cuenta Binance") y se
      muestra acá sólo cuando se llega a ella. */
-  main.innerHTML = `<div class="vistas" role="tablist">
-      <button role="tab" data-vista="bot" aria-selected="${vista === "bot"}"
-        class="${vista === "bot" ? "on" : ""}">${esc(t("op.tab_bot"))}</button>
-      <button role="tab" data-vista="piloto" aria-selected="${vista === "piloto"}"
-        class="${vista === "piloto" ? "on" : ""}">${esc(t("op.tab_piloto"))}</button>
-      <button role="tab" data-vista="tablero" aria-selected="${vista === "tablero"}"
-        class="${vista === "tablero" ? "on" : ""}">${esc(t("op.tab_tablero"))}</button>
-      ${vista === "claves" ? `<button role="tab" data-vista="claves" aria-selected="true" class="on">${esc(t("op.tab_claves"))}</button>` : ""}
-    </div>
+  /* SIN PESTAÑAS. Operar es una sola pantalla; la cuenta, el detalle y el
+     automático son vistas secundarias con un "← Operar" para volver. */
+  main.innerHTML = `${vista !== "bot" && vista !== "piloto" ? `<div class="vistas volver"><button class="linkbtn" data-vista="bot">${esc(t("op.volver"))}</button></div>` : ""}
     <div id="vista-host"></div>`;
 
   $$("[data-vista]", main).forEach(b => b.onclick = () => {
@@ -3008,23 +3041,21 @@ PAGES.operar = async (main) => {
    con apretar encender es exactamente el clic de mas que este proyecto viene
    evitando en todas las pantallas. */
 const vistaBot = async (main, hayClave) => {
-  // El ciclo puede no estar (versión compartida): la franja lo omite.
+  /* UNA SOLA PANTALLA, TRES BLOQUES, DE ARRIBA A ABAJO: tu cuenta, encender
+     una, corriendo. Sin pestañas, sin modo, sin porción, sin tope: demo
+     siempre y la porción repartida. Quien quiera afinar lo hace desde la
+     tarjeta del robot. El Piloto vive aparte, en Ajustes. */
   const [bot, ciclo] = await Promise.all([
     api.get("/api/bot"), api.get("/api/ciclo").catch(() => null)]);
   await refreshSavedCount();
-  // Hace falta para saber la FUENTE de cada dataset: sin esto, el filtro de
-  // estrategias operables no puede distinguir un perpetuo de un CFD.
   if (!(S.datasets || []).length) await refreshDatasets();
 
-  /* EN EL MUNDO CFD, OPERAR ES OTRA COSA. Los bots de abajo son de cripto;
-     alguien que eligió CFDs llegaba acá y leía "no hay lugar para otro"
-     sin que nada le dijera que su camino es exportar el robot a MetaTrader.
-     Se dice arriba, una vez. */
-  const notaCfd = S.mundo === "metatrader"
-    ? `<div class="card ex-aviso"><p class="help-note">${esc(t("op.cfd_nota"))}</p></div>` : "";
-  /* SIN CUENTA NO HAY ROBOTS: una sola tarjeta que dice qué hacer, y nada
-     más. El formulario de encender aparece recién con la cuenta conectada. */
-  if (!hayClave.binance.practica && S.mundo !== "metatrader") {
+  if (S.mundo === "metatrader") {
+    main.innerHTML = pageHead(t("nav.operar"), esc(t("op.sub_bot")))
+      + `<div class="card ex-aviso"><p class="help-note">${esc(t("op.cfd_nota"))}</p></div>`;
+    return;
+  }
+  if (!hayClave.binance.practica) {
     main.innerHTML = pageHead(t("nav.operar"), esc(t("op.sub_bot"))) + `
       <div class="card conectar">
         <div class="empty-state">
@@ -3037,216 +3068,82 @@ const vistaBot = async (main, hayClave) => {
     $("#ir-conectar", main).onclick = () => navigate("operar", "claves");
     return;
   }
-  main.innerHTML = pageHead(t("nav.operar"), esc(t("op.sub_bot")))
-    + notaCfd
-    + panelBot(bot, hayClave);
+
+  const cripto = new Set((S.datasets || []).filter(d => d.source === "binance").map(d => d.id));
+  const aprobadas = (S.saved || []).filter(x => etapaDe(x) === "aprobadas"
+    && cripto.has((x.meta || {}).dataset_id)
+    && !(((x.spec || {}).risk || {}).trail_atr > 0));
+  const operando = (bot.vuelos || []).length + (bot.apagadas || []).length;
+
+  main.innerHTML = pageHead(t("nav.operar"), esc(t("op.sub_bot"))) + `
+    <div class="card cuenta-linea" id="op-cuenta">
+      <div class="ex-head"><div><b>${esc(t("op.cuenta_t"))}</b>
+        <p class="help-note">${esc(t("tab.cargando"))}</p></div>
+        <button class="linkbtn" id="op-detalle">${esc(t("op.detalle"))}</button></div>
+    </div>
+
+    <div class="card mt" id="op-encender">
+      <div class="ex-head"><div><b>${esc(t("op.encender_t"))}</b>
+        <p class="help-note">${esc(t("op.encender_sub"))}</p></div></div>
+      ${aprobadas.length ? `<div class="fld-pair mt">
+        <label class="fld"><span>${esc(t("bot.estrategia"))}</span>
+          <select id="bot-cual">
+            <option value="">${esc(t("op.elegir_aprobada"))}</option>
+            ${aprobadas.map(x => `<option value="${esc(x.id)}" ${PREELEGIDA === x.id ? "selected" : ""}>${
+              esc(x.name)} · ${esc(String((x.meta || {}).dataset_name || "").split(" ")[0])}</option>`).join("")}
+          </select></label>
+        <div class="fld"><span>&nbsp;</span><button class="btn" id="bot-encender">${icono("seguir")} ${esc(t("op.encender_btn"))}</button></div>
+      </div>` : `<p class="help-note mt">${esc(t("op.sin_aprobadas"))} <button class="linkbtn" id="op-ir-probar">${esc(t("nav.saved"))}</button></p>`}
+    </div>
+
+    <div class="card mt">
+      <div class="ex-head"><div><b>${esc(t("op.corriendo_t"))}</b>
+        <p class="help-note">${esc(t("bot.sub"))}</p></div>
+        <span class="ex-estado ${operando ? "on" : ""}">${esc(operando ? t("bot.n_operando", { n: bot.cuantos }) : t("bot.off"))}</span></div>
+      <div id="bot-zona-vuelos">${operando ? zonaVuelos(bot) : `<p class="help-note">${esc(t("op.nada_corriendo"))}</p>`}</div>
+    </div>`;
+
+  $("#op-detalle", main).onclick = () => navigate("operar", "tablero");
+  const irP = $("#op-ir-probar", main); if (irP) irP.onclick = () => navigate("saved", "aprobadas");
+  const btnEnc = $("#bot-encender", main);
+  if (btnEnc) btnEnc.onclick = () => {
+    const id = ($("#bot-cual", main) || {}).value;
+    if (!id) return toast(t("bot.falta_elegir"), "err");
+    PREELEGIDA = null;
+    encenderDirecto(aprobadas.find(x => x.id === id), btnEnc);
+  };
+  atarVuelos(main);
   atarReencender(main);
 
-  /* Que destinos puede tomar la estrategia elegida, y por que no los otros.
-
-     Se recalcula al cambiar cualquiera de los dos desplegables porque un
-     destino puede estar cerrado por DOS motivos distintos —la cantera o la
-     clave que falta— y decir el equivocado manda a alguien a crear una clave
-     que no le va a servir. */
-  const revisarDestinos = () => {
-    const selCual = $("#bot-cual", main);
-    const selModo = $("#bot-modo", main);
-    const nota = $("#bot-porque", main);
-    const irClaves = $("#bot-ir-claves", main);
-    if (!selCual || !selModo || !nota) return;
-
-    const fila = (S.saved || []).find(x => x.id === selCual.value);
-    const puertas = (fila || {}).cantera || {};
-
-    let motivo = "", esClave = false;
-    [...selModo.options].forEach(o => {
-      if (!o.value) return;
-      const p = puertas[o.value] || {};
-      const casaSel = ($("#bot-casa", main) || {}).value || "binance";
-      const faltaClave = o.value !== "simulacro"
-        && !(hayClave[casaSel] || {})[o.value];
-      // Sin estrategia elegida no se bloquea nada: sería decir que no antes
-      // de que haya algo sobre lo que decidir.
-      o.disabled = !!fila && (faltaClave || (p.pasa === false));
-      o.textContent = rotuloModo(o.value)
-        + (faltaClave ? " — " + t("bot.sin_clave")
-           : (fila && p.pasa === false ? " — " + t("bot.no_habilitado") : ""));
-      if (o.value === selModo.value && o.disabled) {
-        esClave = faltaClave;
-        motivo = faltaClave ? t("bot.falta_clave_larga")
-                            : (p.por_que_no || t("bot.no_habilitado"));
-      }
-    });
-    if (selModo.selectedOptions[0] && selModo.selectedOptions[0].disabled) {
-      selModo.value = "";
-    }
-    nota.hidden = !motivo;
-    nota.textContent = motivo;
-    /* El atajo a la otra vista aparece SOLO cuando lo que falta es la clave.
-       Con las vistas separadas el texto ya no puede decir "cargala arriba":
-       arriba no hay nada. Y para lo que no es una clave el atajo sobra —
-       ninguna cantidad de claves habilita una estrategia de nueve operaciones. */
-    if (irClaves) irClaves.hidden = !esClave;
-  };
-
-  const selCual = $("#bot-cual", main);
-  const selModo = $("#bot-modo", main);
-  const selCasa = $("#bot-casa", main);
-
-  /* CON BINANCE, "REAL" NO EXISTE — y se saca de la lista en vez de dejarlo
-     y avisar despues. Una opcion que se puede elegir y despues falla ensenia
-     que la pantalla miente; una que no esta dice la verdad sin texto. */
-  const revisarCasa = () => {
-    const casa = selCasa ? selCasa.value : "bingx";
-    const soloDemo = casa === "binance";
-    const opReal = selModo ? $("option[value='real']", selModo) : null;
-    if (opReal) {
-      opReal.hidden = soloDemo;
-      opReal.disabled = soloDemo;
-      if (soloDemo && selModo.value === "real") selModo.value = "";
-    }
-    const nota = $("#bot-casa-nota", main);
-    if (nota) {
-      nota.hidden = !soloDemo;
-      nota.textContent = soloDemo ? t("bot.casa_binance_nota") : "";
-    }
-    revisarDestinos();
-  };
-
-  if (selCual) selCual.onchange = revisarDestinos;
-  if (selModo) selModo.onchange = revisarDestinos;
-  if (selCasa) selCasa.onchange = revisarCasa;   // revisarCasa llama a revisarDestinos
-  revisarCasa();
-
-  const irClaves = $("#bot-ir-claves", main);
-  if (irClaves) irClaves.onclick = () => navigate("operar", "claves");
-
-  const btnEncender = $("#bot-encender", main);
-  if (btnEncender) btnEncender.onclick = async () => {
-    const id = $("#bot-cual", main).value;
-    const modo = $("#bot-modo", main).value;
-    if (!id || !modo) return toast(t("bot.falta_elegir"), "err");
-    /* La confirmacion es SOLO para plata real. Pedirla en simulacro y en
-       practica entrena a la gente a apretar "si" sin leer, y despues el
-       cartel que si importaba se lee igual de rapido que los otros dos. */
-    if (modo === "real" && !confirm(t("bot.real_seguro"))) return;
-    const fila = (S.saved || []).find(x => x.id === id);
-    if (!fila) return toast(t("bot.no_esta"), "err");
-    btnEncender.disabled = true;
+  // la cuenta, en una línea: saldo, resultado neto y posiciones abiertas
+  (async () => {
+    const caja = $("#op-cuenta", main);
+    if (!caja) return;
     try {
-      const archivo = await api.post("/api/export/bingx/objeto", {
-        spec: fila.spec, name: fila.name,
-        dataset_id: (fila.meta || {}).dataset_id,
-        timeframe: (fila.meta || {}).timeframe,
-        settings: { commission_pct: (fila.meta || {}).commission },
-        /* Las metricas del backtest y las del tramo fuera de muestra viajan
-           con el bot: son lo que la cantera mira para decidir si esto puede
-           operar y con que plata. Sin mandarlas, TODO queda bloqueado —lo que
-           no se midio no pasa— y el bloqueo parece un bug del filtro cuando
-           en realidad es un campo que nadie envio. */
-        metrics: (fila.meta || {}).metrics,
-        oos: (fila.meta || {}).oos,
-      });
-      const tope = parseFloat(($("#bot-tope", main) || {}).value) || 0;
-      const casa = ($("#bot-casa", main) || {}).value || "binance";
-      const pct = parseFloat(($("#bot-porcion", main) || {}).value);
-      await api.post("/api/bot/encender",
-                     { bot: archivo, modo, exchange: casa,
-                       /* SIN ESTO LO OPERADO NO SE GUARDA, y el semaforo no
-                          puede opinar manana sobre lo de hoy: el registro del
-                          bot vive en memoria y se pierde al cerrar la app. */
-                       estrategia_id: id,
-                       /* En fracción y no en porcentaje: el backend razona
-                          sobre 0..1 y traducir en dos lugares es cómo se
-                          termina arriesgando cien veces lo pedido. */
-                       porcion: Number.isFinite(pct) && pct > 0 ? pct / 100 : 1,
-                       perdida_maxima: tope });
-      toast(t("bot.encendido"), "ok");
-      await navigate("operar");
-    } catch (e) { toast(e.message, "err"); }
-    btnEncender.disabled = false;
-  };
+      const d = await api.get("/api/cuenta/rendimiento");
+      const r = d.resultado || {};
+      const signo = n => (n > 0 ? "pos" : n < 0 ? "neg" : "");
+      $(".help-note", caja).innerHTML = `<span class="cuenta-dato">${esc(t("op.saldo"))} <b>${fmtNum(d.saldo, 2)} USDT</b></span>
+        <span class="cuenta-dato">${esc(t("op.neto"))} <b class="${signo(r.neto)}">${(r.neto > 0 ? "+" : "") + fmtNum(r.neto, 2)} USDT</b></span>
+        <span class="cuenta-dato">${esc(t("op.abiertas"))} <b>${fmtInt((d.posiciones || []).length)}</b></span>`;
+    } catch (e) { $(".help-note", caja).textContent = e.message; }
+  })();
 
-  atarVuelos(main);
-
-  /* -------- el conjunto: armar el plan, mirarlo, y recién ahí encender */
-  const btnArmar = $("#conj-armar", main);
-  if (btnArmar) btnArmar.onclick = async () => {
-    const ids = $$("[data-conj]", main).filter(x => x.checked).map(x => x.dataset.conj);
-    if (ids.length < 2) return toast(t("conj.elegi"), "err");
-    btnArmar.disabled = true;
-    try {
-      const plan = await api.post("/api/bot/plan-conjunto", { ids, usar_pct: 90 });
-      const caja = $("#conj-plan", main);
-      caja.hidden = false;
-      caja.innerHTML = planConjuntoHTML(plan);
-      /* ENCENDER ES UN BUCLE DEL LADO DEL CLIENTE, a propósito: cada encendido
-         pasa por las MISMAS puertas que uno solo -cantera, clave, porción,
-         símbolo repetido- y un endpoint "enciende todo" tendría que
-         reimplementarlas o saltearlas. Si uno falla, se dice cuál y los ya
-         encendidos QUEDAN encendidos: apagarlos por un error del quinto sería
-         decidir por el usuario. */
-      const btnEnc = $("#conj-encender", main);
-      btnEnc.onclick = async () => {
-        btnEnc.disabled = true;
-        const casa = ($("#conj-casa", main) || {}).value || "binance";
-        let prendidos = 0;
-        try {
-          for (const d of plan.detalle) {
-            const fila = (S.saved || []).find(x => x.id === d.id);
-            const archivo = await api.post("/api/export/bingx/objeto", {
-              spec: fila.spec, name: fila.name,
-              dataset_id: (fila.meta || {}).dataset_id,
-              timeframe: (fila.meta || {}).timeframe,
-              settings: { commission_pct: (fila.meta || {}).commission },
-              metrics: (fila.meta || {}).metrics, oos: (fila.meta || {}).oos,
-            });
-            await api.post("/api/bot/encender", {
-              bot: archivo, modo: "practica", exchange: casa,
-              estrategia_id: d.id,
-              porcion: (plan.porciones[d.id] || 0) / 100,
-            });
-            prendidos += 1;
-          }
-          toast(t("conj.encendido", { n: prendidos }), "ok");
-        } catch (e) {
-          toast(t("conj.fallo", { n: prendidos, err: e.message }), "err");
-          /* El motivo entero al registro: el aviso de pantalla se corta y
-             estos errores -clave que falta, porcion que no entra, simbolo
-             repetido- son justo los que hay que leer completos. */
-          console.error("[conjunto] se cortó en el bot", prendidos + 1, e);
-        }
-        await navigate("operar");
-      };
-    } catch (e) { toast(e.message, "err"); }
-    btnArmar.disabled = false;
-  };
-
-  /* LA ZONA DE VUELOS VIVE SOLA. Sin esto la pantalla es una foto: el bot
-     opera, el registro crece, el semáforo cambia — y el usuario mira un panel
-     congelado hasta que recarga a mano. Se redibuja SOLO la zona de vuelos;
-     el formulario, con lo que haya elegido a medio armar, no se toca. Treinta
-     segundos: el bot decide una vez por vela, más seguido es tráfico sin
-     información. */
+  /* Lo que corre se redibuja solo cada treinta segundos: el robot decide una
+     vez por vela, más seguido es tráfico sin información. */
   const refresco = setInterval(async () => {
     const zona = $("#bot-zona-vuelos", main);
     if (!zona || !document.body.contains(zona)) { clearInterval(refresco); return; }
     try {
-      const [e, c] = await Promise.all([
-        api.get("/api/bot"), api.get("/api/ciclo").catch(() => null)]);
-      // La franja de agentes se redibuja SIEMPRE: el ciclo se mueve aunque no
-      // haya ningún bot, y es justamente eso lo que hay que poder ver.
-      const ag = $("#ag-zona", main);
-      if (ag && c) { ag.innerHTML = zonaAgentes(e, c); atarCiclo(main, c); }
+      const e = await api.get("/api/bot");
       if (!(e.vuelos || []).length && !(e.apagadas || []).length) return;
       zona.innerHTML = zonaVuelos(e);
       atarVuelos(main);
       atarReencender(main);
+      const rc = $("#robots-count"); if (rc) rc.textContent = e.cuantos || "";
     } catch (err) { /* la próxima vuelta lo reintenta */ }
   }, 30000);
-
 };
-
 
 /* ---- vista: el piloto automático, en su propia pestaña ---- */
 const vistaPiloto = async (main) => {
@@ -3939,12 +3836,14 @@ async function refreshSavedCount() {
        cementerio existe para separar lo vivo de lo muerto y el contador los
        volvía a mezclar, así que el número prometía el doble de lo que hay. */
     if (el) {
-      const vivas = S.saved.filter(x => (x.estado || "") !== "retirada").length;
+      const enPrueba = S.saved.filter(x => etapaDe(x) === "por_probar").length;
+      const aprob = S.saved.filter(x => etapaDe(x) === "aprobadas").length;
       const antes = +el.textContent || 0;
-      el.textContent = vivas || "";
-      if (vivas > antes && antes) {
+      el.textContent = enPrueba || "";
+      if (enPrueba > antes && antes) {
         el.classList.remove("sube"); void el.offsetWidth; el.classList.add("sube");
       }
+      const ea = $("#aprobadas-count"); if (ea) ea.textContent = aprob || "";
     }
   } catch (e) { /* si el backend no responde ya hay un aviso arriba */ }
 }
@@ -3969,6 +3868,12 @@ async function refreshMt5() {
 /* LA CUENTA, ABAJO EN EL MENÚ: conectada o por conectar. Se pregunta al
    servidor porque es la única verdad; el menú no adivina. */
 let CUENTA_OK = null;
+async function refreshRobots() {
+  try {
+    const e = await api.get("/api/bot");
+    const rc = $("#robots-count"); if (rc) rc.textContent = e.cuantos || "";
+  } catch (err) { /* sin bots no hay número */ }
+}
 async function refreshCuenta() {
   try {
     const ex = await api.get("/api/exchanges");
@@ -4313,6 +4218,10 @@ PAGES.saved = async (main) => {
      estrategia que ya no juega. Adentro de cada grupo se conserva el orden. */
   const items = [...(S.saved || [])].sort(
     (x, y) => (estaRetirada(x) ? 1 : 0) - (estaRetirada(y) ? 1 : 0));
+  /* LA BANDEJA: cada una contiene sólo lo que necesita una decisión ahora,
+     y lo que pasa de etapa se va sola a la siguiente. */
+  const BANDEJA = ["por_probar", "aprobadas", "descartadas"].includes(S.vista) ? S.vista : "por_probar";
+  FILTRO_ETAPA = BANDEJA;
 
   if (!items.length) {
     main.innerHTML = pageHead(t("nav.saved"), esc(t("saved.empty_sub"))) +
@@ -4385,6 +4294,8 @@ PAGES.saved = async (main) => {
      operan, y con un clic se queda con las que le importan. "Todas" sigue
      existiendo, pero deja de ser la única vista. */
   const porEtapa = Object.fromEntries(ETAPAS.map(e => [e, items.filter(x => etapaDe(x) === e)]));
+  const cuentas = { p: porEtapa.por_probar.length, a: porEtapa.aprobadas.length,
+                    o: porEtapa.operando.length, d: porEtapa.descartadas.length };
   const aMedias = porEtapa.aprobadas.filter(x => estadoDe(x) === "aceptable").length;
   const subEtapa = {
     por_probar: t("etapa.por_probar_sub"),
@@ -4394,36 +4305,35 @@ PAGES.saved = async (main) => {
   };
   /* LAS DESCARTADAS NO SE VEN POR DEFECTO: la lista que se mira es la de
      las que valen. Están a un clic, en su etapa o en "ver todas". */
-  const vigentes = items.filter(x => etapaDe(x) !== "descartadas");
-  if (!["todas", "vigentes"].includes(FILTRO_ETAPA) && !porEtapa[FILTRO_ETAPA].length) FILTRO_ETAPA = "vigentes";
-  if (FILTRO_ETAPA === "vigentes" && !vigentes.length && items.length) FILTRO_ETAPA = "todas";
-  const visibles = FILTRO_ETAPA === "todas" ? items
-    : FILTRO_ETAPA === "vigentes" ? vigentes : porEtapa[FILTRO_ETAPA];
-  const camino = PRUEBAS ? `
-    <div class="camino" role="tablist">
-      ${ETAPAS.map(e => `
-      <button class="camino-et ${FILTRO_ETAPA === e ? "on" : ""} ${porEtapa[e].length ? "" : "vacia"}"
-        role="tab" aria-selected="${FILTRO_ETAPA === e}" data-etapa="${e}">
-        <b>${esc(ETAPA_ROTULO()[e])}</b>
-        <span class="camino-n">${porEtapa[e].length}</span>
-        <span class="camino-sub">${esc(subEtapa[e])}</span>
-      </button>`).join("")}
-    </div>
-    <div class="camino-todas">
-      <button class="linkbtn" data-etapa="${FILTRO_ETAPA === "todas" ? "vigentes" : "todas"}">${
-        esc(FILTRO_ETAPA === "todas" ? t("etapa.vigentes") : t("etapa.todas", { n: items.length }))}</button>
-    </div>` : "";
+  const visibles = porEtapa[BANDEJA];
+  /* Una línea con lo que hay en las otras bandejas, con enlaces: para saber
+     cuánto hay sin verlo todo junto. */
+  const enlace = (v, txt) => `<button class="linkbtn ${BANDEJA === v ? "on" : ""}" data-bandeja="${v}">${esc(txt)}</button>`;
+  const camino = `<div class="bandejas-linea">
+      ${enlace("por_probar", t("nav.saved") + " · " + cuentas.p)}
+      ${enlace("aprobadas", t("nav.aprobadas") + " · " + cuentas.a)}
+      <button class="linkbtn" data-ir-operar>${esc(t("etapa.operando") + " · " + cuentas.o)}</button>
+      ${enlace("descartadas", t("saved.descartadas_t") + " · " + cuentas.d)}
+    </div>`;
 
-  main.innerHTML = pageHead(t("nav.saved"), esc(t("saved.sub_probar"))) + camino +
-    `${/* QUÉ HACE LA PRUEBA, en dos preguntas y sin jerga, plegado para no
-          tapar la lista pero siempre a un clic. Con el recorrido animado
-          adentro. */ ""}
+  const subtitulo = BANDEJA === "aprobadas" ? t("saved.sub_aprobadas")
+    : BANDEJA === "descartadas" ? t("saved.sub_descartadas") : t("saved.sub_probar");
+  const vacia = !visibles.length ? `<div class="card"><div class="empty-state">
+      <div class="big">${icono(BANDEJA === "aprobadas" ? "estrella" : BANDEJA === "descartadas" ? "basura" : "tilde", "ico-xl")}</div>
+      <b>${esc(t(BANDEJA === "aprobadas" ? "saved.vacio_aprobadas" : BANDEJA === "descartadas" ? "saved.vacio_descartadas" : "saved.vacio_probar"))}</b>
+      ${BANDEJA === "descartadas" ? "" : `<p class="mt">${esc(t(BANDEJA === "aprobadas" ? "saved.vacio_aprobadas_sub" : "saved.vacio_probar_sub"))}</p>
+      <button class="btn mt" id="bandeja-ir">${esc(t(BANDEJA === "aprobadas" ? "saved.vacio_aprobadas_btn" : "saved.vacio_probar_btn"))}</button>`}
+    </div></div>` : "";
+  main.innerHTML = pageHead(TITULOS().saved, esc(subtitulo)) + camino +
+    `${/* QUÉ HACE LA PRUEBA, sólo en la bandeja de Probar: dos preguntas y
+          sin jerga, abierta la primera vez, con el recorrido animado. */
+      BANDEJA === "por_probar" ? `
     <details class="que-es" ${localStorage.getItem("qf.vio_prueba") === "1" ? "" : "open"}>
       <summary>${icono("idea", "ico-sm")} ${esc(t("saved.que_es_t"))}</summary>
       <p>${t("saved.que_es")}</p>
       ${explicacionHTML("prueba-pagina", PASOS_PRUEBA())}
-    </details>` +
-    `${PRUEBAS && sinProbar ? `<div class="pista mb pista-accion">${icono("idea", "ico-sm")}
+    </details>` : ""}` + vacia +
+    `${PRUEBAS && sinProbar && BANDEJA === "por_probar" ? `<div class="pista mb pista-accion">${icono("idea", "ico-sm")}
        <div>${esc(t("saved.pending", { n: sinProbar }))}</div>
        <button class="btn small" id="probar-faltan">${esc(t("saved.probar_faltan", { n: sinProbar }))}</button></div>` : ""}
     ${/* QUE EL PORTAFOLIO SE SEPA QUE EXISTE, sin ponerse en el camino.
@@ -4436,13 +4346,13 @@ PAGES.saved = async (main) => {
 
            Con una sola guardada no dice nada: sería vender algo que todavía
            no se puede hacer. */
-      PORTAFOLIO && items.length >= 2
+      PORTAFOLIO && BANDEJA === "aprobadas" && visibles.length >= 2
         ? `<div class="pista mb">${icono("idea", "ico-sm")}
-             <div>${esc(t("saved.combinar", { n: items.length }))}</div>
+             <div>${esc(t("saved.combinar", { n: visibles.length }))}</div>
            </div>`
         : ""}
-    <div class="card">
-      <h2>${esc(t("saved.title"))} <span class="hint">${esc(t("saved.hint"))}</span></h2>
+    <div class="card" ${visibles.length ? "" : "hidden"}>
+      <h2>${esc(TITULOS().saved)} <span class="hint">${esc(t("saved.hint"))}</span></h2>
       ${PORTAFOLIO && visibles.length ? `<div class="sel-rapida"><span>${esc(t("sel.rapida"))}</span>
         <button class="linkbtn" data-sel-est="todas">${esc(t("etapa.todas_corto"))}</button>
         <button class="linkbtn" data-sel-est="aprobada">${esc(t("est.aprobada"))}</button>
@@ -4466,11 +4376,11 @@ PAGES.saved = async (main) => {
     </div>
     <div class="barra-sel" id="barra-pf" hidden></div>`;
 
-  $$("[data-etapa]", main).forEach(b => b.onclick = () => {
-    FILTRO_ETAPA = b.dataset.etapa;
-    navigate("saved");
-  });
-  atarExplicacion(main, "prueba-pagina", PASOS_PRUEBA());
+  $$("[data-bandeja]", main).forEach(b => b.onclick = () => navigate("saved", b.dataset.bandeja));
+  const irOp = $("[data-ir-operar]", main); if (irOp) irOp.onclick = () => navigate("operar", "bot");
+  const irB = $("#bandeja-ir", main);
+  if (irB) irB.onclick = () => (BANDEJA === "aprobadas" ? navigate("mining", "buscar") : navigate("saved", "aprobadas"));
+  if (BANDEJA === "por_probar") atarExplicacion(main, "prueba-pagina", PASOS_PRUEBA());
   /* ABIERTA LA PRIMERA VEZ, PLEGADA DESPUÉS: la primera vez es la única en
      que hace falta leerla; después molesta. */
   try { localStorage.setItem("qf.vio_prueba", "1"); } catch (e) { /* nada */ }
@@ -4492,7 +4402,7 @@ PAGES.saved = async (main) => {
       <button class="linkbtn" id="pf-nada">${esc(t("ui.clear"))}</button>
       <span class="barra-acciones">
         <button class="btn ghost" id="sel-borrar">${icono("cerrar")} ${esc(t("sel.borrar", { n }))}</button>
-        ${PORTAFOLIO && n >= 2 ? `<button class="btn ghost" id="pf-ver">${esc(t("pf.build"))}</button>` : ""}
+        ${PORTAFOLIO && n >= 2 ? `<button class="btn ${BANDEJA === "aprobadas" ? "" : "ghost"}" id="pf-ver">${esc(t("saved.armar", { n }))}</button>` : ""}
         ${PRUEBAS && probables.length ? `<button class="btn" id="sel-probar">${
           esc(t("sel.probar", { n: probables.length }))}</button>` : ""}
       </span>`;
@@ -4658,7 +4568,7 @@ async function probarVarias(lista, main) {
   toast(t("sel.resumen", { a: cuenta.aprobada, m: cuenta.aceptable, f: cuenta.no_paso })
         + (cuenta.error ? ` · ${t("sel.errores", { n: cuenta.error })}` : ""), "ok");
   SEL_PF.clear();
-  if (S.page === "saved") await navigate("saved");
+  if (S.page === "saved") await navigate("saved", S.vista);
   else await refreshSavedCount();
 }
 
@@ -4694,7 +4604,7 @@ async function correrPrueba(s, boton) {
     await probarEstrategia(s.id, avance);
     toast(t("wf.done", { nombre: s.name }), "ok");
     RECIEN_PROBADAS.add(s.id);
-    await navigate("saved");
+    if (S.page === "saved") await navigate("saved", S.vista); else await refreshSavedCount();
   } catch (e) {
     if (!pedirCuenta(e.status)) toast(e.message, "err");
     boton.disabled = false;
@@ -8942,6 +8852,7 @@ function pedirCuenta(status) {
   refreshBancoCount();
   refreshMt5();
   refreshCuenta();
+  refreshRobots();
   $$("#nav button").forEach(b => b.onclick = () => navigate(b.dataset.page, b.dataset.vista || undefined));
   // los contadores ya se pidieron arriba, pero sin esperarlos: la bienvenida
   // necesita saber si hay algo hecho ANTES de decidir si aparece

@@ -47,19 +47,25 @@
         <span data-i18n="nav.mining"></span>
         <span class="nav-count" id="banco-count"></span>
       </button>
-      <button data-page="saved">
+      <button data-page="saved" data-vista="por_probar">
         <span class="nav-num" aria-hidden="true">2</span>
         <span data-i18n="nav.saved"></span>
         <span class="nav-count" id="saved-count"></span>
+      </button>
+      <button data-page="saved" data-vista="aprobadas" id="nav-aprobadas">
+        <span class="nav-num" aria-hidden="true">3</span>
+        <span data-i18n="nav.aprobadas"></span>
+        <span class="nav-count" id="aprobadas-count"></span>
       </button>
       <!-- El ultimo paso del flujo, y se llama por el paso y no por el
            proveedor. "Exchanges" nombra lo que se configura una vez; lo que
            se hace aca seguido es encender y apagar un bot, y cargar la clave
            es la segunda vista de adentro. Un menu tiene que leerse como el
            orden en que se usan las cosas. -->
-      <button data-page="operar" id="nav-operar">
-        <span class="nav-num" aria-hidden="true">3</span>
+      <button data-page="operar" data-vista="bot" id="nav-operar">
+        <span class="nav-num" aria-hidden="true">4</span>
         <span data-i18n="nav.operar"></span>
+        <span class="nav-count" id="robots-count"></span>
       </button>
       <!-- LO QUE NO ES UN PASO DEL CAMINO va abajo, como ajuste: los mercados
            se eligen dentro de Buscar, la cuenta se conecta una vez, y
@@ -72,6 +78,10 @@
       <button data-page="operar" data-vista="claves" class="nav-ajuste" id="nav-cuenta">
         <span class="punto" aria-hidden="true"></span>
         <span id="nav-cuenta-txt"></span>
+      </button>
+      <button data-page="operar" data-vista="piloto" class="nav-ajuste" id="nav-piloto">
+        <span class="punto" aria-hidden="true"></span>
+        <span data-i18n="nav.piloto_avanzado"></span>
       </button>
       <button data-page="consejos" class="nav-ajuste">
         <span class="punto" aria-hidden="true"></span>

@@ -2345,6 +2345,14 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 .sect.avanzado[open] > summary { border-bottom: 1px dashed var(--border-strong); }
 .conectar { margin-top: 16px; }
 
+/* ---- las bandejas: una línea con lo que hay en las otras ---- */
+.bandejas-linea { display: flex; gap: 16px; flex-wrap: wrap; margin: -4px 0 16px; font-size: 13px; }
+.bandejas-linea .linkbtn.on { color: var(--text); font-weight: 600; pointer-events: none; }
+/* Operar: la cuenta en una línea */
+.cuenta-linea .help-note { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 4px; }
+.cuenta-dato b { margin-left: 6px; font-variant-numeric: tabular-nums; }
+.vistas.volver { margin-bottom: 12px; }
+
 /* ---- qué hace la prueba: plegado, siempre a un clic ---- */
 .que-es { margin: 0 0 16px; padding: 12px 16px; border-radius: var(--r); background: var(--card); border: 1px solid var(--border-soft); }
 .que-es summary { cursor: pointer; list-style: none; font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; }
