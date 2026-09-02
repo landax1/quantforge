@@ -4045,8 +4045,10 @@ const BANCO_COLS = (hayOos = true) => [
 
    Pide letra Y numero pegados al final para no comerse un CSV propio que se
    llame "Mis datos 2020": ahi el ultimo trozo no lleva letra adelante. */
+/* Una corrida cuyo histórico se borró desde Datos quedaba como "—": una
+   burbuja sin nombre entre las demás, sin decir qué era. Se dice. */
 const nombreCorto = (s) =>
-  String(s || "—").replace(/\s+(?:M|H|D|W|MN)\d+\s*(?:\(.*)?$/i, "");
+  String(s || t("bank.sin_instrumento")).replace(/\s+(?:M|H|D|W|MN)\d+\s*(?:\(.*)?$/i, "");
 
 /* Cuándo corrió, dicho como se acuerda uno.
 

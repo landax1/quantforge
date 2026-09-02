@@ -674,6 +674,7 @@ const STR = {
   "bank.run_deleted": ["Run deleted", "Corrida borrada"],
   "bank.confirm_remove": ["Remove {n} strategies from the databank?",
                           "¿Quitar {n} estrategias del banco?"],
+  "bank.sin_instrumento": ["deleted instrument", "instrumento borrado"],
   "bank.copied": ["Saved to My strategies: {n} — they also stay in the databank",
                   "Guardadas en Mis estrategias: {n} — siguen también en el banco"],
   /* --------------------------------------- las reglas, en palabras

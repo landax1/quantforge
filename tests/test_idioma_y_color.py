@@ -232,7 +232,10 @@ def test_el_nombre_corto_funciona_con_los_datos_que_trae_la_app():
     Es el tipo de fallo que sólo aparece si se prueba sobre una instalación
     virgen, que es exactamente lo que ve todo el que descarga por primera vez.
     """
-    m = re.search(r"const nombreCorto = \(s\) =>\s*\n?\s*String\([^)]*\)\.replace\((/[^,]+/[a-z]*),",
+    # El argumento de String() puede llevar una llamada adentro —el rótulo
+    # de "instrumento borrado" sale de t()— así que se admite un paréntesis
+    # anidado.
+    m = re.search(r"const nombreCorto = \(s\) =>\s*\n?\s*String\((?:[^()]|\([^()]*\))*\)\.replace\((/[^,]+/[a-z]*),",
                   APP)
     assert m, "cambió la forma de nombreCorto; revisar a mano"
     patron = m.group(1)
