@@ -326,6 +326,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         # una fecha sin hora significa el día entero, no su primer segundo
         if hi is not None and hi == hi.normalize():
             hi = hi + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
+        # EL RANGO SE ESCRIBE EN EL RELOJ DEL HISTÓRICO. Los perpetuos de
+        # Binance vienen con zona horaria (UTC) y los CFD sin ella; una fecha
+        # pelada contra un índice con zona reventaba con "Cannot compare
+        # tz-naive and tz-aware" —un 500— al minar cualquier cripto con una
+        # receta que acorta la ventana. Pasó en la primera búsqueda de un
+        # usuario nuevo.
+        tz = getattr(df.index, "tz", None)
+        if tz is not None:
+            lo = lo.tz_localize(tz) if lo is not None and lo.tzinfo is None else lo
+            hi = hi.tz_localize(tz) if hi is not None and hi.tzinfo is None else hi
+        else:
+            lo = lo.tz_localize(None) if lo is not None and lo.tzinfo is not None else lo
+            hi = hi.tz_localize(None) if hi is not None and hi.tzinfo is not None else hi
         out = df.loc[lo:hi]
         if len(out) < MIN_BARS:
             span = f"{raw_from or 'inicio'} → {raw_to or 'fin'}"

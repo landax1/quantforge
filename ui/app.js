@@ -298,6 +298,23 @@ const INST_FAMILIA = {
    estrategias y CERO repetidas. Dos personas con la misma receta obtienen
    portafolios disjuntos, y eso es lo que hace que la receta se pueda
    repartir. */
+/* A qué mundo pertenece un histórico, por su nombre. Se clasifica contra el
+   catálogo; los que no se pueden clasificar —un CSV propio— pertenecen a los
+   dos, porque adivinarles un mundo sería peor que dejarlos a la vista. */
+function mundoDeDataset(nombre) {
+  const token = String(nombre || "").trim().split(/\s+/)[0].toLowerCase();
+  const enCat = (S.catalog || []).find(c => c.label.toLowerCase() === token);
+  return enCat ? (enCat.mundo || "metatrader") : null;
+}
+
+/* Los históricos que se ven en el mundo elegido, en el orden de la lista. */
+function datasetsDelMundo() {
+  return (S.datasets || []).filter(d => {
+    const m = mundoDeDataset(d.name);
+    return m === null || m === S.mundo;
+  });
+}
+
 const RECETAS = () => [
   {
     id: "fondeo", ico: "diana",
@@ -1297,8 +1314,12 @@ async function refreshDatasets() {
        medido sobre los mismos datos que trae la aplicación. La primera búsqueda
        de alguien que recién llega decide si vuelve: arrancarla en el
        instrumento más difícil es empezar perdiendo. */
-    const recomendado = (S.catalog || []).find(c => c.mejor_rendimiento && c.dataset_id);
-    S.sel.dataset_id = (recomendado && recomendado.dataset_id) || S.datasets[0].id;
+    const delMundo = datasetsDelMundo();
+    const recomendado = (S.catalog || []).find(
+      c => c.mejor_rendimiento && c.dataset_id
+        && delMundo.some(d => d.id === c.dataset_id));
+    S.sel.dataset_id = (recomendado && recomendado.dataset_id)
+      || (delMundo[0] || S.datasets[0]).id;
     adoptInstrumentDefaults();
   }
 }
@@ -4804,15 +4825,18 @@ const vistaBuscar = async (main) => {
      vitrina de instrumentos. Se clasifica cada histórico por su nombre; los
      que no se pueden clasificar —un CSV propio— se muestran siempre, porque
      adivinarles un mundo sería peor que dejarlos a la vista. */
-  const mundoDeDataset = (nombre) => {
-    const token = String(nombre || "").trim().split(/\s+/)[0].toLowerCase();
-    const enCat = (S.catalog || []).find(c => c.label.toLowerCase() === token);
-    return enCat ? (enCat.mundo || "metatrader") : null;
-  };
-  const dsOpts = S.datasets.filter(d => {
-    const m = mundoDeDataset(d.name);
-    return m === null || m === S.mundo;
-  }).map(d =>
+  /* SI EL ELEGIDO NO ES DE ESTE MUNDO, SE ELIGE UNO QUE SÍ. Cambiar de
+     sección olvida el instrumento, pero quien lo vuelve a elegir por defecto
+     no miraba el mundo: en "cripto" el desplegable mostraba ADAUSDT y la
+     búsqueda iba a SP500. Pasó, y la búsqueda arrancaba en el instrumento
+     equivocado sin que nada lo dijera. */
+  const delMundo = datasetsDelMundo();
+  if (delMundo.length && !delMundo.some(d => d.id === S.sel.dataset_id)) {
+    S.sel.dataset_id = delMundo[0].id;
+    adoptInstrumentDefaults();
+    saveCfg();
+  }
+  const dsOpts = delMundo.map(d =>
     `<option value="${d.id}" ${d.id === S.sel.dataset_id ? "selected" : ""}>
        ${esc(d.name)} · ${esc(t("ui.n_bars", {
          n: d.rows.toLocaleString(localeNum()) }))}</option>`).join("");
@@ -5821,7 +5845,19 @@ const vistaBuscar = async (main) => {
       if (result.podadas) {
         toast(t("bank.pruned", { n: result.podadas }));
       }
-    } catch (e) { toast(e.message, "err"); hideProgress("m-prog"); }
+    } catch (e) {
+      /* SI NO ARRANCÓ, LA PANTALLA VUELVE A "LISTA PARA BUSCAR". Antes
+         quedaba el panel de "buscando" con cero probadas y la tarjeta de
+         corrida activa en la barra lateral, sin ninguna búsqueda detrás: el
+         siguiente clic en una receta la redibujaba a medias y la pausa no
+         apuntaba a nada. Pasó con un 500 del servidor en la primera
+         búsqueda de un usuario nuevo. */
+      toast(e.message, "err");
+      hideProgress("m-prog");
+      S.mineLive = null;
+      pintarCorrida(null, true);
+      renderIdle();
+    }
     S.mining = false; S.mineJobId = null; S.minePaused = false;
     pintarEstadoMinado(false);
   };

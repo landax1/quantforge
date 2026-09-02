@@ -116,3 +116,36 @@ def test_mining_reports_the_range_it_actually_used(client, dataset):
     assert pd.Timestamp(rng["from"]) >= pd.Timestamp("2021-01-01")
     assert pd.Timestamp(rng["to"]) <= pd.Timestamp("2023-01-01")
     assert rng["bars"] > 0
+
+
+def test_a_history_with_a_timezone_accepts_a_plain_date_range(client, tmp_path):
+    """Los perpetuos de Binance vienen con zona horaria (UTC) y los CFD sin
+    ella. Una fecha pelada contra un índice con zona reventaba con "Cannot
+    compare tz-naive and tz-aware" —un 500— al minar cualquier cripto con una
+    receta que acorta la ventana. Pasó en la primera búsqueda de un usuario
+    nuevo."""
+    import glob
+    import numpy as np
+    from botiquant.data.store import DataStore
+    from botiquant.database.db import Database
+
+    ruta = glob.glob(str(tmp_path / "*.sqlite"))[0]
+    db = Database(ruta)
+    store = DataStore(tmp_path / "datasets", db)
+    n = 30_000
+    t = pd.date_range("2020-01-01", periods=n, freq="1h", tz="UTC")
+    x = np.arange(n)
+    c = 100 + np.sin(x / 50) * 5 + x * 0.001
+    df = pd.DataFrame({"open": c, "high": c + 1, "low": c - 1, "close": c,
+                       "volume": np.full(n, 10.0)}, index=t)
+    df.index.name = "time"
+    ds = store.add("ADAUSDT H1", df, source="binance")
+
+    r = client.post("/api/backtest", json={
+        "dataset_id": ds["id"], "spec": _spec(),
+        "date_from": "2021-06-01", "date_to": "2022-12-31"})
+    assert r.status_code == 200, r.text
+    ts = r.json()["result"]["timestamps"]
+    primero, ultimo = pd.Timestamp(ts[0]), pd.Timestamp(ts[-1])
+    assert (primero.year, primero.month) >= (2021, 6)
+    assert ultimo.year <= 2022
