@@ -1967,6 +1967,42 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             "peor_razonable": mc["final_equity"]["ci_90"][0],
             "prob_perder_pct": mc["final_equity"]["prob_loss"],
         }
+        # Y LA PRUEBA FUERA DE MUESTRA, que es la que dice si aguanta.
+        #
+        # ==================================================================
+        # PASÓ DE VERDAD: el ciclo validó con Monte Carlo solo, promovió por
+        # las métricas del minado, y una estrategia de ADA quedó operando en
+        # demo con veredicto "sobreajustada" —un tramo ganador de cuatro,
+        # −15 % fuera de muestra— que recién apareció cuando alguien apretó
+        # "ponerla a prueba" a mano. Monte Carlo reordena las operaciones que
+        # ya hubo; el walk-forward pregunta si las habría sobre datos que
+        # nunca vio. Sin la segunda, "validada" no decía nada del futuro.
+        # ==================================================================
+        #
+        # Se registra igual que la prueba manual —mismas claves— para que la
+        # pantalla y el ciclo lean una sola cosa. Si la prueba no se puede
+        # correr (pocas operaciones, histórico corto) se anota y no se frena
+        # la validación: el ciclo decide con lo que hay.
+        try:
+            wf = walk_forward(
+                df, StrategySpec.from_dict(fila["spec"]),
+                folds=int(PRUEBA["folds"]), train_pct=float(PRUEBA["train_pct"]),
+                optimize_budget=int(PRUEBA["budget"]),
+                settings=_settings({"dataset_id": meta["dataset_id"],
+                                    "settings": ajustes}))
+            resumen = wf["summary"]
+            validacion.update({
+                "estado": ESTADOS.get(resumen["verdict"], "no_paso"),
+                "veredicto": resumen["verdict"],
+                "tramos": resumen["folds"],
+                "tramos_ganadores": resumen["profitable_folds"],
+                "eficiencia": resumen["wf_efficiency"],
+                "consistencia_pct": resumen["consistency_pct"],
+                "retorno_fuera_pct": resumen["total_oos_return_pct"],
+                "probada": validacion["cuando"],
+            })
+        except Exception as exc:                            # noqa: BLE001
+            validacion["prueba_error"] = str(exc)[:200]
         db.guardar_validacion(sid, validacion, dueno)
 
         movida = False
@@ -2701,8 +2737,15 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 # en "practica" sin operar. Se pregunta antes, con el mismo
                 # criterio que usa el bot al arrancar.
                 "operable": _operable(f.get("spec")),
-                "cantera": {"practica": cantera.revisar(entrada, cantera.PRACTICA).pasa,
-                            "real": cantera.revisar(entrada, cantera.REAL).pasa},
+                # LO QUE SALIÓ "SOBREAJUSTADO" FUERA DE MUESTRA NO SE PROMUEVE,
+                # aunque las métricas del minado pasen la cantera: son las
+                # métricas de los datos donde se la encontró. Sin veredicto
+                # (validada antes de que el ciclo corriera esta prueba) no se
+                # frena: la ausencia no es un rechazo.
+                "cantera": {"practica": cantera.revisar(entrada, cantera.PRACTICA).pasa
+                                        and (f.get("validacion") or {}).get("veredicto") != "overfitted",
+                            "real": cantera.revisar(entrada, cantera.REAL).pasa
+                                    and (f.get("validacion") or {}).get("veredicto") != "overfitted"},
                 # Contadas desde el registro guardado. Ver `_vueltas`.
                 #
                 # Que esto sea distinto de cero no significa que se retire: el

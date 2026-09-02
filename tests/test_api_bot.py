@@ -380,3 +380,53 @@ def test_las_promovidas_sin_bot_se_ven_y_se_reencienden_con_un_clic(client, tmp_
     r = client.post("/api/bot/reencender").json()
     assert r["encendidas"] == []
     assert len(r["fallos"]) == 1 and "binance" in r["fallos"][0]["motivo"].lower()
+
+
+def test_el_ciclo_no_promueve_lo_que_salio_sobreajustado_fuera_de_muestra(tmp_path):
+    """Pasó de verdad: el ciclo promovió por las métricas del minado y una
+    estrategia quedó operando con veredicto "sobreajustada" en la prueba
+    fuera de muestra. Las métricas del minado son las de los datos donde se
+    la encontró; el veredicto dice si aguanta en los que nunca vio.
+
+    Arma su propia app: el orquestador es uno por proceso y queda atado a la
+    base de la primera app que lo pidió."""
+    import glob
+    from botiquant import estados
+    from botiquant import orquestador as orq
+    from botiquant.database.db import Database
+
+    orq.ORQUESTADOR = None
+    try:
+        with TestClient(create_app(workdir=tmp_path / "ws")) as c:
+            db = Database(glob.glob(str(tmp_path / "ws" / "*.sqlite"))[0])
+            ds = db.insert_dataset("ETHUSDT H1", "binance", 100, "2024-01-01",
+                                   "2024-12-31", "1h")
+            fuertes = {"trades": 200, "profit_factor": 1.5, "max_drawdown_pct": 10.0,
+                       "expectancy_r": 0.3}
+            buena = db.save_strategy("S-buena", _doc()["estrategia"],
+                                     meta={"dataset_id": ds, "timeframe": "1h",
+                                           "metrics": fuertes})
+            mala = db.save_strategy("S-mala", _doc()["estrategia"],
+                                    meta={"dataset_id": ds, "timeframe": "1h",
+                                          "metrics": fuertes})
+            for sid in (buena, mala):
+                db.mover_estado(sid, estados.mover(estados.NUEVA, estados.VALIDADA), None)
+            db.guardar_validacion(mala, {"veredicto": "overfitted", "tramos": 4,
+                                         "tramos_ganadores": 1}, None)
+            db.guardar_validacion(buena, {"veredicto": "robust", "tramos": 4,
+                                          "tramos_ganadores": 4}, None)
+
+            # Se le pregunta al lector del ciclo y se decide con `que_toca`,
+            # sin encenderlo: encendido, promueve en la primera vuelta y ya no
+            # queda nada que mirar.
+            from botiquant import ciclo as cic
+            c.get("/api/ciclo")                       # arma el orquestador
+            est = orq.ORQUESTADOR.leer_estado()
+            t = cic.que_toca(cic.Parametros.from_dict({"encendido": True}),
+                             estrategias=est["estrategias"],
+                             horas_desde_el_ultimo_minado=est["horas_desde_minado"],
+                             en_practica=est["en_practica"])
+            assert t.accion == cic.PROMOVER, t
+            assert buena in t.ids and mala not in t.ids
+    finally:
+        orq.ORQUESTADOR = None
