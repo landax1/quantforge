@@ -656,6 +656,11 @@ main { flex: 1; overflow-y: auto; padding: 32px 34px 90px; scroll-behavior: smoo
   margin-bottom: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
 }
 .card h2 .hint { color: var(--text-dim); font-weight: 400; font-size: 11px; }
+/* La bajada de un título FUERA de una tarjeta —"¿Qué estás buscando?" y su
+   "cada una configura la búsqueda entera"— heredaba la negrita y el cuerpo
+   del título; en un teléfono, donde baja de línea, se leía como un segundo
+   título. Misma voz que la bajada dentro de las tarjetas. */
+h2 .hint { color: var(--text-dim); font-weight: 400; font-size: 12px; }
 .row { display: flex; gap: 20px; flex-wrap: wrap; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 @media (max-width: 1100px) { .grid-2 { grid-template-columns: 1fr; } }
@@ -3383,4 +3388,12 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 }
 @media (max-width: 620px) {
   .lang-box, .acct { flex: 0 1 auto; }
+}
+
+/* En un teléfono angosto, con cinco secciones y la interfaz en español, el
+   menú medía 399 px en 351 disponibles: "Consejos" quedaba cortado afuera
+   y nada lo insinuaba. Las cifras del menú son las que sobran —siguen en
+   la cabecera de cada sección— y sin ellas entran las cinco. */
+@media (max-width: 420px) {
+  #nav .nav-count { display: none; }
 }
