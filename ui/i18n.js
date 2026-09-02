@@ -1439,6 +1439,8 @@ const STR = {
   "ex.paso_clave": ["The key is loaded", "La clave está cargada"],
   "ex.paso_saldo": ["Key and signature work", "La clave y la firma funcionan"],
   "ex.paso_modo": ["Position mode", "Modo de posición"],
+  "ex.modo_una_via": ["one-way", "una vía"],
+  "ex.modo_cobertura": ["hedge (two-way)", "cobertura (dos vías)"],
   "ex.paso_posiciones": ["Open positions", "Posiciones abiertas"],
   "bot.sin_cripto": ["No crypto strategy saved yet",
                      "Todavía no hay ninguna estrategia de cripto guardada"],

@@ -3024,9 +3024,19 @@ const vistaClaves = async (main, por) => {
       <div class="ex-paso ${p.ok ? "ok" : "mal"}">
         <span class="ex-ic">${icono(p.ok ? "tilde" : "alerta")}</span>
         <b>${esc(nombres[p.paso] || p.paso)}</b>
-        <span>${esc(p.detalle)}</span>
+        <span>${esc(detallePaso(p))}</span>
       </div>`).join("");
   };
+
+  /* El modo de posición llega como lo nombra el servidor ("una_via",
+     "cobertura") y se mostraba tal cual, con guion bajo y en español, en la
+     interfaz en inglés. Es un valor cerrado: se traduce como los demás. */
+  function detallePaso(p) {
+    if (p.paso !== "modo") return p.detalle;
+    if (p.detalle === "una_via") return t("ex.modo_una_via");
+    if (p.detalle === "cobertura") return t("ex.modo_cobertura");
+    return p.detalle;
+  }
 
   $$("[data-ex-guardar]", main).forEach(b => {
     b.onclick = async () => {
