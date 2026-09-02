@@ -80,6 +80,15 @@ CREATE TABLE IF NOT EXISTS operaciones (
 );
 CREATE INDEX IF NOT EXISTS ix_operaciones_estrategia
     ON operaciones (strategy_id, cuando);
+CREATE TABLE IF NOT EXISTS compartidas (
+    codigo TEXT PRIMARY KEY,
+    secreto TEXT NOT NULL,
+    doc TEXT NOT NULL,
+    created TEXT NOT NULL,
+    apagada INTEGER NOT NULL DEFAULT 0,
+    vistas INTEGER NOT NULL DEFAULT 0,
+    ip TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS banco (
     id TEXT PRIMARY KEY,
     corrida_id TEXT NOT NULL,
@@ -696,6 +705,45 @@ class Database:
             f["fila"] = json.loads(f["fila"])
             f["contexto"] = json.loads(f.get("contexto") or "{}")
         return filas
+
+    # ------------------------------------------------- estrategias compartidas
+    def crear_compartida(self, doc: dict[str, Any], ip: str = "") -> tuple[str, str]:
+        """Guarda una copia congelada de una estrategia y devuelve (código, secreto).
+
+        El código va en el enlace; el secreto sólo lo recibe quien compartió y
+        es lo único que permite apagar el enlace. Sin cuentas ni licencias:
+        compartir es de cualquiera que tenga la aplicación.
+        """
+        import secrets as _secrets
+        codigo = _secrets.token_urlsafe(6).replace("-", "a").replace("_", "b")[:8]
+        secreto = _secrets.token_urlsafe(24)
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO compartidas (codigo, secreto, doc, created, ip) VALUES (?,?,?,?,?)",
+                (codigo, secreto, json.dumps(doc), datetime.now(timezone.utc).isoformat(timespec="seconds"), ip))
+            self._conn.commit()
+        return codigo, secreto
+
+    def get_compartida(self, codigo: str, *, contar: bool = False) -> dict[str, Any] | None:
+        filas = self._rows("SELECT * FROM compartidas WHERE codigo=?", (codigo,))
+        if not filas:
+            return None
+        f = filas[0]
+        if contar and not f["apagada"]:
+            self._exec("UPDATE compartidas SET vistas=vistas+1 WHERE codigo=?", (codigo,))
+        f["doc"] = json.loads(f["doc"])
+        return f
+
+    def apagar_compartida(self, codigo: str, secreto: str) -> bool:
+        cur = self._exec("UPDATE compartidas SET apagada=1 WHERE codigo=? AND secreto=?",
+                         (codigo, secreto))
+        return cur.rowcount > 0
+
+    def compartidas_hoy(self, ip: str) -> int:
+        hoy = datetime.now(timezone.utc).date().isoformat()
+        return int(self._rows(
+            "SELECT COUNT(*) AS n FROM compartidas WHERE ip=? AND created LIKE ?",
+            (ip, hoy + "%"))[0]["n"])
 
     def ids_banco_de(self, corrida_id: str, user_id: str | None = None) -> list[str]:
         """Los ids de las filas que dejó una corrida, en su orden de puesto.

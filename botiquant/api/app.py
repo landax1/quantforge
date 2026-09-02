@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import dataclasses
 import hmac
+import html as html_lib
+import json
 import os
 import re
 import sqlite3
@@ -3560,6 +3562,240 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         ruta = BUILD_DIR / INSTALADOR
         return ruta if ruta.is_file() else None
 
+    # ══════════════════════════════════ COMPARTIR UNA ESTRATEGIA CON UN ENLACE
+    # El enlace se abre sin cuenta. Publica sólo la estrategia: nombre,
+    # instrumento, costos, métricas, curva muestreada, veredicto y reglas en
+    # palabras. Nunca claves, cuenta, saldo ni robots. Quien comparte recibe
+    # un secreto y con eso apaga el enlace. Sin licencia, con un tope por día
+    # por dirección para que nadie lo use de basurero.
+    SITIO = os.environ.get("BQ_SITIO", "https://botiquant.com").rstrip("/")
+    _TOPE_COMPARTIR_DIA = 30
+    _TAM_MAX_DOC = 300_000
+
+    def _ip_de(request: Request) -> str:
+        xff = request.headers.get("x-forwarded-for", "")
+        return (xff.split(",")[0].strip() if xff else (request.client.host if request.client else "")) or ""
+
+    def _doc_compartible(payload: dict[str, Any]) -> dict[str, Any]:
+        """Lo que se publica, y nada más: se copia campo por campo."""
+        nivel = "mirar" if str(payload.get("nivel") or "") == "mirar" else "usar"
+        doc = {
+            "nivel": nivel,
+            "nombre": str(payload.get("nombre") or "Estrategia")[:80],
+            "autor": str(payload.get("autor") or "")[:40],
+            "instrumento": str(payload.get("instrumento") or "")[:60],
+            "timeframe": str(payload.get("timeframe") or "")[:8],
+            "direccion": str(payload.get("direccion") or "")[:10],
+            "bloques": str(payload.get("bloques") or "")[:200],
+            "reglas": [str(x)[:200] for x in (payload.get("reglas") or [])][:20],
+            "salidas": str(payload.get("salidas") or "")[:200],
+            "costos": {k: float(v) for k, v in (payload.get("costos") or {}).items()
+                       if isinstance(v, (int, float)) and k in ("spread", "slippage", "commission_pct", "initial_capital")},
+            "metricas": {k: v for k, v in (payload.get("metricas") or {}).items()
+                         if isinstance(v, (int, float, type(None)))},
+            "curva": [round(float(v), 2) for v in (payload.get("curva") or [])][:240],
+            "fechas": [str(x)[:10] for x in (payload.get("fechas") or [])][:240],
+            "validacion": payload.get("validacion") if isinstance(payload.get("validacion"), dict) else None,
+            "mundo": "exchange" if payload.get("mundo") == "exchange" else "metatrader",
+        }
+        if nivel == "usar":
+            doc["spec"] = payload.get("spec") or {}
+        if len(json.dumps(doc)) > _TAM_MAX_DOC:
+            raise HTTPException(413, "La estrategia es demasiado grande para compartirla.")
+        return doc
+
+    @app.post("/api/compartir")
+    def compartir(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+        ip = _ip_de(request)
+        if db.compartidas_hoy(ip) >= _TOPE_COMPARTIR_DIA:
+            raise HTTPException(429, "Ya compartiste muchas hoy. Mañana podés seguir.")
+        doc = _doc_compartible(payload)
+        codigo, secreto = db.crear_compartida(doc, ip)
+        return {"codigo": codigo, "secreto": secreto, "url": f"{SITIO}/s/{codigo}"}
+
+    @app.post("/api/compartir/remoto")
+    def compartir_remoto(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+        """Desde la aplicación de escritorio: manda la estrategia al sitio.
+
+        En el sitio mismo (SOLO_WEB) se guarda acá directo; en la máquina del
+        usuario se reenvía a botiquant.com, que es donde el enlace tiene que
+        abrir para cualquiera.
+        """
+        if SOLO_WEB:
+            return compartir(payload, request)
+        import urllib.error
+        import urllib.request as _ur
+        datos = json.dumps(payload).encode("utf-8")
+        req = _ur.Request(f"{SITIO}/api/compartir", data=datos,
+                          headers={"Content-Type": "application/json", "User-Agent": f"Botiquant/{__version__}"})
+        try:
+            with _ur.urlopen(req, timeout=15) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            try:
+                detalle = json.loads(exc.read().decode("utf-8")).get("detail") or str(exc)
+            except Exception:  # noqa: BLE001
+                detalle = str(exc)
+            raise HTTPException(exc.code, str(detalle)) from exc
+        except (urllib.error.URLError, OSError) as exc:
+            raise HTTPException(502, "No se pudo llegar a botiquant.com para publicar el enlace.") from exc
+
+    @app.post("/api/compartir/apagar")
+    def compartir_apagar_remoto(payload: dict[str, Any], request: Request) -> dict[str, Any]:
+        codigo = str(payload.get("codigo") or "")
+        if SOLO_WEB:
+            return apagar_compartida(codigo, payload)
+        import urllib.error
+        import urllib.request as _ur
+        req = _ur.Request(f"{SITIO}/api/s/{codigo}/apagar", data=json.dumps(payload).encode("utf-8"),
+                          headers={"Content-Type": "application/json", "User-Agent": f"Botiquant/{__version__}"})
+        try:
+            with _ur.urlopen(req, timeout=15) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise HTTPException(exc.code, "No se pudo apagar el enlace.") from exc
+        except (urllib.error.URLError, OSError) as exc:
+            raise HTTPException(502, "No se pudo llegar a botiquant.com.") from exc
+
+    @app.post("/api/s/{codigo}/apagar")
+    def apagar_compartida(codigo: str, payload: dict[str, Any]) -> dict[str, Any]:
+        if not db.apagar_compartida(codigo, str(payload.get("secreto") or "")):
+            raise HTTPException(404, "Ese enlace no existe o el secreto no coincide.")
+        return {"ok": True}
+
+    def _compartida_viva(codigo: str, contar: bool = False) -> dict[str, Any]:
+        c = db.get_compartida(codigo, contar=contar)
+        if not c:
+            raise HTTPException(404, "Ese enlace no existe.")
+        if c["apagada"]:
+            raise HTTPException(410, "Quien compartió esta estrategia apagó el enlace.")
+        return c
+
+    @app.get("/api/s/{codigo}")
+    def ver_compartida(codigo: str) -> dict[str, Any]:
+        c = _compartida_viva(codigo)
+        doc = dict(c["doc"])
+        doc.pop("spec", None)          # las reglas ejecutables sólo viajan en el archivo
+        return {"codigo": codigo, "creado": c["created"], "vistas": c["vistas"], **doc}
+
+    @app.get("/api/s/{codigo}/{formato}")
+    def bajar_compartida(codigo: str, formato: str) -> PlainTextResponse:
+        c = _compartida_viva(codigo)
+        doc = c["doc"]
+        if doc.get("nivel") != "usar" or not doc.get("spec"):
+            raise HTTPException(403, "Esta estrategia se compartió sólo para mirar.")
+        spec = StrategySpec.from_dict(doc["spec"])
+        simbolo = (doc.get("instrumento") or "").split(" ")[0]
+        nombre = _nombre_de_archivo(doc.get("nombre"), "BQ_Compartida")
+        if formato == "pine":
+            codigo_txt = export_pine(spec, name=doc.get("nombre") or "Botiquant", symbol_hint=simbolo,
+                                     timeframe_hint=doc.get("timeframe") or "", metrics=doc.get("metricas") or None,
+                                     comision_pct=float((doc.get("costos") or {}).get("commission_pct") or 0.0))
+            archivo = f"{nombre}.pine"
+        elif formato == "mql5":
+            codigo_txt = export_mql5(spec, ea_name=nombre, symbol_hint=simbolo,
+                                     timeframe_hint=doc.get("timeframe") or "", metrics=doc.get("metricas") or None)
+            archivo = f"{nombre}.mq5"
+        else:
+            raise HTTPException(404, "Formato desconocido.")
+        return PlainTextResponse(codigo_txt, media_type="text/plain",
+                                 headers={"Content-Disposition": f'attachment; filename="{archivo}"'})
+
+    @app.get("/s/{codigo}", include_in_schema=False)
+    def pagina_compartida(codigo: str) -> HTMLResponse:
+        """La estrategia, para cualquiera, sin cuenta. Una página liviana del
+        servidor con vista previa para WhatsApp, X y Telegram."""
+        try:
+            c = _compartida_viva(codigo, contar=True)
+        except HTTPException as exc:
+            cuerpo = ("Quien compartió esta estrategia apagó el enlace." if exc.status_code == 410
+                      else "Ese enlace no existe.")
+            return HTMLResponse(_html_compartida_vacia(cuerpo), status_code=exc.status_code, headers=_NO_CACHE)
+        return HTMLResponse(_html_compartida(codigo, c["doc"]), headers=_NO_CACHE)
+
+    def _html_compartida_vacia(mensaje: str) -> str:
+        return ("<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'>"
+                "<meta name='robots' content='noindex'><title>BotiQuant</title>"
+                "<style>body{margin:0;background:#0d1113;color:#e6ebed;font:16px/1.5 system-ui;display:grid;place-items:center;min-height:100vh}"
+                "main{max-width:420px;padding:32px;text-align:center}a{color:#3fc3b8}</style></head>"
+                f"<body><main><h1 style='font-size:22px'>{html_lib.escape(mensaje)}</h1>"
+                "<p><a href='/'>Conocer BotiQuant</a></p></main></body></html>")
+
+    def _html_compartida(codigo: str, d: dict[str, Any]) -> str:
+        e = html_lib.escape
+        m = d.get("metricas") or {}
+        v = d.get("validacion") or {}
+        def num(x, dec=2):
+            try:
+                return f"{float(x):,.{dec}f}"
+            except (TypeError, ValueError):
+                return "—"
+        cagr = m.get("cagr_pct"); dd = m.get("max_drawdown_pct"); pf = m.get("profit_factor"); ops = m.get("trades")
+        est = v.get("estado") or ""
+        veredicto = {"aprobada": ("Aprobada", "#5ad38f"), "aceptable": ("Aguantó a medias", "#f0b64a"),
+                     "no_paso": ("No pasó", "#f27a70")}.get(est, ("Sin probar", "#7d8b93"))
+        curva = d.get("curva") or []
+        if len(curva) >= 2:
+            lo, hi = min(curva), max(curva)
+            span = (hi - lo) or 1.0
+            pts = " ".join(f"{i / (len(curva) - 1) * 600:.1f},{(1 - (c - lo) / span) * 150 + 10:.1f}" for i, c in enumerate(curva))
+            grafico = (f"<svg viewBox='0 0 600 170' preserveAspectRatio='none'><polyline points='{pts}' fill='none' "
+                       f"stroke='#3fc3b8' stroke-width='2'/></svg>")
+        else:
+            grafico = ""
+        tramos = ""
+        for tr in ((v.get("detalle") or {}).get("tramos") or [])[:4]:
+            gana = (tr.get("afuera_pct") or 0) > 0
+            tramos += (f"<div class='tramo'><span>Tramo {tr.get('n')}</span><i class='bar'><b class='in'></b>"
+                       f"<b class='out' style='background:{'#5ad38f' if gana else '#f27a70'}'></b></i>"
+                       f"<small>{e(str(tr.get('juzga', ['', ''])[0]))} → {e(str(tr.get('juzga', ['', ''])[1]))} · "
+                       f"<strong style='color:{'#5ad38f' if gana else '#f27a70'}'>{'+' if gana else ''}{num(tr.get('afuera_pct'), 1)}%</strong></small></div>")
+        reglas = "".join(f"<li>{e(r)}</li>" for r in (d.get("reglas") or []))
+        usar = d.get("nivel") == "usar"
+        titulo = f"{d.get('nombre') or 'Estrategia'} · {d.get('instrumento') or ''}".strip(" ·")
+        descr = f"{'+' if (cagr or 0) >= 0 else ''}{num(cagr, 1)}% anual · caída máxima {num(dd, 1)}% · {veredicto[0]}"
+        botones = ""
+        if usar:
+            botones = (f"<a class='btn pri' href='/api/s/{e(codigo)}/pine' download>Usar en TradingView</a>"
+                       f"<a class='btn' href='/api/s/{e(codigo)}/mql5' download>Usar en MetaTrader 5</a>")
+        botones += "<a class='btn' href='/'>Abrir en BotiQuant</a>"
+        return f"""<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'>
+<meta name='robots' content='noindex'>
+<title>{e(titulo)} · BotiQuant</title>
+<meta property='og:title' content='{e(titulo)}'><meta property='og:description' content='{e(descr)}'>
+<meta property='og:image' content='{SITIO}/social.png'><meta name='twitter:card' content='summary_large_image'>
+<style>
+:root{{--bg:#0d1113;--card:#161b1e;--inset:#1d2327;--line:#242b30;--ink:#e6ebed;--dim:#7d8b93;--acc:#3fc3b8}}
+*{{box-sizing:border-box}}body{{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}}
+main{{max-width:720px;margin:0 auto;padding:32px 20px 64px}}
+.marca{{display:flex;align-items:center;gap:10px;color:var(--dim);font-size:13px;margin-bottom:24px}}.marca i{{width:28px;height:28px;border-radius:8px;background:var(--acc);display:inline-block}}
+h1{{font-size:28px;margin:0 0 4px;letter-spacing:-.02em}}.sub{{color:var(--dim);font-size:13px;margin:0 0 20px}}
+.kpis{{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:16px 0}}.kpi{{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px}}
+.kpi span{{display:block;font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}}.kpi b{{font-size:20px}}
+.ver{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:16px 0}}.ver b.w{{font-size:18px}}
+.tramos{{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}}.tramo{{background:var(--inset);border-radius:8px;padding:8px;font-size:11px;color:var(--dim)}}
+.tramo .bar{{display:flex;height:6px;gap:1px;margin:6px 0;border-radius:3px;overflow:hidden}}.tramo .in{{flex:7;background:#344049;display:block}}.tramo .out{{flex:3;display:block}}
+.graf{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:16px 0}}.graf svg{{width:100%;height:170px;display:block}}
+.reglas{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:16px 0}}.reglas ul{{margin:8px 0 0;padding-left:18px}}
+.btns{{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}}.btn{{padding:10px 16px;border-radius:8px;border:1px solid #344049;color:var(--ink);text-decoration:none;font-weight:600;font-size:14px}}.btn.pri{{background:var(--acc);color:#06201d;border-color:transparent}}
+.pie{{color:var(--dim);font-size:12px;margin-top:28px}}
+@media (max-width:560px){{.kpis,.tramos{{grid-template-columns:1fr 1fr}}}}
+</style></head><body><main>
+<div class='marca'><i></i>Compartida desde BotiQuant{(' por ' + e(d['autor'])) if d.get('autor') else ''}</div>
+<h1>{e(d.get('nombre') or 'Estrategia')}</h1>
+<p class='sub'>{e(d.get('instrumento') or '')} · {e(d.get('timeframe') or '')} · {e(d.get('direccion') or '')} · {e(d.get('bloques') or '')}</p>
+<div class='kpis'><div class='kpi'><span>Anual</span><b>{'+' if (cagr or 0) >= 0 else ''}{num(cagr, 1)}%</b></div>
+<div class='kpi'><span>Caída máxima</span><b>{num(dd, 1)}%</b></div><div class='kpi'><span>Profit factor</span><b>{num(pf, 2)}</b></div>
+<div class='kpi'><span>Operaciones</span><b>{num(ops, 0)}</b></div></div>
+<div class='ver'><b class='w' style='color:{veredicto[1]}'>{veredicto[0]}</b>
+{('<p style="margin:4px 0 0;color:var(--dim)">Ganó en ' + str(v.get('tramos_ganadores')) + ' de ' + str(v.get('tramos')) + ' tramos que nunca había visto · ' + ('+' if (v.get('retorno_fuera_pct') or 0) >= 0 else '') + num(v.get('retorno_fuera_pct'), 1) + '% fuera de muestra</p>') if est else '<p style="margin:4px 0 0;color:var(--dim)">Todavía no se puso a prueba sobre datos que no vio.</p>'}
+{('<div class="tramos">' + tramos + '</div>') if tramos else ''}</div>
+{('<div class="graf">' + grafico + '</div>') if grafico else ''}
+{('<div class="reglas"><b>Reglas</b><ul>' + reglas + '</ul>' + ('<p style="margin:8px 0 0;color:var(--dim);font-size:13px">' + e(d.get('salidas') or '') + '</p>' if d.get('salidas') else '') + '</div>') if reglas else ''}
+<div class='btns'>{botones}</div>
+<p class='pie'>Medida sobre datos históricos con los costos indicados. No es una recomendación de inversión: probala en una cuenta demo antes de ponerle plata.</p>
+</main></body></html>"""
+
     @app.get("/api/descarga")
     def estado_descarga() -> dict[str, Any]:
         ruta = _instalador()
@@ -3731,6 +3967,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         "Allow: /\n"
         "Disallow: /app\n"
         "Disallow: /cuenta\n"
+        "Disallow: /s/\n"
         "Disallow: /api/\n"
         "\n"
         "Sitemap: https://botiquant.com/sitemap.xml\n"

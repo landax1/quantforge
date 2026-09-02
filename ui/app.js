@@ -483,6 +483,142 @@ const RECETAS = () => [
   },
 ];
 
+/* ═══════════════════════════════ COMPARTIR CON UN ENLACE ═════════════════
+   La estrategia viaja congelada a botiquant.com y vuelve un código. Lo que
+   se publica es lo que se ve en la ficha, y nada más: el documento se arma
+   acá campo por campo. El secreto que vuelve es lo único que permite apagar
+   el enlace, y se guarda en esta máquina. */
+function enlacesGuardados() {
+  try { return JSON.parse(localStorage.getItem("qf.enlaces") || "[]"); } catch (e) { return []; }
+}
+function guardarEnlace(e) {
+  const lista = enlacesGuardados().filter(x => x.codigo !== e.codigo);
+  lista.unshift(e);
+  try { localStorage.setItem("qf.enlaces", JSON.stringify(lista.slice(0, 100))); } catch (err) { /* nada */ }
+}
+
+function documentoCompartible(row, ctx, res, nivel, autor) {
+  const m = (res && res.metrics) || row.metrics || {};
+  const g = (ctx && ctx.guardar) || {};
+  const ds = S.datasets.find(d => d.id === (ctx ? ctx.dataset_id : S.sel.dataset_id));
+  const muestra = (xs, n) => {
+    xs = xs || [];
+    if (xs.length <= n) return xs;
+    const paso = (xs.length - 1) / (n - 1);
+    return Array.from({ length: n }, (_, i) => xs[Math.round(i * paso)]);
+  };
+  const reglas = [...(row.spec.entry_long || []).map(c => `${t("insp.long_entry")}: ${condLabel(c)}`),
+                  ...(row.spec.entry_short || []).map(c => `${t("insp.short_entry")}: ${condLabel(c)}`)];
+  const v = (ctx && ctx.validacion) || null;
+  return {
+    nivel, autor: autor || "",
+    nombre: row.name, instrumento: (ds ? ds.name : (ctx && ctx.dataset_name) || "").replace(/ M1.*/, ""),
+    timeframe: (ctx ? ctx.timeframe : S.sel.timeframe) || "1h",
+    direccion: (g.direction || ctx?.direction || S.cfg.direction || ""),
+    bloques: row.blocks || "", reglas, salidas: salidasEnCastellano(row).replace(/&[a-z#0-9]+;/g, " "),
+    costos: { spread: +g.spread || +S.cfg.spread || 0, slippage: +g.slippage || +S.cfg.slippage || 0,
+              commission_pct: +g.commission || +S.cfg.commission || 0, initial_capital: +g.capital || +S.cfg.capital || 10000 },
+    metricas: m,
+    curva: muestra(res && res.equity, 240),
+    fechas: muestra(res && res.timestamps, 240).map(x => String(x).slice(0, 10)),
+    validacion: v && v.estado ? { estado: v.estado, tramos: v.tramos, tramos_ganadores: v.tramos_ganadores,
+                                  eficiencia: v.eficiencia, retorno_fuera_pct: v.retorno_fuera_pct,
+                                  detalle: v.detalle ? { tramos: v.detalle.tramos } : null } : null,
+    mundo: S.mundo, spec: row.spec,
+  };
+}
+
+function abrirCompartir(row, ctx, res) {
+  const host = document.createElement("div");
+  host.className = "overlay";
+  host.innerHTML = `<div class="sheet sheet-chica">
+    <div class="sheet-head">
+      <div><h2>${esc(t("comp.titulo"))}</h2><p>${esc(row.name)}</p></div>
+      <button class="sheet-close" aria-label="${esc(t("ui.close"))}">${icono("cerrar")}</button>
+    </div>
+    <div class="comp-cuerpo">
+      <p class="help-note">${esc(t("comp.sub"))}</p>
+      <div class="comp-niveles">
+        <label class="comp-nivel on"><input type="radio" name="comp-nivel" value="usar" checked>
+          <b>${esc(t("comp.nivel_usar"))}</b><span>${esc(t("comp.nivel_usar_sub"))}</span></label>
+        <label class="comp-nivel"><input type="radio" name="comp-nivel" value="mirar">
+          <b>${esc(t("comp.nivel_mirar"))}</b><span>${esc(t("comp.nivel_mirar_sub"))}</span></label>
+      </div>
+      <label class="fld mt"><span>${esc(t("comp.autor"))}</span><input type="text" id="comp-autor" maxlength="40" placeholder="—"></label>
+      <div class="controls mt"><button class="btn" id="comp-crear">${icono("seguir")} ${esc(t("comp.crear"))}</button></div>
+      <div class="comp-listo" id="comp-listo" hidden>
+        <b>${icono("tilde", "ico-sm")} ${esc(t("comp.listo"))}</b>
+        <div class="comp-url"><input type="text" id="comp-url" readonly>
+          <button class="btn small" id="comp-copiar">${esc(t("comp.copiar"))}</button>
+          <a class="btn ghost small" id="comp-abrir" target="_blank" rel="noopener">${esc(t("comp.abrir"))}</a></div>
+        <p class="help-note">${esc(t("comp.nota"))}</p>
+      </div>
+    </div>
+  </div>`;
+  document.body.appendChild(host);
+  const close = () => host.remove();
+  $(".sheet-close", host).onclick = close;
+  host.onclick = (e) => { if (e.target === host) close(); };
+  $$(".comp-nivel input", host).forEach(r => r.onchange = () =>
+    $$(".comp-nivel", host).forEach(l => l.classList.toggle("on", $("input", l).checked)));
+  const crear = $("#comp-crear", host);
+  crear.onclick = async () => {
+    crear.disabled = true;
+    crear.innerHTML = `<span class="spinner"></span>${esc(t("comp.creando"))}`;
+    try {
+      const nivel = ($(".comp-nivel input:checked", host) || {}).value || "usar";
+      const doc = documentoCompartible(row, ctx, res, nivel, $("#comp-autor", host).value.trim());
+      const r = await api.post("/api/compartir/remoto", doc);
+      guardarEnlace({ codigo: r.codigo, secreto: r.secreto, url: r.url, nombre: row.name, creado: new Date().toISOString() });
+      $("#comp-url", host).value = r.url;
+      $("#comp-abrir", host).href = r.url;
+      $("#comp-listo", host).hidden = false;
+      crear.hidden = true;
+      $("#comp-copiar", host).onclick = async () => {
+        try { await navigator.clipboard.writeText(r.url); } catch (e) { $("#comp-url", host).select(); document.execCommand("copy"); }
+        $("#comp-copiar", host).textContent = t("comp.copiado");
+      };
+    } catch (e) {
+      toast(e.message, "err");
+      crear.disabled = false;
+      crear.innerHTML = `${icono("seguir")} ${esc(t("comp.crear"))}`;
+    }
+  };
+}
+
+function misEnlacesHTML() {
+  const lista = enlacesGuardados();
+  return `<section class="card mt" id="mis-enlaces">
+    <h2>${esc(t("comp.mis_enlaces"))} <span class="hint">${esc(t("comp.mis_enlaces_sub"))}</span></h2>
+    ${lista.length ? `<div class="enlaces">${lista.map(e => `
+      <div class="enlace ${e.apagado ? "apagado" : ""}" data-codigo="${esc(e.codigo)}">
+        <div><b>${esc(e.nombre)}</b><span class="muted">${esc(e.url)} · ${esc(String(e.creado).slice(0, 10))}</span></div>
+        <div class="controls">
+          ${e.apagado ? `<span class="muted">${esc(t("comp.apagado"))}</span>` : `
+          <button class="btn ghost small" data-enlace-copiar="${esc(e.url)}">${esc(t("comp.copiar"))}</button>
+          <button class="btn ghost small" data-enlace-apagar="${esc(e.codigo)}">${esc(t("comp.apagar"))}</button>`}
+        </div>
+      </div>`).join("")}</div>` : `<p class="help-note">${esc(t("comp.sin_enlaces"))}</p>`}
+  </section>`;
+}
+function atarMisEnlaces(main) {
+  $$("[data-enlace-copiar]", main).forEach(b => b.onclick = async () => {
+    try { await navigator.clipboard.writeText(b.dataset.enlaceCopiar); } catch (e) { /* nada */ }
+    b.textContent = t("comp.copiado");
+  });
+  $$("[data-enlace-apagar]", main).forEach(b => b.onclick = async () => {
+    const e = enlacesGuardados().find(x => x.codigo === b.dataset.enlaceApagar);
+    if (!e) return;
+    b.disabled = true;
+    try {
+      await api.post("/api/compartir/apagar", { codigo: e.codigo, secreto: e.secreto });
+      guardarEnlace({ ...e, apagado: true });
+      toast(t("comp.apagado"), "ok");
+      navigate("consejos");
+    } catch (err) { toast(err.message, "err"); b.disabled = false; }
+  });
+}
+
 /* ═══════════════════════════════ NÚMEROS QUE CUENTAN ═════════════════════
    Las cifras grandes suben desde cero en 400 ms al aparecer. Cada una lleva
    su valor final y su formato en atributos, así la animación produce el
@@ -3557,7 +3693,8 @@ PAGES.consejos = async (main) => {
           </div>
         </article>`).join("")}
     </div>
-    <p class="stage-note tips-pie">${esc(t("tips.foot"))}</p>`;
+    <p class="stage-note tips-pie">${esc(t("tips.foot"))}</p>` + misEnlacesHTML();
+  atarMisEnlaces(main);
 };
 
 /* Las familias de instrumentos, en el orden en que se muestran.
@@ -4669,12 +4806,12 @@ function barraPrueba(anfitrion, boton) {
   const barra = document.createElement("div");
   barra.className = "prueba-progreso";
   barra.innerHTML = `<span class="pp-txt">${esc(t("wf.testing"))}<i class="puntos" aria-hidden="true"></i></span>
-    <div class="pp-bar"><i style="width:2%"></i></div><span class="pp-det"></span>`;
+    <div class="pp-bar"><i></i></div><span class="pp-det"></span>`;
   if (anfitrion) { anfitrion.innerHTML = ""; anfitrion.appendChild(barra); }
   else boton.insertAdjacentElement("afterend", barra);
   return (j) => {
     const pct = Math.max(2, Math.round((j.progress || 0) * 100));
-    $(".pp-bar i", barra).style.width = pct + "%";
+    $(".pp-bar i", barra).style.transform = `scaleX(${pct / 100})`;
     $(".pp-det", barra).textContent = `${pct}%` + (j.message ? ` · ${j.message}` : "");
   };
 }
@@ -8321,6 +8458,7 @@ function renderInspector(box, row, res, ctx) {
         >${icono("seguir")} ${esc(t("insp.bingx_btn"))}</button>
       <button class="btn ghost" id="insp-pine">${icono("bajar")} TradingView (.pine)</button>
       <button class="btn ghost" id="insp-copiar">${icono("copiar")} ${esc(t("insp.copy_pine"))}</button>
+      <button class="btn ghost" id="insp-compartir">${icono("seguir")} ${esc(t("comp.btn"))}</button>
       ${/* YA GUARDADA NO SE VUELVE A GUARDAR. Abierta desde Mis estrategias,
             el botón ofrecía guardar lo que ya estaba guardado; el chip de la
             cabecera lo dice y el pie lo contradecía. */
@@ -8369,6 +8507,7 @@ function renderInspector(box, row, res, ctx) {
   mostrarResultado(res);
   dibujarPrueba(box, ctx && ctx.validacion);
   atarExplicacion(box, "prueba", PASOS_PRUEBA());
+  $("#insp-compartir", box).onclick = () => abrirCompartir(row, ctx, res);
   cablearMuestras(box, row, ctx, mostrarResultado);
 
   cablearNota(box, ctx);
