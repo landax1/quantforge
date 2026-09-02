@@ -2328,6 +2328,59 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 .sel-rapida .linkbtn { font-size: 12px; }
 .barra-sel .barra-acciones { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 
+/* ══════════════════════════════ MOVIMIENTO CON SENTIDO ═════════════════════
+   Todo por debajo de 400 ms, todo como respuesta a algo que acaba de pasar,
+   y apagado con "reducir movimiento". */
+/* 2 · la pantalla nueva entra desde abajo */
+@keyframes entra-pantalla { from { opacity: 0; transform: translateY(8px); } }
+#main.entra { animation: entra-pantalla .2s var(--ease) both; }
+/* 5 · las primeras filas llegan en cascada */
+@keyframes entra-fila { from { opacity: 0; transform: translateY(6px); } }
+.guardadas tbody tr, .banco tbody tr, .robots .robot, .inst-card, .recetas-lista .receta {
+  animation: entra-fila .25s var(--ease) both;
+}
+.guardadas tbody tr:nth-child(2), .banco tbody tr:nth-child(2), .robots .robot:nth-child(2), .inst-card:nth-child(2), .receta:nth-child(2) { animation-delay: .03s; }
+.guardadas tbody tr:nth-child(3), .banco tbody tr:nth-child(3), .robots .robot:nth-child(3), .inst-card:nth-child(3), .receta:nth-child(3) { animation-delay: .06s; }
+.guardadas tbody tr:nth-child(4), .banco tbody tr:nth-child(4), .robots .robot:nth-child(4), .inst-card:nth-child(4), .receta:nth-child(4) { animation-delay: .09s; }
+.guardadas tbody tr:nth-child(5), .banco tbody tr:nth-child(5), .robots .robot:nth-child(5), .inst-card:nth-child(5), .receta:nth-child(5) { animation-delay: .12s; }
+.guardadas tbody tr:nth-child(6), .banco tbody tr:nth-child(6), .robots .robot:nth-child(6), .inst-card:nth-child(6) { animation-delay: .15s; }
+.guardadas tbody tr:nth-child(7), .banco tbody tr:nth-child(7), .robots .robot:nth-child(7), .inst-card:nth-child(7) { animation-delay: .18s; }
+.guardadas tbody tr:nth-child(8), .banco tbody tr:nth-child(8), .robots .robot:nth-child(8), .inst-card:nth-child(8) { animation-delay: .21s; }
+.guardadas tbody tr:nth-child(n+9), .banco tbody tr:nth-child(n+9), .robots .robot:nth-child(n+9), .inst-card:nth-child(n+9) { animation-delay: .24s; }
+/* 1 · la fila se va: lo probado deja Probar */
+@keyframes se-va { to { opacity: 0; transform: translateX(24px); } }
+.guardadas tr.se-va > td { animation: se-va .35s var(--ease) both; }
+/* 4 · esqueletos: la forma de lo que va a llegar, en gris que respira */
+@keyframes respira { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+.esq { display: block; background: var(--bg-soft); border-radius: var(--r-sm); animation: respira 1.4s ease-in-out infinite; }
+.esqueleto { padding: 24px; display: grid; gap: 16px; }
+.esq-ancha { height: 20px; width: 40%; }
+.esq-linea { height: 12px; width: 60%; }
+.esq-fila { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.esq-caja { height: 64px; }
+.esq-grafico { height: 220px; }
+.cuenta-linea .help-note .esq-linea { width: 240px; height: 14px; }
+/* 6 · un botón que terminó lo dice él mismo */
+.btn.hecho { background: var(--pos-soft); color: var(--pos); border-color: var(--pos-line); }
+/* 9 · lo que es interactivo se siente interactivo */
+.inst-card, .robots .robot, .camino-et, .receta, tr.clickable, .wel-mundo {
+  transition: transform .15s var(--ease), box-shadow .15s var(--ease), border-color .15s var(--ease);
+}
+.inst-card:hover, .robots .robot:hover, .receta:hover, .wel-mundo:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(0, 0, 0, .18); }
+.inst-card:active, .robots .robot:active, .receta:active, .wel-mundo:active { transform: translateY(1px); box-shadow: none; }
+/* 7 · la historia en una frase */
+.cuenta-linea .historia { margin: 8px 0 0; font-size: 13px; color: var(--text); }
+/* 8 · los primeros tres pasos, en la barra lateral */
+.primeros-pasos { margin: 12px 16px 0; padding: 12px 16px; border-radius: var(--r); background: var(--card); border: 1px solid var(--border-soft); display: grid; gap: 6px; }
+.primeros-pasos > b { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); font-weight: 600; margin-bottom: 2px; }
+.primeros-pasos .pp { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+.primeros-pasos .pp.hecho { color: var(--pos); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--pos) 50%, transparent); }
+.pista-primera { display: inline-flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 6px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 600; }
+@media (prefers-reduced-motion: reduce) {
+  #main.entra, .guardadas tbody tr, .banco tbody tr, .robots .robot, .inst-card, .recetas-lista .receta, .guardadas tr.se-va > td, .esq { animation: none; }
+  .inst-card, .robots .robot, .camino-et, .receta, tr.clickable, .wel-mundo { transition: none; }
+}
+
 /* ---- el menú: tres pasos numerados, y los ajustes abajo ---- */
 .nav-num {
   width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;

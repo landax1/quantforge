@@ -483,6 +483,57 @@ const RECETAS = () => [
   },
 ];
 
+/* ═══════════════════════════════ NÚMEROS QUE CUENTAN ═════════════════════
+   Las cifras grandes suben desde cero en 400 ms al aparecer. Cada una lleva
+   su valor final y su formato en atributos, así la animación produce el
+   mismo texto que produciría sin animación. Con "reducir movimiento" se
+   escribe el final directo. */
+const FORMATOS_CIFRA = {
+  pct: v => fmtPct(v), dd: v => `${fmtNum(v, 1)}%`, n: v => fmtNum(v),
+  int: v => fmtInt(Math.round(v)), usdt: v => `${fmtNum(v, 2)} USDT`,
+  usdt_signo: v => `${v > 0 ? "+" : ""}${fmtNum(v, 2)} USDT`,
+};
+function animarCifras(root) {
+  const reducido = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  $$("[data-cifra]", root).forEach(el => {
+    if (el.dataset.animada) return;
+    el.dataset.animada = "1";
+    const fin = parseFloat(el.dataset.cifra);
+    const fmt = FORMATOS_CIFRA[el.dataset.formato] || (v => String(v));
+    if (!isFinite(fin) || reducido) { el.textContent = fmt(fin); return; }
+    const t0 = performance.now(), dur = 420;
+    const paso = (ahora) => {
+      const k = Math.min(1, (ahora - t0) / dur);
+      const e = 1 - Math.pow(1 - k, 3);                // sale rápido, frena al final
+      el.textContent = fmt(fin * e);
+      if (k < 1) requestAnimationFrame(paso); else el.textContent = fmt(fin);
+    };
+    requestAnimationFrame(paso);
+  });
+}
+
+/* ═══════════════════════════════ LOS PRIMEROS TRES PASOS ═════════════════
+   Tres tildes en la barra lateral —buscaste, probaste, encendiste— que se
+   van marcando solas y desaparecen cuando están los tres. La primera vez
+   decide si el usuario vuelve, y esto le dice qué sigue sin explicarle nada. */
+const PRIMEROS = ["buscaste", "probaste", "encendiste"];
+const PP_ROTULO = () => ({ buscaste: t("pp.buscaste"), probaste: t("pp.probaste"), encendiste: t("pp.encendiste") });
+function primerPaso(cual) {
+  try { localStorage.setItem("qf.pp." + cual, "1"); } catch (e) { /* nada */ }
+  marcarPrimerosPasos();
+}
+function marcarPrimerosPasos() {
+  const caja = $("#primeros-pasos");
+  if (!caja) return;
+  let hechos = {};
+  try { PRIMEROS.forEach(p => { hechos[p] = localStorage.getItem("qf.pp." + p) === "1"; }); } catch (e) { hechos = {}; }
+  const todos = PRIMEROS.every(p => hechos[p]);
+  caja.hidden = todos || S.mundo === "metatrader" && false;
+  if (todos) return;
+  caja.innerHTML = `<b>${esc(t("pp.titulo"))}</b>
+    ${PRIMEROS.map(p => `<span class="pp ${hechos[p] ? "hecho" : ""}">${icono(hechos[p] ? "tilde" : "info", "ico-sm")} ${esc(PP_ROTULO()[p])}</span>`).join("")}`;
+}
+
 /* ═══════════════════════════════ UNA EXPLICACIÓN QUE SE VE PASAR ══════════
    Un recorrido de pasos con un punto que viaja de uno al siguiente, y un
    texto que cambia con cada paso. Se aprieta "ver cómo funciona" y la
@@ -1625,6 +1676,11 @@ async function navigate(page, vista) {
   main.innerHTML = "";
   try {
     await PAGES[page](main);
+    /* LA PANTALLA NUEVA ENTRA, no aparece: 200 ms desde 8 px abajo. Se
+       reinicia la clase para que corra aunque sea la misma página. */
+    main.classList.remove("entra"); void main.offsetWidth; main.classList.add("entra");
+    animarCifras(main);
+    marcarPrimerosPasos();
   } catch (e) {
     // Sin esto, cualquier fallo dejaba el <main> vacío para siempre: la página
     // ya se había limpiado y nadie volvía a escribir nada. Se veía igual que
@@ -2616,6 +2672,7 @@ function atarVuelos(main) {
   $$("[data-apagar]", main).forEach(b => {
     b.onclick = async () => {
       b.disabled = true;
+      b.innerHTML = `<span class="spinner"></span>${esc(t("bot.apagando"))}`;
       try {
         await api.post("/api/bot/apagar", { simbolo: b.dataset.apagar });
         toast(t("bot.apagado"), "ok");
@@ -3078,7 +3135,8 @@ const vistaBot = async (main, hayClave) => {
   main.innerHTML = pageHead(t("nav.operar"), esc(t("op.sub_bot"))) + `
     <div class="card cuenta-linea" id="op-cuenta">
       <div class="ex-head"><div><b>${esc(t("op.cuenta_t"))}</b>
-        <p class="help-note">${esc(t("tab.cargando"))}</p></div>
+        <p class="help-note"><i class="esq esq-linea" aria-label="${esc(t("tab.cargando"))}"></i></p>
+        <p class="historia"></p></div>
         <button class="linkbtn" id="op-detalle">${esc(t("op.detalle"))}</button></div>
     </div>
 
@@ -3123,9 +3181,22 @@ const vistaBot = async (main, hayClave) => {
       const d = await api.get("/api/cuenta/rendimiento");
       const r = d.resultado || {};
       const signo = n => (n > 0 ? "pos" : n < 0 ? "neg" : "");
-      $(".help-note", caja).innerHTML = `<span class="cuenta-dato">${esc(t("op.saldo"))} <b>${fmtNum(d.saldo, 2)} USDT</b></span>
-        <span class="cuenta-dato">${esc(t("op.neto"))} <b class="${signo(r.neto)}">${(r.neto > 0 ? "+" : "") + fmtNum(r.neto, 2)} USDT</b></span>
-        <span class="cuenta-dato">${esc(t("op.abiertas"))} <b>${fmtInt((d.posiciones || []).length)}</b></span>`;
+      $(".help-note", caja).innerHTML = `<span class="cuenta-dato">${esc(t("op.saldo"))} <b data-cifra="${+d.saldo || 0}" data-formato="usdt">0</b></span>
+        <span class="cuenta-dato">${esc(t("op.neto"))} <b class="${signo(r.neto)}" data-cifra="${+r.neto || 0}" data-formato="usdt_signo">0</b></span>
+        <span class="cuenta-dato">${esc(t("op.abiertas"))} <b data-cifra="${(d.posiciones || []).length}" data-formato="int">0</b></span>`;
+      animarCifras(caja);
+      /* LA HISTORIA EN UNA FRASE. Un tablero quieto no dice qué pasó; una
+         frase con los mismos números sí. El mejor símbolo sale de las
+         operaciones cerradas, si hay. */
+      const cerradas = d.cerradas || [];
+      const porSim = {};
+      cerradas.forEach(c => { porSim[c.simbolo] = (porSim[c.simbolo] || 0) + (+c.pnl || 0); });
+      const mejor = Object.entries(porSim).sort((a, b) => b[1] - a[1])[0];
+      $(".historia", caja).textContent = d.cuantas_cerradas
+        ? t("op.historia", { n: fmtInt(d.cuantas_cerradas), neto: (r.neto > 0 ? "+" : "") + fmtNum(r.neto, 2),
+                              abiertas: fmtInt((d.posiciones || []).length),
+                              mejor: mejor ? t("op.historia_mejor", { sim: mejor[0], pnl: (mejor[1] > 0 ? "+" : "") + fmtNum(mejor[1], 2) }) : "" })
+        : t("op.historia_nada");
     } catch (e) { $(".help-note", caja).textContent = e.message; }
   })();
 
@@ -3414,9 +3485,14 @@ const vistaClaves = async (main, por) => {
       const secret = campo(casa, entorno, "secret").value.trim();
       if (!key || !secret) return toast(t("ex.faltan"), "err");
       b.disabled = true;
+      const original = b.innerHTML;
+      b.innerHTML = `<span class="spinner"></span>${esc(t("ex.conectando"))}`;
       try {
         await api.post(`/api/exchanges/${casa}/${entorno}`,
                        { api_key: key, secret });
+        b.innerHTML = `${icono("tilde", "ico-sm")} ${esc(t("ex.conectada_ok"))}`;
+        b.classList.add("hecho");
+        await sleep(450);
         /* Los campos se vacian apenas se guardo. Una clave que queda a la
            vista en un input se ve en una captura de pantalla, en un video de
            YouTube y en cualquiera que pase por atras. */
@@ -3428,7 +3504,7 @@ const vistaClaves = async (main, por) => {
            la función más fuerte del producto, y escondida no existe. Si
            venía de "Encender" en Probar, vuelve ahí con la elegida. */
         await navigate("operar", PREELEGIDA ? "bot" : "piloto");
-      } catch (e) { toast(e.message, "err"); }
+      } catch (e) { toast(e.message, "err"); b.innerHTML = original; }
       b.disabled = false;
     };
   });
@@ -4071,7 +4147,9 @@ let PREELEGIDA = null;
    siempre. Sin cuenta conectada, manda a conectarla y guarda la elegida. */
 async function encenderDirecto(s, boton) {
   if (!s) return;
+  const original = boton.innerHTML;
   boton.disabled = true;
+  boton.innerHTML = `<span class="spinner"></span>${esc(t("op.encendiendo"))}`;
   try {
     const ex = await api.get("/api/exchanges");
     const hay = ex.some(x => x.exchange === "binance" && x.entorno === "practica" && x.configurada);
@@ -4087,12 +4165,17 @@ async function encenderDirecto(s, boton) {
     const porcion = Math.max(0.01, Math.min(libre, Math.round(100 / max) / 100));
     await api.post("/api/bot/encender", { bot: obj, modo: "practica", exchange: "binance",
                                           estrategia_id: s.id, porcion, perdida_maxima: 0 });
+    boton.innerHTML = `${icono("tilde", "ico-sm")} ${esc(t("op.encendida_ok"))}`;
+    boton.classList.add("hecho");
+    primerPaso("encendiste");
     toast(t("saved.encendida", { nombre: s.name }), "ok");
     await refreshSavedCount();
+    await sleep(450);
     navigate("operar", "bot");
   } catch (err) {
     if (!pedirCuenta(err.status)) toast(err.message, "err");
     boton.disabled = false;
+    boton.innerHTML = original;
   }
 }
 
@@ -4248,7 +4331,7 @@ PAGES.saved = async (main) => {
      confusión que se vino a sacar. */
   const fila = (s) => {
     const ctx = s.meta || {}, m = ctx.metrics || {};
-    const llega = RECIEN_GUARDADAS.delete(s.id) ? " llegando" : "";
+    const llega = (RECIEN_GUARDADAS.delete(s.id) || RECIEN_PROBADAS.has(s.id)) ? " llegando" : "";
     return `<tr class="clickable ${SEL_PF.has(s.id) ? "elegida" : ""}${llega}" data-sid="${esc(s.id)}">
       ${PORTAFOLIO ? `<td class="tick"><input type="checkbox" data-pf="${esc(s.id)}"
             ${SEL_PF.has(s.id) ? "checked" : ""}
@@ -4556,6 +4639,9 @@ async function probarVarias(lista, main) {
       const v = (r && (r.validacion || r)) || {};
       cuenta[v.estado in cuenta ? v.estado : "error"] += 1;
       RECIEN_PROBADAS.add(s.id);
+      primerPaso("probaste");
+      const filaHecha = $(`[data-probar="${s.id}"]`, document)?.closest("tr");
+      if (filaHecha) { filaHecha.classList.add("se-va"); await sleep(380); filaHecha.remove(); }
     } catch (e) {
       cuenta.error += 1;
       if (pedirCuenta(e.status)) break;
@@ -4604,6 +4690,12 @@ async function correrPrueba(s, boton) {
     await probarEstrategia(s.id, avance);
     toast(t("wf.done", { nombre: s.name }), "ok");
     RECIEN_PROBADAS.add(s.id);
+    primerPaso("probaste");
+    /* LA FILA SE VA: lo probado deja Probar y aparece en su bandeja nueva.
+       Se la ve salir antes de repintar, para que el movimiento cuente la
+       regla de las bandejas. */
+    const fila = boton.closest("tr");
+    if (fila) { fila.classList.add("se-va"); await sleep(380); }
     if (S.page === "saved") await navigate("saved", S.vista); else await refreshSavedCount();
   } catch (e) {
     if (!pedirCuenta(e.status)) toast(e.message, "err");
@@ -5572,6 +5664,16 @@ function acomodarVistas(main, host) {
 
 const vistaBuscar = async (main) => {
   await refreshDatasets();
+  /* LA PRIMERA BÚSQUEDA YA ESTÁ LISTA. Sin ninguna corrida hecha y sin
+     receta puesta, se deja "dormir tranquilo" puesta: es la más fácil de
+     que devuelva algo, y el usuario sólo tiene que apretar. */
+  if (!(S.banco && S.banco.total) && !S.recetaPuesta && (S.datasets || []).length) {
+    const r = RECETAS().find(x => x.id === "tranquilo");
+    if (r) { const c = S.cfg; c.critOn = {}; Object.entries(r.cfg).forEach(([k, v]) => {
+      if (k === "critOn") c.critOn = { ...v };
+      else if (!["timeframe", "anios", "minCagrFactor"].includes(k)) c[k] = v; });
+      S.recetaPuesta = r.id; saveCfg(); S.primeraBusqueda = true; }
+  }
   if (!S.datasets.length) {
     main.innerHTML = pageHead(t("nav.mining"), esc(t("mine.sub_empty"))) +
       `<div class="card"><div class="empty-state"><div class="big">${icono("pico","ico-xl")}</div>
@@ -6737,7 +6839,8 @@ function textoPlanIdle() {
   const ds = S.datasets.find(d => d.id === S.sel.dataset_id);
   const on = CRITERIA().filter(cr => S.cfg.critOn[cr.key]);
   const ses = sesionesElegidas();
-  return `<h2>${esc(t("idle.title"))}</h2>
+  return `${S.primeraBusqueda ? `<p class="pista-primera">${icono("idea", "ico-sm")} ${esc(t("mine.primera"))}</p>` : ""}
+  <h2>${esc(t("idle.title"))}</h2>
         <p>${t("idle.plan", {
           goal: S.cfg.goal,
           mercado: esc(ds ? ds.name.replace(/ M1.*/, "") : "—"),
@@ -7196,6 +7299,7 @@ function renderMining(snap, finished) {
 
   // por qué terminó: el usuario no tiene que deducirlo de los números
   let banner = "";
+  if (finished) primerPaso("buscaste");
   if (finished && snap.stopped) {
     banner = `<div class="banner info"><span class="b-ic">${icono("detener")}</span><div>
       ${t("run.stopped", { n: bank.length })}</div></div>`;
@@ -7952,8 +8056,10 @@ async function openInspector(row, ctx) {
         <p class="sh-salidas">${salidasEnCastellano(row)}</p></div>
       <button class="sheet-close" aria-label="${esc(t("ui.close"))}">${icono("cerrar")}</button>
     </div>
-    <div id="insp-body"><div class="empty-state"><span class="spinner"></span>
-      ${esc(t("insp.recalculating"))}</div></div>
+    <div id="insp-body"><div class="esqueleto" aria-busy="true" aria-label="${esc(t("insp.recalculating"))}">
+      <i class="esq esq-ancha"></i><i class="esq esq-linea"></i>
+      <div class="esq-fila"><i class="esq esq-caja"></i><i class="esq esq-caja"></i><i class="esq esq-caja"></i><i class="esq esq-caja"></i></div>
+      <i class="esq esq-grafico"></i></div></div>
   </div>`;
   document.body.appendChild(host);
   const close = () => host.remove();
@@ -8063,6 +8169,9 @@ function renderInspector(box, row, res, ctx) {
     else if (kind === "int") txt = (+v).toLocaleString();
     else if (kind === "money") { txt = fmtMoney(v); cls = v >= 0 ? "pos" : ""; }
     else if (kind === "loss") { txt = `-${fmtMoney(Math.abs(v))}`; cls = "neg"; }
+    // la cifra cruda y su formato, para que las grandes cuenten al aparecer
+    const formato = { pct: "pct", dd: "dd", n: "n", int: "int" }[kind];
+    if (formato && isFinite(+v)) return { label, txt, cls, cifra: +v, formato };
     else if (kind === "win_loss") {
       /* Las dos mitades juntas, y la relación entre ellas, que es lo que
          uno quiere saber: cuánto gana cada acierto contra cuánto cuesta cada
@@ -8084,7 +8193,7 @@ function renderInspector(box, row, res, ctx) {
     const cabeza = INSPECT_CABEZA
       .map(k => todas.find(([kk]) => kk === k)).filter(Boolean)
       .map(pintarMetrica(mm))
-      .map(d => `<div class="m-grande"><span>${d.label}</span><b class="${d.cls}">${d.txt}</b></div>`)
+      .map(d => `<div class="m-grande"><span>${d.label}</span><b class="${d.cls}" ${d.cifra != null ? `data-cifra="${d.cifra}" data-formato="${d.formato}"` : ""}>${d.txt}</b></div>`)
       .join("");
     const fila = (d) => `<div class="m-fila"><span>${d.label}</span><b class="${d.cls}">${d.txt}</b></div>`;
     const grupos = INSPECT_GRUPOS().map(([clave, keys]) => `
@@ -8239,7 +8348,7 @@ function renderInspector(box, row, res, ctx) {
     const cajaS = $("#insp-score", box);
     if (cajaS) cajaS.innerHTML = panelScore(r);
     const cajaM = $("#insp-metricas", box);
-    if (cajaM) cajaM.innerHTML = fichaMetricas(r.metrics);
+    if (cajaM) { cajaM.innerHTML = fichaMetricas(r.metrics); animarCifras(cajaM); }
     const cajaT = $("#insp-trades", box);
     if (cajaT) cajaT.innerHTML = tablaTrades(r);
     const rotT = $("#insp-h3-trades", box);
