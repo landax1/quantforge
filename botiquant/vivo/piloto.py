@@ -153,6 +153,12 @@ class Piloto:
             # SI TIENE UNA POSICIÓN SUYA ABIERTA, en una palabra: es lo primero
             # que uno quiere saber de un robot y había que deducirlo del registro.
             "en_posicion": bool(getattr(b.estado, "posicion_propia", False)),
+            # CUÁNTO ARRIESGA Y CON QUÉ RED: lo que hace falta para dejarlo
+            # corriendo tranquilo. El riesgo es el % de SU porción por
+            # operación; el stop siempre va al exchange; el tope diario es el
+            # que se le puso al encender (0 = sin tope).
+            "riesgo_pct": self._riesgo_pct(b),
+            "tope_diario": float(getattr(b, "perdida_maxima_diaria", 0.0) or 0.0),
             "arrancado": v.arrancado,
             "error": v.error,
             # CUANTO SE ESPERA QUE OPERE, según su propio backtest. Es lo que
@@ -175,6 +181,16 @@ class Piloto:
             # frecuencia se estabiliza en semanas y el rendimiento en meses.
             "semaforo": self._semaforo(b),
         }
+
+    @staticmethod
+    def _riesgo_pct(b: Bot) -> float | None:
+        try:
+            r = b.spec.risk
+            if getattr(r, "size_mode", "") == "risk_pct":
+                return round(float(r.size_value), 2)
+        except Exception:  # noqa: BLE001 — un doc viejo sin riesgo no rompe el estado
+            return None
+        return None
 
     @staticmethod
     def _esperado_mes(b: Bot) -> float | None:

@@ -91,3 +91,16 @@ def test_las_guardadas_tambien_se_recortan(cliente):
     assert nombres("exchange") == ["perp", "vieja"]
     assert nombres("metatrader") == ["cfd", "vieja"]
     assert nombres("") == ["cfd", "perp", "vieja"]
+
+
+def test_al_guardar_del_banco_el_nombre_lleva_el_mercado(cliente):
+    """Cada corrida arranca en S-001 y en Probar convivían tres S-001: el
+    nombre guardado lleva el mercado (S-001-ETH), sin repetirlo si ya lo tiene."""
+    c, db = cliente
+    corrida = _corrida(db, "ETHUSDT H1", filas=[_fila(0)])
+    ids = db.ids_banco_de(corrida)
+    r = c.post("/api/banco/guardar", json={"ids": ids}).json()
+    assert r["guardadas"][0]["name"] == "S-000-ETH"
+    sp = _corrida(db, "SP500 H1 (MetaTrader)", filas=[_fila(1)])
+    r2 = c.post("/api/banco/guardar", json={"ids": db.ids_banco_de(sp)}).json()
+    assert r2["guardadas"][0]["name"] == "S-001-SP500"

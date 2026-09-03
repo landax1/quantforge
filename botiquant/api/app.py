@@ -2157,7 +2157,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
     def _nombre_con_mercado(nombre: str, dataset_name: str) -> str:
         base = (dataset_name or "").split(" ")[0].upper()
-        token = re.sub(r"(USDT|USD|BUSD|USDC)$", "", base)[:4] if base else ""
+        token = re.sub(r"(USDT|USD|BUSD|USDC)$", "", base)[:5] if base else ""
         nombre = str(nombre or "S")
         if not token or nombre.upper().endswith("-" + token):
             return nombre
