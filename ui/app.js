@@ -2722,6 +2722,24 @@ function panelEscalera(ctx) {
    no: los escribe el motor y son frases libres en español. Se muestran igual
    porque son lo único que explica por qué el bot hizo lo que hizo, y una
    frase en el idioma equivocado sigue siendo mejor que ninguna. */
+/* Lo que escribe el motor, dicho en el idioma de la pantalla. Lo que no se
+   reconoce se muestra tal cual: mejor una frase en español que nada. */
+function traducirMotivo(m) {
+  const x = String(m || "");
+  if (!x) return "";
+  if (/^sin señal$/i.test(x)) return t("mot.sin_senal");
+  if (/^posición abierta, sin señal de salida/i.test(x)) return t("mot.posicion_sin_salida");
+  if (/todavía no hay suficientes velas/i.test(x)) return t("mot.pocas_velas");
+  if (/todavía no hay velas cerradas/i.test(x)) return t("mot.sin_velas");
+  if (/^sin capital disponible/i.test(x)) return t("mot.sin_capital");
+  if (/apagado por el exchange/i.test(x)) return t("mot.apagado_exchange");
+  const ad = x.match(/adoptó la posición abierta en \S+ \((larga|corta), ([\d.]+)\)/i);
+  if (ad) return t("mot.adopto", { lado: t(ad[1] === "corta" ? "mot.corto" : "mot.largo"), cant: ad[2] });
+  const det = x.match(/^detenido: (.*)$/i);
+  if (det) return t("mot.detenido", { resto: traducirMotivo(det[1]) });
+  return x;
+}
+
 function rotuloAccion(a) {
   if (a === "abrir_largo") return t("bot.acc_largo");
   if (a === "abrir_corto") return t("bot.acc_corto");
@@ -2795,7 +2813,7 @@ function tarjetaVuelo(v) {
         <div class="bot-fila">
           <span class="bot-hora">${esc(horaLocal(f.cuando))}</span>
           <span class="bot-que">${esc(rotuloAccion(f.accion))}</span>
-          <span class="bot-det">${esc(f.bloqueado || f.error || f.motivo || "")}</span>
+          <span class="bot-det">${esc(traducirMotivo(f.bloqueado || f.error || f.motivo || ""))}</span>
         </div>`).join("")}
     </div>` : ""}
 

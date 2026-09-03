@@ -2145,11 +2145,23 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             # dijera ya en sus columnas de mercado y temporalidad. De dónde
             # salió y cuándo viajan en `meta` (`corrida_id`, `saved_at`), que es
             # donde van los datos, y la interfaz los dibuja en su idioma.
+            # EL NOMBRE LLEVA EL MERCADO: cada corrida arranca en S-001 y en
+            # Probar convivían tres "S-001" (2 de septiembre). S-001-ETH dice
+            # de dónde salió sin abrirla.
+            nombre = _nombre_con_mercado(f["nombre"], f["dataset_name"] or "")
             sid = db.save_strategy(
-                f["nombre"], fila.get("spec") or {},
+                nombre, fila.get("spec") or {},
                 notes="", meta=meta, user_id=dueno)
-            guardadas.append({"id": sid, "name": f["nombre"]})
+            guardadas.append({"id": sid, "name": nombre})
         return guardadas
+
+    def _nombre_con_mercado(nombre: str, dataset_name: str) -> str:
+        base = (dataset_name or "").split(" ")[0].upper()
+        token = re.sub(r"(USDT|USD|BUSD|USDC)$", "", base)[:4] if base else ""
+        nombre = str(nombre or "S")
+        if not token or nombre.upper().endswith("-" + token):
+            return nombre
+        return f"{nombre}-{token}"
 
     @app.post("/api/banco/guardar")
     def guardar_del_banco(request: Request, payload: dict[str, Any]) -> dict[str, Any]:

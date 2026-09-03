@@ -32,8 +32,8 @@ const STR = {
   "nav.aprobadas": ["Approved", "Aprobadas"],
   "nav.piloto_avanzado": ["Autopilot (advanced)", "Automático (avanzado)"],
   /* LAS BANDEJAS: cada una contiene sólo lo que necesita una decisión ahora. */
-  "saved.sub_aprobadas": ["They held on data they never saw. Turn one on, or combine several into a portfolio.",
-                          "Aguantaron datos que nunca vieron. Encendé una, o combiná varias en un portafolio."],
+  "saved.sub_aprobadas": ["They held on data they never saw. \"Partly held\" means it made money in most stretches but kept less of its edge outside: worth running in demo, not worth trusting blind. Turn one on, or combine several into a portfolio.",
+                          "Aguantaron datos que nunca vieron. \"A medias\" quiere decir que ganó en la mayoría de los tramos pero conservó menos ventaja afuera: vale correrla en demo, no confiarle a ciegas. Encendé una, o combiná varias en un portafolio."],
   "saved.descartadas_t": ["Discarded", "Descartadas"],
   "saved.sub_descartadas": ["Did not hold the test, or retired with a reason. Kept so the same mistake is not repeated.",
                             "No pasaron la prueba, o fueron retiradas con motivo. Se guardan para no repetir el mismo error."],
@@ -557,7 +557,7 @@ const STR = {
   "mine.cap_hint": ["most candidates before giving up", "candidatas máximas antes de rendirse"],
   "mine.want": ["I want to find", "Quiero encontrar"],
   "mine.want_sub": ["strategies that meet<br>the filters", "estrategias que<br>cumplan los filtros"],
-  "mine.start": ["Start mining", "Iniciar minado"],
+  "mine.start": ["Start searching", "Empezar a buscar"],
   "mine.pause": ["Pause", "Pausar"],
   "mine.resume": ["Resume", "Seguir"],
   "mine.stop": ["Stop", "Detener"],
@@ -1157,7 +1157,7 @@ const STR = {
                           "No operó en el tramo reservado: no hay nada que validar."],
 
   /* ------------------------------------- antes de la primera búsqueda */
-  "idle.title": ["Ready to search", "Listo para minar"],
+  "idle.title": ["Ready to search", "Lista para buscar"],
   "idle.plan": [
     "You are going to look for <b>{goal} strategies</b> on <b>{mercado}</b> in <b>{tf}</b> bars, {tamano} at <b>{rr}</b> risk/reward. Anything with <b>{trades}+ trades</b> enters the databank",
     "Vas a buscar <b>{goal} estrategias</b> sobre <b>{mercado}</b> en velas de <b>{tf}</b>, {tamano} y relación <b>{rr}</b>. Entran al databank las que hagan <b>{trades}+ operaciones</b>"],
@@ -1732,6 +1732,18 @@ const STR = {
   "bot.sin_cripto_sub": ["A crypto exchange cannot trade indices or metals. Mine on one of the perpetuals and save it, and it will show up here.",
                          "Un exchange de cripto no opera índices ni metales. Miná sobre alguno de los perpetuos y guardala, y va a aparecer acá."],
   "bot.acc_nada": ["waited", "esperó"],
+  /* LAS FRASES DEL MOTOR, EN EL IDIOMA DE LA PANTALLA. El motor escribe en
+     español; acá se reconocen y se dicen en el idioma elegido. */
+  "mot.sin_senal": ["no signal", "sin señal"],
+  "mot.posicion_sin_salida": ["position open, no exit signal", "posición abierta, sin señal de salida"],
+  "mot.pocas_velas": ["not enough candles yet", "todavía no hay suficientes velas"],
+  "mot.sin_velas": ["no closed candles yet", "todavía no hay velas cerradas"],
+  "mot.sin_capital": ["no capital available", "sin capital disponible"],
+  "mot.adopto": ["took over an open {lado} position it did not open ({cant}); it closes it with the strategy's rules", "adoptó una posición {lado} abierta que no abrió ({cant}); la cierra con las reglas de la estrategia"],
+  "mot.detenido": ["stopped: {resto}", "detenido: {resto}"],
+  "mot.apagado_exchange": ["stopped by the exchange", "apagado por el exchange"],
+  "mot.largo": ["long", "larga"],
+  "mot.corto": ["short", "corta"],
   "bot.acc_largo": ["opened long", "abrió largo"],
   "bot.acc_corto": ["opened short", "abrió corto"],
   "bot.acc_cerrar": ["closed", "cerró"],
