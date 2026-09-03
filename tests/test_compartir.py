@@ -113,3 +113,44 @@ def test_la_pagina_dice_con_que_costos_se_midio(c):
     assert "Costos:" in pagina
     assert "comisión" in pagina and "0.040" in pagina
     assert "capital inicial" in pagina
+
+
+def _doc_pf():
+    return {
+        "nivel": "mirar", "tipo": "portafolio", "autor": "nico",
+        "nombre": "Portafolio · S-007 + S-002", "instrumento": "ETHUSDT + XMRUSDT",
+        "timeframe": "", "direccion": "", "bloques": "", "reglas": [], "salidas": "",
+        "costos": {}, "metricas": {"cagr_pct": 9.4, "max_drawdown_pct": 6.1, "avg_correlation": 0.05},
+        "curva": [10000 + i * 5 for i in range(120)],
+        "fechas": [f"2025-01-{1 + (i % 28):02d}" for i in range(120)],
+        "validacion": None, "mundo": "exchange",
+        "portafolio": {
+            "nombres": ["S-007-ETH", "S-002-XMR"],
+            "correlacion": 0.05,
+            "ventana": {"from": "2024-08-27", "to": "2026-09-01"},
+            "partes": [{"nombre": "S-007-ETH", "cagr_pct": 12.5, "riesgo_pct": 55.0},
+                       {"nombre": "S-002-XMR", "cagr_pct": 6.3, "riesgo_pct": 45.0}],
+        },
+    }
+
+
+def test_un_portafolio_se_comparte_y_dice_que_lo_compone(c):
+    """Es la otra mitad del producto: el conjunto dice si dos estrategias se
+    suman o son la misma apuesta, y eso es lo que uno quiere mostrar."""
+    d = c.post("/api/compartir", json=_doc_pf()).json()
+    pagina = c.get(f"/s/{d['codigo']}").text
+    assert "Apuestas de verdad distintas" in pagina
+    assert "S-007-ETH" in pagina and "S-002-XMR" in pagina
+    assert "55% del riesgo" in pagina
+    assert "2024-08-27" in pagina, "tiene que decir sobre qué ventana está medido"
+    # y no promete reglas que no tiene
+    assert "Usar en TradingView" not in pagina
+    j = c.get(f"/api/s/{d['codigo']}").json()
+    assert j["tipo"] == "portafolio" and j["portafolio"]["correlacion"] == 0.05
+
+
+def test_un_portafolio_de_estrategias_parecidas_lo_dice(c):
+    doc = _doc_pf()
+    doc["portafolio"]["correlacion"] = 0.85
+    d = c.post("/api/compartir", json=doc).json()
+    assert "Son casi la misma apuesta" in c.get(f"/s/{d['codigo']}").text

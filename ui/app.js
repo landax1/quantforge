@@ -549,7 +549,33 @@ function documentoCompartible(row, ctx, res, nivel, autor) {
   };
 }
 
-function abrirCompartir(row, ctx, res) {
+function abrirCompartirPortafolio(elegidas, r) {
+  const m = r.metrics || {};
+  const partes = (r.componentes || []).map((c, i) => ({
+    nombre: c.name,
+    cagr_pct: (c.metrics || {}).cagr_pct,
+    riesgo_pct: (r.risk_contribution_pct || [])[i],
+  }));
+  const doc = {
+    nivel: "mirar", tipo: "portafolio",
+    nombre: t("pf.title") + " · " + elegidas.map(x => x.name).join(" + "),
+    instrumento: [...new Set(elegidas.map(x => String((x.meta || {}).dataset_name || "").split(" ")[0]))].join(" + "),
+    timeframe: "", direccion: "", bloques: "", reglas: [], salidas: "",
+    costos: {}, metricas: m,
+    curva: (r.combined_equity || []).slice(0, 240),
+    fechas: (r.timestamps || []).slice(0, 240).map(x => String(x).slice(0, 10)),
+    validacion: null, mundo: S.mundo,
+    portafolio: {
+      nombres: elegidas.map(x => x.name),
+      correlacion: m.avg_correlation,
+      ventana: r.ventana || {},
+      partes,
+    },
+  };
+  abrirCompartir({ name: doc.nombre, spec: {}, blocks: "" }, null, null, doc);
+}
+
+function abrirCompartir(row, ctx, res, docFijo) {
   const host = document.createElement("div");
   host.className = "overlay";
   host.innerHTML = `<div class="sheet sheet-chica">
@@ -559,7 +585,7 @@ function abrirCompartir(row, ctx, res) {
     </div>
     <div class="comp-cuerpo">
       <p class="help-note">${esc(t("comp.sub"))}</p>
-      <div class="comp-niveles">
+      <div class="comp-niveles" ${docFijo ? "hidden" : ""}>
         <label class="comp-nivel on"><input type="radio" name="comp-nivel" value="usar" checked>
           <b>${esc(t("comp.nivel_usar"))}</b><span>${esc(t("comp.nivel_usar_sub"))}</span></label>
         <label class="comp-nivel"><input type="radio" name="comp-nivel" value="mirar">
@@ -588,7 +614,9 @@ function abrirCompartir(row, ctx, res) {
     crear.innerHTML = `<span class="spinner"></span>${esc(t("comp.creando"))}`;
     try {
       const nivel = ($(".comp-nivel input:checked", host) || {}).value || "usar";
-      const doc = documentoCompartible(row, ctx, res, nivel, $("#comp-autor", host).value.trim());
+      const doc = docFijo
+        ? { ...docFijo, autor: $("#comp-autor", host).value.trim() }
+        : documentoCompartible(row, ctx, res, nivel, $("#comp-autor", host).value.trim());
       const r = await api.post("/api/compartir/remoto", doc);
       guardarEnlace({ codigo: r.codigo, secreto: r.secreto, url: r.url, nombre: row.name,
                       nivel, creado: new Date().toISOString() });
@@ -2145,12 +2173,19 @@ async function abrirPortafolio(elegidas) {
           <b>${esc(t(S.mundo === "exchange" ? "pf.encender_title" : "pf.export_title"))}</b>
           <p class="help-note">${esc(t(S.mundo === "exchange" ? "pf.encender_sub" : "pf.export_sub", { n: elegidas.length }))}</p>
         </div>
+        <button class="btn ghost" id="pf-compartir">${icono("seguir")} ${esc(t("comp.btn"))}</button>
         ${S.mundo === "exchange"
           ? `<button class="btn" id="pf-encender">${icono("seguir")} ${esc(t("pf.encender_conjunto"))}</button>`
           : `<button class="btn" id="pf-mql5">${icono("bajar")} ${esc(t("pf.export_btn"))}</button>`}
       </div>`;
     /* ENCENDER EL CONJUNTO: el mismo plan que reparte la cuenta entre los
        robots, y cada uno pasa por las mismas puertas que uno solo. */
+    /* COMPARTIR EL CONJUNTO: la otra mitad del producto. Se publica lo que
+       se ve —qué lo compone, qué tan parecidas son y sobre qué ventana— sin
+       las reglas de cada estrategia. */
+    const compPf = $("#pf-compartir", body);
+    if (compPf) compPf.onclick = () => abrirCompartirPortafolio(elegidas, r);
+
     const encConj = $("#pf-encender", body);
     if (encConj) encConj.onclick = async () => {
       encConj.disabled = true;

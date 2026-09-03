@@ -3633,6 +3633,21 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         }
         if nivel == "usar":
             doc["spec"] = payload.get("spec") or {}
+        # UN PORTAFOLIO TAMBIÉN SE COMPARTE. Es la otra mitad del producto:
+        # el conjunto dice si dos estrategias se suman o son la misma apuesta,
+        # y eso es justo lo que uno quiere mostrarle a alguien.
+        if payload.get("tipo") == "portafolio":
+            pf = payload.get("portafolio") or {}
+            doc["tipo"] = "portafolio"
+            doc["portafolio"] = {
+                "nombres": [str(x)[:60] for x in (pf.get("nombres") or [])][:12],
+                "correlacion": (float(pf["correlacion"]) if isinstance(pf.get("correlacion"), (int, float)) else None),
+                "ventana": {"from": str((pf.get("ventana") or {}).get("from") or "")[:10],
+                            "to": str((pf.get("ventana") or {}).get("to") or "")[:10]},
+                "partes": [{"nombre": str(c.get("nombre") or "")[:60],
+                            "cagr_pct": c.get("cagr_pct"), "riesgo_pct": c.get("riesgo_pct")}
+                           for c in (pf.get("partes") or [])][:12],
+            }
         if len(json.dumps(doc)) > _TAM_MAX_DOC:
             raise HTTPException(413, "La estrategia es demasiado grande para compartirla.")
         return doc
@@ -3756,6 +3771,33 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 f"<body><main><h1 style='font-size:22px'>{html_lib.escape(mensaje)}</h1>"
                 "<p><a href='/'>Conocer BotiQuant</a></p></main></body></html>")
 
+    def _bloque_portafolio(d: dict[str, Any], e) -> str:
+        """El conjunto, en la página pública: qué lo compone, qué tan parecidas
+        son entre sí y sobre qué ventana está medido."""
+        pf = d.get("portafolio") or {}
+        if not pf.get("nombres"):
+            return ""
+        c = pf.get("correlacion")
+        if c is None:
+            juicio, color = "No se pudo medir qué tan parecidas son", "#7d8b93"
+        elif c >= 0.7:
+            juicio, color = "Son casi la misma apuesta", "#f27a70"
+        elif c >= 0.3:
+            juicio, color = "Se parecen bastante", "#f0b64a"
+        else:
+            juicio, color = "Apuestas de verdad distintas", "#5ad38f"
+        filas = "".join(
+            f"<li>{e(str(p.get('nombre') or ''))}"
+            f"{(' · ' + f'{float(p[chr(99)+chr(97)+chr(103)+chr(114)+chr(95)+chr(112)+chr(99)+chr(116)]):+.2f}% anual') if isinstance(p.get('cagr_pct'), (int, float)) else ''}"
+            f"{(' · ' + f'{float(p[chr(114)+chr(105)+chr(101)+chr(115)+chr(103)+chr(111)+chr(95)+chr(112)+chr(99)+chr(116)]):.0f}% del riesgo') if isinstance(p.get('riesgo_pct'), (int, float)) else ''}"
+            "</li>" for p in (pf.get("partes") or []))
+        v = pf.get("ventana") or {}
+        ventana = (f"<p style='margin:8px 0 0;color:var(--dim)'>Medido sobre la ventana que comparten: "
+                   f"{e(v.get('from') or '—')} → {e(v.get('to') or '—')}.</p>") if v.get("from") else ""
+        return (f"<div class='ver'><b class='w' style='color:{color}'>{juicio}</b>"
+                f"{('<p style=\'margin:4px 0 0;color:var(--dim)\'>Qué tan parecidas son: ' + f'{c:.2f}' + ' — 1,0 es la misma apuesta dos veces; por debajo de 0,3 es diversificación de verdad.</p>') if c is not None else ''}"
+                f"<ul style='margin:12px 0 0;padding-left:18px'>{filas}</ul>{ventana}</div>")
+
     def _html_compartida(codigo: str, d: dict[str, Any]) -> str:
         e = html_lib.escape
         m = d.get("metricas") or {}
@@ -3835,7 +3877,8 @@ h1{{font-size:28px;margin:0 0 4px;letter-spacing:-.02em}}.sub{{color:var(--dim);
 <div class='kpis'><div class='kpi'><span>Anual</span><b>{'+' if (cagr or 0) >= 0 else ''}{num(cagr, 1)}%</b></div>
 <div class='kpi'><span>Caída máxima</span><b>{num(dd, 1)}%</b></div><div class='kpi'><span>Profit factor</span><b>{num(pf, 2)}</b></div>
 <div class='kpi'><span>Operaciones</span><b>{num(ops, 0)}</b></div></div>
-<div class='ver'><b class='w' style='color:{veredicto[1]}'>{veredicto[0]}</b>
+{_bloque_portafolio(d, e) if d.get("tipo") == "portafolio" else ""}
+<div class='ver'{" hidden" if d.get("tipo") == "portafolio" else ""}><b class='w' style='color:{veredicto[1]}'>{veredicto[0]}</b>
 {('<p style="margin:4px 0 0;color:var(--dim)">Ganó en ' + str(v.get('tramos_ganadores')) + ' de ' + str(v.get('tramos')) + ' tramos que nunca había visto · ' + ('+' if (v.get('retorno_fuera_pct') or 0) >= 0 else '') + num(v.get('retorno_fuera_pct'), 1) + '% fuera de muestra</p>') if est else '<p style="margin:4px 0 0;color:var(--dim)">Todavía no se puso a prueba sobre datos que no vio.</p>'}
 {('<div class="tramos">' + tramos + '</div>') if tramos else ''}</div>
 {('<div class="graf">' + grafico + '</div>') if grafico else ''}
