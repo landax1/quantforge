@@ -582,13 +582,6 @@ function abrirCompartir(row, ctx, res) {
         $("#comp-copiar", host).textContent = t("comp.copiado");
       };
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      }
       toast(e.message, "err");
       crear.disabled = false;
       crear.innerHTML = `${icono("seguir")} ${esc(t("comp.crear"))}`;
@@ -845,13 +838,7 @@ function atarPanelPiloto(caja) {
       toast(t("pil.guardado"), "ok");
       const est = $("[data-pil-estado]", caja); if (est) est.textContent = t("pil.guardado");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
     g.disabled = false;
   };
 }
@@ -1022,13 +1009,7 @@ const api = {
            {mensaje, puertas}); mostrarlo crudo daba "[object Object]". */
         msg = (d && typeof d === "object") ? (d.mensaje || d.detail || JSON.stringify(d)) : (d || msg);
       } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } /* noop */ }
+       /* noop */ }
       // el código viaja con el error para que quien llama pueda distinguir
       // "falta cuenta" de un fallo cualquiera
       throw Object.assign(new Error(msg), { status: r.status });
@@ -1920,6 +1901,9 @@ function pintarMundo() {
        acá dejaría la tabla vacía sin decir por qué. */
     S.banco.corrida = "";
     S.banco.sel.clear();
+    /* Y LA BÚSQUEDA DE LA OTRA SECCIÓN: el progreso y el resultado de un
+       perpetuo se veían bajo la pastilla del S&P (2 de septiembre). */
+    S.mineResult = null; S.mineLive = null; S.primeraBusqueda = false;
     saveCfg();
     pintarMundo();
     /* Los números del menú son de la sección: 236 al lado de "Minado" en
@@ -2142,13 +2126,6 @@ async function abrirPortafolio(elegidas) {
         toast(t("conj.encendido", { n: prendidos }), "ok");
         close(); SEL_PF.clear(); navigate("operar", "bot");
       } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      }
         toast(t("conj.fallo", { n: prendidos, err: e.message }), "err");
         encConj.disabled = false;
       }
@@ -2179,13 +2156,7 @@ async function abrirPortafolio(elegidas) {
         toast(t("pf.export_ok", { n: (d.archivos || []).length,
                                   carpeta: d.carpeta }), "ok");
       } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } if (!pedirCuenta(e.status)) toast(e.message, "err"); }
+       if (!pedirCuenta(e.status)) toast(e.message, "err"); }
       bajar.disabled = false;
     };
   } catch (e) {
@@ -2895,13 +2866,7 @@ function atarVuelos(main) {
         toast(t("bot.apagado"), "ok");
         await navigate("operar");
       } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
       b.disabled = false;
     };
   });
@@ -2915,13 +2880,7 @@ function atarVuelos(main) {
         await navigate("operar");
         if (r && r.cerrado) console.info("[bot] pánico:", r.cerrado);
       } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
       b.disabled = false;
     };
   });
@@ -2933,13 +2892,7 @@ function atarVuelos(main) {
       toast(t("bot.apagado"), "ok");
       await navigate("operar");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
     todos.disabled = false;
   };
 }
@@ -3445,13 +3398,7 @@ const vistaBot = async (main, hayClave) => {
                               mejor: mejor ? t("op.historia_mejor", { sim: mejor[0], pnl: (mejor[1] > 0 ? "+" : "") + fmtNum(mejor[1], 2) }) : "" })
         : t("op.historia_nada");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } $(".help-note", caja).textContent = e.message; }
+       $(".help-note", caja).textContent = e.message; }
   })();
 
   /* Lo que corre se redibuja solo cada treinta segundos: el robot decide una
@@ -3518,13 +3465,6 @@ const vistaTablero = async (main, hayClave) => {
     try {
       d = await api.get("/api/cuenta/rendimiento");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      }
       caja.innerHTML = `<div class="card"><div class="bot-alerta">
         <span class="g-ic">${icono("alerta")}</span>
         <span>${esc(e.message)}</span></div></div>`;
@@ -3766,13 +3706,7 @@ const vistaClaves = async (main, por) => {
            venía de "Encender" en Probar, vuelve ahí con la elegida. */
         await navigate("operar", PREELEGIDA ? "bot" : "piloto");
       } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); b.innerHTML = original; }
+       toast(e.message, "err"); b.innerHTML = original; }
       b.disabled = false;
     };
   });
@@ -3786,13 +3720,7 @@ const vistaClaves = async (main, por) => {
         pintarPasos(casa, entorno,
                     await api.post(`/api/exchanges/${casa}/${entorno}/comprobar`, {}));
       } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
       b.disabled = false;
     };
   });
@@ -3814,13 +3742,7 @@ const vistaClaves = async (main, por) => {
         toast(t("ex.borrada"), "ok");
         await navigate("operar");
       } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
     };
   });
 };
@@ -3979,7 +3901,9 @@ PAGES.data = async (main) => {
     </section>`).join("")
     : `<section class="inst-fam"><div class="inst-grid">${agregar}</div></section>`;
 
-  const rows = S.datasets.map(d => `
+  /* La tabla del espacio de trabajo también es de la sección: en MetaTrader
+     5 listaba los trece perpetuos. */
+  const rows = datasetsDelMundo().map(d => `
     <tr>
       <td><b>${esc(d.name)}</b></td>
       <td><span class="badge ${d.source === "sample" ? "yellow" : "green"}">${
@@ -4097,13 +4021,6 @@ PAGES.data = async (main) => {
                              n: meta.rows.toLocaleString(localeNum()) }), "ok");
       navigate("data");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      }
       toast(t("data.download_failed", { motivo: e.message }), "err");
       hideProgress("dl-prog");
       $$("[data-dl]", main).forEach(x => x.disabled = false);
@@ -4160,13 +4077,7 @@ PAGES.data = async (main) => {
       toast(t("data.imported", { nombre: meta.name, n: fmtInt(meta.rows) }), "ok");
       navigate("data");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); hideProgress("imp-prog"); }
+       toast(e.message, "err"); hideProgress("imp-prog"); }
     const btn = $("#imp-go"); if (btn) btn.disabled = false;
   };
 
@@ -4183,13 +4094,7 @@ PAGES.data = async (main) => {
       toast(t("data.uploaded", { nombre: meta.name, n: fmtInt(meta.rows) }), "ok");
       navigate("data");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
   };
 
   $$("[data-del]", main).forEach(b => b.onclick = async () => {
@@ -4518,8 +4423,13 @@ function accionEtapa(s) {
     return `<button class="btn small" data-probar="${esc(s.id)}">${esc(t("wf.test_it"))}</button>`;
   }
   if (et === "aprobadas") {
-    return `${cripto ? `<button class="btn small" data-encender="${esc(s.id)}">${icono("seguir", "ico-sm")} ${esc(t("saved.acc_encender"))}</button>` : ""}
-      <button class="btn ghost small" data-probar="${esc(s.id)}">${esc(t("wf.retest"))}</button>`;
+    /* NI TRAILING NI RETIRADAS: el trailing mueve el stop cada vela y el bot
+       deja UNA orden puesta en el exchange, así que Operar las filtra. Ofrecer
+       "Encender" acá y no encontrarlas allá era una promesa rota. */
+    const operable = cripto && !(((s.spec || {}).risk || {}).trail_atr > 0);
+    return `${operable ? `<button class="btn small" data-encender="${esc(s.id)}">${icono("seguir", "ico-sm")} ${esc(t("saved.acc_encender"))}</button>` : ""}
+      <button class="btn ghost small" data-probar="${esc(s.id)}">${esc(t("wf.retest"))}</button>
+      ${cripto && !operable ? `<span class="muted" title="${esc(t("bot.trailing_no"))}">${esc(t("bot.trailing_corto"))}</span>` : ""}`;
   }
   if (et === "operando") {
     return `<button class="btn ghost small" data-ver-robot="${esc(s.id)}">${esc(t("saved.acc_ver_robot"))}</button>`;
@@ -4845,7 +4755,12 @@ PAGES.saved = async (main) => {
      que hace falta leerla; después molesta. */
   try { localStorage.setItem("qf.vio_prueba", "1"); } catch (e) { /* nada */ }
   const faltan = $("#probar-faltan", main);
-  if (faltan) faltan.onclick = () => {
+  /* SI LA COLA YA ESTÁ CORRIENDO, el cartel no ofrece empezar de nuevo:
+     apretarlo otra vez duplicaba pruebas (2 de septiembre). */
+  if (faltan && COLA_PRUEBAS) {
+    faltan.replaceWith(Object.assign(document.createElement("span"),
+      { className: "help-note", textContent: t("saved.probando_faltan", { n: COLA_PRUEBAS.total }) }));
+  } else if (faltan) faltan.onclick = () => {
     /* EL CARTEL SE APAGA AL APRETARLO: seguía ofreciendo "probar las 5" con
        las cinco ya en cola, y parecía que había que volver a apretar. */
     const n = faltan.textContent.match(/\d+/)?.[0] || "";
@@ -4891,13 +4806,7 @@ PAGES.saved = async (main) => {
         toast(t("sel.borradas", { n }), "ok");
         navigate("saved");
       } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
     };
   };
   pintarBarra();
@@ -4957,13 +4866,7 @@ PAGES.saved = async (main) => {
       toast(t("exp.saved_in", { archivo: r.archivo, carpeta: r.carpeta }), "ok");
       if (S.mundo === "metatrader") primerPaso("encendiste");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } if (!pedirCuenta(e.status)) toast(e.message, "err"); }
+       if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     b.disabled = false;
   });
 
@@ -4983,13 +4886,7 @@ PAGES.saved = async (main) => {
       toast(t("saved.retirada"), "ok");
       navigate("saved");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
   });
 
   $$("[data-del-strat]", main).forEach(b => b.onclick = async () => {
@@ -5000,13 +4897,7 @@ PAGES.saved = async (main) => {
       toast(t("saved.deleted"), "ok");
       navigate("saved");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
   });
 };
 
@@ -5066,13 +4957,6 @@ async function probarVarias(lista, main) {
       primerPaso("probaste");
       if (S.page === "saved" && S.vista !== "aprobadas") await navigate("saved", S.vista);
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      }
       cuenta.error += 1;
       if (pedirCuenta(e.status)) break;
     }
@@ -5635,13 +5519,7 @@ function pintarCorridas() {
       pintarBanco();
       toast(t("bank.run_deleted"), "ok");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
   };
 }
 
@@ -5806,13 +5684,6 @@ function pintarBanco() {
         const r = await api.post("/api/export/mql5/archivo", cuerpo);
         listas++; carpeta = r.carpeta; terminal = r.terminal || "";
       } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      }
         if (pedirCuenta(e.status)) break;
         fallaron.push(f.name);
       }
@@ -5840,13 +5711,6 @@ function pintarBanco() {
       await cargarBanco({ corridas: false, mas: true });
       pintarBanco();
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      }
       toast(e.message, "err");
       mas.disabled = false;
       mas.textContent = t("bank.load_more");
@@ -5946,13 +5810,7 @@ function cablearBanco(host) {
       await refreshSavedCount();
       toast(t("bank.copied", { n }), "ok");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
     btn.disabled = false;
   });
 
@@ -5970,13 +5828,7 @@ function cablearBanco(host) {
       pintarBanco();
       toast(t("bank.removed", { n: ids.length }), "ok");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
   });
 }
 
@@ -7155,13 +7007,7 @@ const vistaBuscar = async (main) => {
       pintarPausa(r.paused);
       toast(r.paused ? t("run.paused_toast") : t("run.resumed_toast"));
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
     btn.disabled = false;
   };
 
@@ -7259,20 +7105,27 @@ const vistaBuscar = async (main) => {
         toast(t("bank.pruned", { n: result.podadas }));
       }
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      }
       /* SI NO ARRANCÓ, LA PANTALLA VUELVE A "LISTA PARA BUSCAR". Antes
          quedaba el panel de "buscando" con cero probadas y la tarjeta de
          corrida activa en la barra lateral, sin ninguna búsqueda detrás: el
          siguiente clic en una receta la redibujaba a medias y la pausa no
          apuntaba a nada. Pasó con un 500 del servidor en la primera
          búsqueda de un usuario nuevo. */
-      toast(e.message, "err");
+      /* SERVIDOR OCUPADO (429): la búsqueda no espera en cola —es pausable y
+         se mira mientras corre—, así que se avisa en el panel y se reintenta
+         sola a los 30 segundos. El botón es #m-run: con otro id el reintento
+         no ocurría nunca (encontrado el 2 de septiembre). */
+      if (e && e.status === 429) {
+        S.avisoOcupado = true;
+        clearTimeout(REINTENTO_OCUPADO);
+        REINTENTO_OCUPADO = setTimeout(() => {
+          const b = $("#m-run");
+          if (b && !S.mining) b.click();
+        }, 30000);
+        toast(t("run.ocupado"), "err");
+      } else {
+        toast(e.message, "err");
+      }
       hideProgress("m-prog");
       S.mineLive = null;
       pintarCorrida(null, true);
@@ -7355,6 +7208,10 @@ function textoPlanIdle() {
 function renderIdle() {
   const live = $("#m-live"), bankBox = $("#m-bank");
   if (!live) return;
+  /* La marca de "ya está partido en dos" se borra: si no, después de un
+     arranque fallido la pantalla quedaba en "Lista para buscar" con la
+     búsqueda corriendo por detrás. */
+  delete live.dataset.partido;
   live.innerHTML = `
   <div class="idle-card">
     <div class="idle-ready">
@@ -8044,13 +7901,7 @@ function renderMining(snap, finished) {
         todasAlBanco.replaceWith(Object.assign(document.createElement("span"),
           { className: "insp-guardada recien", innerHTML: `${icono("tilde", "ico-sm")} ${esc(t("bank.guardadas_n", { n: (r.guardadas || []).length }))}` }));
       } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); todasAlBanco.disabled = false; }
+       toast(e.message, "err"); todasAlBanco.disabled = false; }
     };
 
     const nuevo = $(".databank-wrap", bankBox);
@@ -8390,13 +8241,7 @@ function cablearNota(box, ctx) {
       estado.textContent = t("note.saved");
       toast(t("note.saved"), "ok");
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
     btn.disabled = false;
   };
 }
@@ -8963,13 +8808,7 @@ function renderInspector(box, row, res, ctx) {
       btn.replaceWith(chip);
       return;
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
     btn.disabled = false;
   };
 
@@ -9000,13 +8839,7 @@ function renderInspector(box, row, res, ctx) {
         ? t("export.installed", { terminal: r.terminal })
         : aviso);
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } if (!pedirCuenta(e.status)) toast(e.message, "err"); }
+       if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     btn.disabled = false;
   }
 
@@ -9125,13 +8958,7 @@ function renderInspector(box, row, res, ctx) {
         mostrarGuardado(g, t("export.copy_failed"));
       }
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } if (!pedirCuenta(e.status)) toast(e.message, "err"); }
+       if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     btn.disabled = false;
   };
 }
@@ -9364,13 +9191,6 @@ function abrirLicencia() {
       toast(t("lic.puesta_ok"), "ok");
       cerrar();
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      }
       // el servidor ya explica por que no sirve, en castellano
       $("#lic-estado", host).innerHTML = `<span class="neg">${esc(e.message)}</span>`;
       btn.disabled = false;
@@ -9386,13 +9206,7 @@ function abrirLicencia() {
       toast(t("lic.sacada"), "ok");
       cerrar();
     } catch (e) {
-      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
-         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
-      if (e && e.status === 429) {
-        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
-        toast(t("run.ocupado"), "err");
-        S.avisoOcupado = true;
-      } toast(e.message, "err"); }
+       toast(e.message, "err"); }
   };
 }
 

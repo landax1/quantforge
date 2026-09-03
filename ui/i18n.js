@@ -1549,6 +1549,9 @@ const STR = {
   "bot.riesgo": ["Risks {pct}% of its share per trade ≈ {usdt} USDT · stop on the exchange · daily cap: {tope}",
                  "Arriesga {pct}% de su porción por operación ≈ {usdt} USDT · stop en el exchange · tope diario: {tope}"],
   "bot.sin_tope": ["none", "sin tope"],
+  "bot.trailing_no": ["Its stop moves with price every candle, and a robot leaves one order on the exchange: it cannot be run as measured.",
+                      "Su stop se mueve con el precio en cada vela, y un robot deja una sola orden puesta en el exchange: no se puede correr como se midió."],
+  "bot.trailing_corto": ["not runnable (trailing)", "no se puede encender (trailing)"],
 
   /* ---- la franja de agentes en Operar: qué está haciendo cada uno ---- */
   "ag.titulo": ["Autopilot", "Piloto automático"],
