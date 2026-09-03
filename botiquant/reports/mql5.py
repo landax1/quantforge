@@ -249,6 +249,24 @@ def export_mql5(spec: StrategySpec, *, ea_name: str = "BQ_Strategy",
     # reconocer las posiciones que dejó la anterior.
     magic = magic_de(ea_name)
 
+        # EL EA AVISA SI NO ESTA EN SU MERCADO. El error mas comun al llevarlo a
+    # MetaTrader es arrastrarlo a otro simbolo u otra temporalidad y que opere
+    # igual, en silencio (lo pidio el usuario de prueba de MetaTrader el 2 de
+    # septiembre). Avisa y sigue: los nombres de simbolo cambian de broker a
+    # broker (SP500, US500, SPX500) y frenar seria peor que avisar.
+    _TF_MQL = {"1m": "PERIOD_M1", "5m": "PERIOD_M5", "15m": "PERIOD_M15", "30m": "PERIOD_M30",
+               "1h": "PERIOD_H1", "4h": "PERIOD_H4", "1d": "PERIOD_D1"}
+    _token = "".join(ch for ch in (symbol_hint or "").upper() if ch.isalnum())[:6]
+    _lineas = []
+    if timeframe_hint in _TF_MQL:
+        _lineas.append(f"   if(_Period != {_TF_MQL[timeframe_hint]})")
+        _lineas.append(f'      Alert("[QF] Esta estrategia se midio en velas de {timeframe_hint}; el grafico esta en ", '
+                       f'EnumToString((ENUM_TIMEFRAMES)_Period), ". Cambia la temporalidad o los resultados no van a parecerse.");')
+    if _token:
+        _lineas.append(f'   if(StringFind(_Symbol, "{_token}") < 0 && StringFind(_Symbol, "{_token.replace("SP", "US")}") < 0)')
+        _lineas.append(f'      Alert("[QF] Esta estrategia se midio sobre {symbol_hint}; el grafico es ", _Symbol, '
+                       f'". Si no es el mismo mercado, no la uses aca.");')
+    aviso_mercado = chr(10).join(_lineas)
     return f"""//+------------------------------------------------------------------+
 //| {ea_name}.mq5
 //| Generado por Botiquant — estrategia minada{f" sobre {symbol_hint} {timeframe_hint}" if symbol_hint else ""}
@@ -323,6 +341,7 @@ int OnInit()
                      ahora.hour, ahora.min, InpServerUTCOffset);
         }}
      }}
+{aviso_mercado}
    return INIT_SUCCEEDED;
   }}
 //+------------------------------------------------------------------+
