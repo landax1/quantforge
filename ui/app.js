@@ -565,7 +565,8 @@ function abrirCompartirPortafolio(elegidas, r) {
   }));
   const doc = {
     nivel: "mirar", tipo: "portafolio",
-    nombre: t("pf.title") + " · " + elegidas.map(x => x.name).join(" + "),
+    nombre: elegidas.map(x => x.name).join(" + "),
+    tipo_rotulo: "portafolio",
     instrumento: [...new Set(elegidas.map(x => String((x.meta || {}).dataset_name || "").split(" ")[0]))].join(" + "),
     timeframe: "", direccion: "", bloques: "", reglas: [], salidas: "",
     costos: {}, metricas: m,
@@ -2835,7 +2836,30 @@ function traducirMotivo(m) {
   if (ad) return t("mot.adopto", { lado: t(ad[1] === "corta" ? "mot.corto" : "mot.largo"), cant: ad[2] });
   const det = x.match(/^detenido: (.*)$/i);
   if (det) return t("mot.detenido", { resto: traducirMotivo(det[1]) });
-  return x;
+
+  /* LO QUE DICE EL PILOTO. El ciclo arma sus motivos como frases sueltas en
+     castellano —no hay claves de texto detrás— y en inglés salían crudos:
+     "now: 5 sin probar". Se traducen acá, del lado de la pantalla, que es
+     donde ya se traduce todo lo demás que dice el motor. Un motivo que no
+     coincida con ninguna forma se muestra tal cual, que es lo que pasaba
+     antes y no rompe nada. */
+  const partes = x.split("; ").map(p => {
+    let m = p.match(/^(\d+) sin probar$/i);
+    if (m) return t("ciclo.sin_probar", { n: m[1] });
+    m = p.match(/^hay (\d+) lugar\(es\) libre\(s\) y (\d+) validada\(s\) esperando$/i);
+    if (m) return t("ciclo.hay_lugar", { h: m[1], n: m[2] });
+    m = p.match(/^(\d+) instrumento\(s\) ya al tope$/i);
+    if (m) return t("ciclo.al_tope", { n: m[1] });
+    m = p.match(/^(\d+) que el bot no puede encender$/i);
+    if (m) return t("ciclo.inoperables", { n: m[1] });
+    m = p.match(/^pasaron (\d+) horas del último minado$/i);
+    if (m) return t("ciclo.toca_minar", { h: m[1] });
+    m = p.match(/^el próximo minado en (\d+) horas$/i);
+    if (m) return t("ciclo.proximo", { h: m[1] });
+    if (/^nada que hacer$/i.test(p)) return t("ciclo.nada");
+    return p;
+  });
+  return partes.join("; ");
 }
 
 function rotuloAccion(a) {
@@ -3110,7 +3134,7 @@ function zonaPiloto(c) {
         <span class="ag-punto${cicloOn ? " vivo" : ""}${c.error ? " alerta" : ""}"></span>
         <div>
           <div class="ag-quien">${esc(c.error ? c.error
-            : cicloOn ? t("ag.ahora") + ": " + (prox.motivo || "")
+            : cicloOn ? t("ag.ahora") + ": " + traducirMotivo(prox.motivo || "")
             : t("ag.ciclo_apagado"))}</div>
           <div class="ag-que">${esc(reglas)}</div>
         </div>
@@ -3125,7 +3149,7 @@ function zonaPiloto(c) {
         ${ultimas.length ? `<ol>${ultimas.map(u => `<li>
           <span class="ag-hora">${esc(horaLocal(u.cuando))}</span>
           <span class="pil-acc pil-${esc(u.accion || "nada")}">${esc(rotuloCiclo(u.accion))}</span>
-          <span class="ag-que">${esc(u.motivo || "")}</span></li>`).join("")}</ol>`
+          <span class="ag-que">${esc(traducirMotivo(u.motivo || ""))}</span></li>`).join("")}</ol>`
         : `<p class="help-note">${esc(t("pil.nada"))}</p>`}
       </div>
     </div>`;
@@ -4525,7 +4549,7 @@ function pruebaResumen(s) {
   if (!v.estado) return `<span class="muted">—</span>`;
   const partes = [];
   if (v.tramos) partes.push(`${v.tramos_ganadores ?? "?"}/${v.tramos}`);
-  if (v.eficiencia != null) partes.push(`ef ${fmtNum(v.eficiencia, 2)}`);
+  if (v.eficiencia != null) partes.push(`${t("wf.ef_corto")} ${fmtNum(v.eficiencia, 2)}`);
   if (v.retorno_fuera_pct != null) partes.push(`<b class="${v.retorno_fuera_pct >= 0 ? "pos" : "neg"}">${fmtPct(v.retorno_fuera_pct)}</b>`);
   if (v.mc && v.mc.dd_malo_pct != null) partes.push(`<span class="muted">dd ${fmtNum(v.mc.dd_malo_pct, 1)}%</span>`);
   return `<span class="prueba-res">${partes.join(" · ")}</span>`;
@@ -6287,12 +6311,20 @@ const vistaBuscar = async (main) => {
                               "bollinger_revert", "donchian_break",
                               "ema_trend_filter", "adx_filter"]);
   const picked = S.cfg.blocks && S.cfg.blocks.length ? new Set(S.cfg.blocks) : DEFAULT_ON;
+  /* La categoría viene del motor en castellano ("vela", "volatility"…) y
+     se pintaba cruda: en inglés se leía "VELA" cuatro veces. Si aparece una
+     categoría nueva se muestra como viene, que es mejor que nada. */
+  const tCat = (c) => {
+    const k = "cat_bloque." + String(c || "");
+    const txt = t(k);
+    return txt === k ? String(c || "") : txt;
+  };
   const blockList = (kind) => `<div class="blocklist" data-kind="${kind}">` +
     (S.meta?.templates || []).filter(t => t.kind === kind).map(t => `
       <label class="blockitem ${picked.has(t.id) ? "on" : ""}">
         <input type="checkbox" data-tid="${t.id}" ${picked.has(t.id) ? "checked" : ""}>
         <span>${esc(t.label)}</span>
-        <span class="cat-tag">${esc(t.category)}</span>
+        <span class="cat-tag">${esc(tCat(t.category))}</span>
       </label>`).join("") + `</div>`;
   const opt = (val, cur, label) => `<option value="${val}" ${val === cur ? "selected" : ""}>${label || val}</option>`;
 
@@ -7535,7 +7567,7 @@ function etiquetaGenes(r) {
      configuración es el mismo para todas y repetirlo en cada fila es ruido;
      cuando se busca, es lo que distingue una fila de otra — y la que más les
      cambia el carácter, porque gobierna el win rate. */
-  if (r.rr_mult != null) partes.push(`R:B 1:${r.rr_mult}`);
+  if (r.rr_mult != null) partes.push(`${t("gene.rb")} 1:${r.rr_mult}`);
   // la franja NO va acá: ya tiene su propia etiqueta al lado del nombre, y
   // repetirla hace la línea más larga sin decir nada nuevo
   return partes.join(" · ");
