@@ -4069,7 +4069,7 @@ PAGES.data = async (main) => {
       <td><b>${esc(d.name)}</b></td>
       <td><span class="badge ${d.source === "sample" ? "yellow" : "green"}">${
         d.source === "sample" ? esc(t("data.synthetic")) : esc(d.source)}</span></td>
-      <td class="num">${d.rows.toLocaleString()}</td>
+      <td class="num">${d.rows.toLocaleString(localeNum())}</td>
       <td class="muted">${esc(String(d.start).slice(0, 16))}</td>
       <td class="muted">${esc(String(d.end).slice(0, 16))}</td>
       <td>${esc(d.timeframe)}</td>
@@ -8810,7 +8810,7 @@ function renderInspector(box, row, res, ctx) {
     if (kind === "pct") { txt = fmtPct(v); cls = v >= 0 ? "pos" : "neg"; }
     else if (kind === "dd") { txt = `${fmtNum(v, 1)}%`; cls = nivelDD(v, riesgoInsp); }
     else if (kind === "raw") txt = `${fmtNum(v, 1)}%`;
-    else if (kind === "int") txt = (+v).toLocaleString();
+    else if (kind === "int") txt = (+v).toLocaleString(localeNum());
     else if (kind === "money") { txt = fmtMoney(v); cls = v >= 0 ? "pos" : ""; }
     else if (kind === "loss") { txt = `-${fmtMoney(Math.abs(v))}`; cls = "neg"; }
     // la cifra cruda y su formato, para que las grandes cuenten al aparecer
@@ -9321,7 +9321,7 @@ function condLabel(c) {
                   ">": ">", "<": "<" }[c.op] || c.op;
   const side = o => {
     if (!o) return "";
-    if (o.type === "const") return (+o.value).toLocaleString();
+    if (o.type === "const") return (+o.value).toLocaleString(localeNum());
     if (o.type === "price") return (o.field || o.field_name || "close");
     const p = Object.values(o.params || {}).map(v => +v).join(",");
     return `${o.name}(${p})${o.output && o.output !== "value" ? "." + o.output : ""}`;

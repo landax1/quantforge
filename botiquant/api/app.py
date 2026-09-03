@@ -191,6 +191,64 @@ ERRORES_EN: dict[str, str] = {
     # --- instrumentos
     "Este instrumento es compartido y no se puede borrar. ":
         "This instrument is shared and cannot be deleted. ",
+    "Los instrumentos del cat\u00e1logo ya vienen cargados y son "
+    "compartidos. Para usar tus propios datos, sub\u00ed un CSV.":
+        "Catalogue instruments come preloaded and are shared. To use your own "
+        "data, upload a CSV.",
+    "La importaci\u00f3n por ruta est\u00e1 deshabilitada en modo multiusuario. "
+    "Sub\u00ed el archivo con el selector de archivos.":
+        "Importing by path is disabled in multi-user mode. Upload the file with "
+        "the file picker.",
+    # --- estrategias (segunda tanda, 3 de septiembre de 2026)
+    "Esa estrategia ya no est\u00e1.": "That strategy is gone.",
+    "No sabemos con qu\u00e9 instrumento se encontr\u00f3, as\u00ed que no "
+    "se le puede volver a correr el backtest.":
+        "We do not know which instrument this was found on, so the backtest "
+        "cannot be run again.",
+    "Eleg\u00ed el instrumento antes de exportar el bot: el "
+    "archivo tiene que decir en qu\u00e9 s\u00edmbolo operar.":
+        "Pick the instrument before exporting the robot: the file has to say "
+        "which symbol to trade.",
+    "Veinte es el m\u00e1ximo por conjunto. Con m\u00e1s, las porciones "
+    "quedan tan chicas que el lote m\u00ednimo del br\u00f3ker manda "
+    "sobre lo que la estrategia quiere arriesgar.":
+        "Twenty is the cap per set. Beyond that the shares get so small that the "
+        "broker's minimum lot decides instead of the strategy's own risk.",
+    # --- robots y cuentas
+    "Ocho es el tope de bots a la vez.": "Eight robots at a time is the cap.",
+    "La porci\u00f3n tiene que ser un n\u00famero.": "The share has to be a number.",
+    "Falta decir en qu\u00e9 modo arrancar: simulacro, pr\u00e1ctica o real.":
+        "The mode is missing: dry run, practice or real.",
+    "Las claves de exchange s\u00f3lo se configuran en la "
+    "aplicaci\u00f3n de escritorio.":
+        "Exchange keys are set up in the desktop application only.",
+    "Binance est\u00e1 habilitado s\u00f3lo en demo. La aplicaci\u00f3n no "
+    "tiene forma de mandar una orden real a Binance: para "
+    "operar en real hay que cambiar el c\u00f3digo a prop\u00f3sito.":
+        "Binance is enabled in demo only. The application has no way to send a "
+        "real order to Binance: trading for real takes a deliberate code change.",
+    "Peg\u00e1 el texto de tu licencia.": "Paste your licence text.",
+    # --- enlaces compartidos
+    "Ese enlace no existe.": "That link does not exist.",
+    "Ese enlace no existe o el secreto no coincide.":
+        "That link does not exist, or the secret does not match.",
+    "Esta estrategia se comparti\u00f3 s\u00f3lo para mirar.":
+        "This strategy was shared to look at only.",
+    "Quien comparti\u00f3 esta estrategia apag\u00f3 el enlace.":
+        "Whoever shared this strategy turned the link off.",
+    "Ya compartiste muchas hoy. Ma\u00f1ana pod\u00e9s seguir.":
+        "You have shared a lot today. You can carry on tomorrow.",
+    "No se pudo llegar a botiquant.com.": "Could not reach botiquant.com.",
+    "No se pudo llegar a botiquant.com para publicar el enlace.":
+        "Could not reach botiquant.com to publish the link.",
+    "No se pudo apagar el enlace.": "The link could not be turned off.",
+    # La entrada de arriba es el prefijo, y el `raise` lleva la frase entera:
+    # sin esta clave la mitad que explica QUÉ se puede borrar salía en
+    # castellano (encontrado por el analizador sintáctico, no por la lectura).
+    "Este instrumento es compartido y no se puede borrar. S\u00f3lo pod\u00e9s "
+    "borrar los CSV que subiste vos.":
+        "This instrument is shared and cannot be deleted. You can only delete "
+        "the CSVs you uploaded yourself.",
 }
 
 #: Los que llevan datos adentro: se compara el comienzo y se cambia solo eso.
