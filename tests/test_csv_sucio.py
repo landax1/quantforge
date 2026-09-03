@@ -115,3 +115,49 @@ def test_un_archivo_sano_no_ensucia_la_respuesta(client_with_sample):
 def test_un_archivo_sin_velas_utiles_se_rechaza():
     with pytest.raises(ValueError):
         parse_ohlcv_csv("timestamp,open,high,low,close\n2023-01-01,1,1,1,1\n")
+
+
+def test_un_archivo_con_la_fila_mas_nueva_primero_no_se_da_vuelta():
+    """Yahoo, Investing y varios brókers exportan al revés.
+
+    El primer arreglo exigía que las velas quedaran en orden CRECIENTE para
+    aceptar la lectura día/mes. Un archivo descendente no cumple eso de
+    ninguna de las dos maneras, así que la elección volvía a caer en el
+    criterio de siempre y las fechas se daban vuelta igual: 400 velas de
+    diecisiete días entraban como doce meses, con HTTP 200 y el tilde verde.
+
+    Lo que distingue un día de un mes no es hacia dónde va la serie, es que
+    vaya en UNA dirección.
+    """
+    filas = _velas(400, dt.datetime(2023, 1, 2), "%d/%m/%Y")
+    cabecera, cuerpo = filas[0], filas[1:]
+    cuerpo.reverse()
+    df = parse_ohlcv_csv("\n".join([cabecera, *cuerpo]))
+    abarca = (df.index[-1] - df.index[0]).days
+    assert abarca <= 20, (
+        f"la serie abarca {abarca} días: un archivo ordenado de nuevo a viejo "
+        "sigue dándose vuelta las fechas")
+
+
+def test_un_archivo_iso_al_reves_tampoco_se_rompe():
+    filas = _velas(400, dt.datetime(2023, 3, 1), "%Y-%m-%d")
+    cabecera, cuerpo = filas[0], filas[1:]
+    cuerpo.reverse()
+    df = parse_ohlcv_csv("\n".join([cabecera, *cuerpo]))
+    assert str(df.index[0].date()) == "2023-03-01"
+
+
+def test_una_planilla_en_castellano_entra():
+    """Punto y coma, coma decimal y cabeceras en castellano: lo que exporta
+    Excel configurado en es-AR, que antes rebotaba entero."""
+    filas = ["fecha;hora;apertura;maximo;minimo;cierre;volumen"]
+    t = dt.datetime(2023, 1, 2)
+    for _ in range(400):
+        px = 1800.0
+        coma = lambda x: f"{x:.2f}".replace(".", ",")  # noqa: E731
+        filas.append(f"{t:%d/%m/%Y};{t:%H:%M};{coma(px)};{coma(px + 1)};"
+                     f"{coma(px - 1)};{coma(px + .5)};100")
+        t += dt.timedelta(hours=1)
+    df = parse_ohlcv_csv("\n".join(filas))
+    assert len(df) == 400
+    assert float(df["open"].iloc[0]) == 1800.0, "la coma decimal quedó sin leer"

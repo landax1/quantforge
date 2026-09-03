@@ -89,6 +89,22 @@ CREATE TABLE IF NOT EXISTS compartidas (
     vistas INTEGER NOT NULL DEFAULT 0,
     ip TEXT NOT NULL DEFAULT ''
 );
+-- EL SECRETO NO PUEDE VIVIR SÓLO EN EL NAVEGADOR.
+--
+-- Un enlace compartido se apaga con su secreto, y el secreto se guardaba
+-- únicamente en `localStorage`. Vaciar el navegador —o abrir la aplicación en
+-- otro— dejaba una página PUBLICADA en internet que su propio autor ya no
+-- podía bajar. Acá vive la copia que sobrevive a eso: el archivo del espacio
+-- de trabajo, en la máquina de quien compartió (3 de septiembre de 2026).
+CREATE TABLE IF NOT EXISTS enlaces_propios (
+    codigo TEXT PRIMARY KEY,
+    secreto TEXT NOT NULL,
+    url TEXT NOT NULL DEFAULT '',
+    nombre TEXT NOT NULL DEFAULT '',
+    nivel TEXT NOT NULL DEFAULT '',
+    creado TEXT NOT NULL,
+    apagado INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS banco (
     id TEXT PRIMARY KEY,
     corrida_id TEXT NOT NULL,
@@ -705,6 +721,31 @@ class Database:
             f["fila"] = json.loads(f["fila"])
             f["contexto"] = json.loads(f.get("contexto") or "{}")
         return filas
+
+    # ------------------------------------- los enlaces que compartió este equipo
+    def anotar_enlace(self, codigo: str, secreto: str, url: str = "",
+                      nombre: str = "", nivel: str = "") -> None:
+        """Guarda el secreto de un enlace propio donde no lo borre el navegador.
+
+        Volver a anotar el mismo código actualiza los datos pero conserva la
+        fecha original y el estado de apagado: es el mismo enlace.
+        """
+        self._exec(
+            "INSERT OR REPLACE INTO enlaces_propios "
+            "(codigo, secreto, url, nombre, nivel, creado, apagado) "
+            "VALUES (?, ?, ?, ?, ?, "
+            "  COALESCE((SELECT creado FROM enlaces_propios WHERE codigo = ?), ?), "
+            "  COALESCE((SELECT apagado FROM enlaces_propios WHERE codigo = ?), 0))",
+            (codigo, secreto, url, nombre, nivel, codigo,
+             datetime.now(timezone.utc).isoformat(timespec="seconds"), codigo))
+
+    def enlaces_propios(self) -> list[dict[str, Any]]:
+        return self._rows(
+            "SELECT codigo, secreto, url, nombre, nivel, creado, apagado "
+            "FROM enlaces_propios ORDER BY creado DESC LIMIT 200")
+
+    def marcar_enlace_apagado(self, codigo: str) -> None:
+        self._exec("UPDATE enlaces_propios SET apagado = 1 WHERE codigo = ?", (codigo,))
 
     # ------------------------------------------------- estrategias compartidas
     def crear_compartida(self, doc: dict[str, Any], ip: str = "") -> tuple[str, str]:

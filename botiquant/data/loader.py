@@ -163,7 +163,15 @@ def _a_fechas(crudo: pd.Series) -> pd.Series:
             continue
         validas = int(ts.notna().sum())
         limpias = ts.dropna()
-        ordenada = bool(limpias.is_monotonic_increasing) if len(limpias) > 1 else True
+        # ORDENADA EN CUALQUIERA DE LOS DOS SENTIDOS. Yahoo, Investing y varios
+        # brókers exportan la fila más nueva primero: exigir orden creciente
+        # dejaba a esos archivos sin evidencia, la elección caía en el criterio
+        # de siempre y las fechas se daban vuelta igual, en silencio y con el
+        # tilde verde. Lo que distingue un día de un mes no es hacia dónde va
+        # la serie, es que vaya en UNA dirección (encontrado el 3 de septiembre
+        # de 2026, arreglando este mismo parche).
+        ordenada = (bool(limpias.is_monotonic_increasing)
+                    or bool(limpias.is_monotonic_decreasing)) if len(limpias) > 1 else True
         intentos.append((validas, ordenada, dia_primero, ts))
 
     if not intentos:

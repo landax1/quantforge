@@ -242,6 +242,8 @@ ERRORES_EN: dict[str, str] = {
     "No se pudo llegar a botiquant.com para publicar el enlace.":
         "Could not reach botiquant.com to publish the link.",
     "No se pudo apagar el enlace.": "The link could not be turned off.",
+    "Falta el código o el secreto del enlace.":
+        "The link's code or secret is missing.",
     # La entrada de arriba es el prefijo, y el `raise` lleva la frase entera:
     # sin esta clave la mitad que explica QUÉ se puede borrar salía en
     # castellano (encontrado por el analizador sintáctico, no por la lectura).
@@ -1435,7 +1437,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             "dataset_id": m.get("dataset_id") or "", "timeframe": m.get("timeframe") or "",
             "dataset_name": m.get("dataset_name") or "",
             "settings": {"initial_capital": m.get("capital"), "spread": m.get("spread"),
-                         "slippage": m.get("slippage"), "commission_pct": m.get("commission")},
+                         "slippage": m.get("slippage"), "commission_pct": m.get("commission"),
+                         "swap_anual": m.get("swap")},
             "medido": m.get("measured_range") or {},
             "metricas": m.get("metrics") or {},
         }
@@ -2097,7 +2100,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         medido = meta.get("measured_range") or {}
         ajustes = {"initial_capital": meta.get("capital"),
                    "spread": meta.get("spread"), "slippage": meta.get("slippage"),
-                   "commission_pct": meta.get("commission")}
+                   "commission_pct": meta.get("commission"),
+                   "swap_anual": meta.get("swap")}
         ajustes = {k: v for k, v in ajustes.items() if v is not None}
 
         df = _load_df({"dataset_id": meta["dataset_id"],
@@ -2212,6 +2216,13 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "timeframe": f["timeframe"] or "", "direction": ctx.get("direction", "both"),
                 "spread": ajustes.get("spread"), "slippage": ajustes.get("slippage"),
                 "commission": ajustes.get("commission_pct"),
+                # EL SWAP TAMBIÉN. Es el costo de dejar una posición abierta de
+                # un día para el otro en un CFD —lo mismo que el funding es en
+                # un perpetuo— y no se guardaba: la estrategia se minaba con él
+                # y se volvía a medir sin él. Hoy está latente porque todas
+                # tienen swap 0, que es justo por qué nadie lo había visto
+                # (3 de septiembre de 2026).
+                "swap": ajustes.get("swap_anual"),
                 "capital": ajustes.get("initial_capital"),
                 "sizing": "lots" if por_lotes else "risk",
                 "riskPct": None if por_lotes else riesgo.get("size_value"),
@@ -2736,6 +2747,40 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             raise HTTPException(
                 404, "Las claves de exchange sólo se configuran en la "
                      "aplicación de escritorio.")
+
+    @app.get("/api/enlaces")
+    def enlaces_listar() -> list[dict[str, Any]]:
+        """Los enlaces que compartió ESTE equipo, con su secreto.
+
+        Vive en el archivo del espacio de trabajo, no en el navegador: el
+        secreto es lo único que permite apagar una página ya publicada, y
+        guardarlo sólo en `localStorage` significaba que vaciar el navegador
+        dejaba una página en internet que su autor no podía bajar nunca más
+        (3 de septiembre de 2026).
+
+        Sólo en el escritorio. En el servidor público no hay "este equipo".
+        """
+        _solo_escritorio()
+        return db.enlaces_propios()
+
+    @app.post("/api/enlaces")
+    def enlaces_anotar(payload: dict[str, Any]) -> dict[str, str]:
+        _solo_escritorio()
+        codigo = str(payload.get("codigo") or "").strip()[:16]
+        secreto = str(payload.get("secreto") or "").strip()[:80]
+        if not codigo or not secreto:
+            raise HTTPException(400, "Falta el c\u00f3digo o el secreto del enlace.")
+        db.anotar_enlace(codigo, secreto,
+                         url=str(payload.get("url") or "")[:200],
+                         nombre=str(payload.get("nombre") or "")[:120],
+                         nivel=str(payload.get("nivel") or "")[:10])
+        return {"ok": "1"}
+
+    @app.post("/api/enlaces/{codigo}/apagado")
+    def enlaces_marcar_apagado(codigo: str) -> dict[str, str]:
+        _solo_escritorio()
+        db.marcar_enlace_apagado(str(codigo)[:16])
+        return {"ok": "1"}
 
     @app.get("/api/exchanges")
     def exchanges_listar() -> list[dict[str, Any]]:

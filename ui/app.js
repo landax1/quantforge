@@ -503,6 +503,28 @@ function guardarEnlace(e) {
   const lista = enlacesGuardados().filter(x => x.codigo !== e.codigo);
   lista.unshift(e);
   try { localStorage.setItem("qf.enlaces", JSON.stringify(lista.slice(0, 100))); } catch (err) { /* nada */ }
+  /* Y EN EL ESPACIO DE TRABAJO, que es lo que sobrevive. El secreto es lo
+     único que permite bajar una página ya publicada: guardarlo sólo en el
+     navegador significaba que vaciarlo dejaba en internet una estrategia que
+     su autor no podía retirar nunca más (3 de septiembre de 2026). */
+  api.post("/api/enlaces", { codigo: e.codigo, secreto: e.secreto, url: e.url,
+                             nombre: e.nombre, nivel: e.nivel || "" })
+    .catch(() => { /* en el sitio público no existe; el navegador alcanza */ });
+}
+
+/* La lista completa: la del espacio de trabajo manda, y la del navegador
+   suma los que se hayan compartido desde otra máquina contra este servidor. */
+async function enlacesDeAmbos() {
+  const local = enlacesGuardados();
+  let delDisco = [];
+  try { delDisco = await api.get("/api/enlaces"); } catch (e) { /* sólo escritorio */ }
+  const porCodigo = new Map();
+  for (const e of local) porCodigo.set(e.codigo, e);
+  for (const e of delDisco) {
+    const previo = porCodigo.get(e.codigo) || {};
+    porCodigo.set(e.codigo, { ...previo, ...e, apagado: !!(e.apagado || previo.apagado) });
+  }
+  return [...porCodigo.values()].sort((a, b) => String(b.creado || "").localeCompare(String(a.creado || "")));
 }
 
 function documentoCompartible(row, ctx, res, nivel, autor) {
@@ -666,8 +688,13 @@ function abrirCompartir(row, ctx, res, docFijo) {
   };
 }
 
+/* Lo último que devolvió la fusión navegador + espacio de trabajo. Se dibuja
+   primero con lo que hay en el navegador —instantáneo— y se rellena cuando
+   llega el disco, que puede tener enlaces que este navegador no vio. */
+let ENLACES = null;
+
 function misEnlacesHTML() {
-  const lista = enlacesGuardados();
+  const lista = ENLACES || enlacesGuardados();
   return `<section class="card mt" id="mis-enlaces">
     <h2>${esc(t("comp.mis_enlaces"))} <span class="hint">${esc(t("comp.mis_enlaces_sub"))}</span></h2>
     ${lista.length ? `<div class="enlaces">${lista.map(e => `
@@ -683,17 +710,32 @@ function misEnlacesHTML() {
   </section>`;
 }
 function atarMisEnlaces(main) {
+  /* Y se vuelve a dibujar con lo que guarda el equipo: un enlace compartido
+     desde otro navegador, o desde este mismo antes de vaciarlo, sigue estando
+     y todavía se puede apagar. */
+  enlacesDeAmbos().then(lista => {
+    const iguales = JSON.stringify(lista) === JSON.stringify(ENLACES);
+    ENLACES = lista;
+    const caja = $("#mis-enlaces", main);
+    if (caja && !iguales && caja.isConnected) {
+      caja.outerHTML = misEnlacesHTML();
+      atarMisEnlaces(main);
+    }
+  });
+
   $$("[data-enlace-copiar]", main).forEach(b => b.onclick = async () => {
     try { await navigator.clipboard.writeText(b.dataset.enlaceCopiar); } catch (e) { /* nada */ }
     b.textContent = t("comp.copiado");
   });
   $$("[data-enlace-apagar]", main).forEach(b => b.onclick = async () => {
-    const e = enlacesGuardados().find(x => x.codigo === b.dataset.enlaceApagar);
+    const e = (ENLACES || enlacesGuardados()).find(x => x.codigo === b.dataset.enlaceApagar);
     if (!e) return;
     b.disabled = true;
     try {
       await api.post("/api/compartir/apagar", { codigo: e.codigo, secreto: e.secreto });
       guardarEnlace({ ...e, apagado: true });
+      api.post(`/api/enlaces/${e.codigo}/apagado`, {}).catch(() => { /* sólo escritorio */ });
+      ENLACES = null;
       toast(t("comp.apagado"), "ok");
       navigate("consejos");
     } catch (err) { toast(err.message, "err"); b.disabled = false; }

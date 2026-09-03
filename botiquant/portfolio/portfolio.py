@@ -40,7 +40,15 @@ def build_portfolio(
     curves: list[pd.Series] = []
     for comp in components:
         eq = np.asarray(comp["equity"], dtype=np.float64)
-        ts = pd.to_datetime(comp["timestamps"])
+        ts = pd.DatetimeIndex(pd.to_datetime(comp["timestamps"]))
+        # TODAS LAS CURVAS EN EL MISMO RELOJ. Un perpetuo trae marcas con zona
+        # horaria y un CFD no, así que combinar ADA con el S&P 500 reventaba
+        # con "Cannot join tz-naive with tz-aware DatetimeIndex" —crudo, en
+        # pantalla— justo en el caso para el que existe el portafolio: mezclar
+        # mercados distintos (3 de septiembre de 2026). Se pasa todo a UTC y
+        # se le saca la zona, que es como se guardan las velas.
+        if ts.tz is not None:
+            ts = ts.tz_convert("UTC").tz_localize(None)
         base = float(comp.get("initial_capital") or eq[0] or 1.0)
         s = pd.Series(eq / base, index=ts)
         s = s[~s.index.duplicated(keep="last")].resample("1D").last().ffill()

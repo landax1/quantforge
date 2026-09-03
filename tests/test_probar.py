@@ -171,3 +171,19 @@ def test_todo_lo_que_corre_una_guardada_le_aplica_el_funding(guardada, monkeypat
     c.post("/api/montecarlo", json={
         "estrategia": {"origen": "guardada", "id": sid}, "simulations": 50})
     assert consultas, "Monte Carlo midió sin ir a buscar el funding"
+
+
+def test_el_swap_viaja_con_la_estrategia(guardada, monkeypatch):
+    """El costo de dejar una posición abierta de un día para el otro.
+
+    Es al CFD lo que el funding es al perpetuo, y se perdía igual: la
+    estrategia se minaba con él y se volvía a medir sin él, porque no se
+    guardaba en la ficha y `_para_validar` no podía releerlo. Estaba latente
+    nada más que porque todas las estrategias de hoy tienen swap 0 — que es
+    justo la razón por la que nadie lo había visto (3 de septiembre de 2026).
+    """
+    c, sid = guardada
+    fila = next(s for s in c.get("/api/strategies").json() if s["id"] == sid)
+    assert "swap" in (fila.get("meta") or {}), (
+        "la estrategia guardada no lleva su swap: al volver a medirla se usa 0 "
+        "aunque se haya minado con otro")
