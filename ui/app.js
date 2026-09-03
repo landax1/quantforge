@@ -526,8 +526,18 @@ function documentoCompartible(row, ctx, res, nivel, autor) {
     bloques: row.blocks || "", reglas, salidas: salidasEnCastellano(row).replace(/&[a-z#0-9]+;/g, " "),
     /* Los costos de LA ESTRATEGIA, no del mercado elegido ahora. Con `||`
        un spread de 0 real se perdía y salía el del mercado en pantalla. */
-    costos: { spread: +(g.spread ?? S.cfg.spread ?? 0), slippage: +(g.slippage ?? S.cfg.slippage ?? 0),
-              commission_pct: +(g.commission ?? S.cfg.commission ?? 0), initial_capital: +(g.capital ?? S.cfg.capital ?? 10000) },
+    /* LOS COSTOS SON LOS DE LA ESTRATEGIA. Primero los del contexto con que
+       se abrió (una guardada trae los suyos en `settings`), después los de la
+       corrida, y recién al final los de la pantalla: una estrategia de
+       perpetuos viajaba con el spread de MetaTrader (2 de septiembre). */
+    costos: (() => {
+      const st = (ctx && ctx.settings) || {};
+      const elegir = (a, b, c) => +(a ?? b ?? c ?? 0);
+      return { spread: elegir(st.spread, g.spread, S.cfg.spread),
+               slippage: elegir(st.slippage, g.slippage, S.cfg.slippage),
+               commission_pct: elegir(st.commission_pct, g.commission, S.cfg.commission),
+               initial_capital: elegir(st.initial_capital, g.capital, S.cfg.capital) };
+    })(),
     metricas: m,
     curva: muestra(res && res.equity, 240),
     fechas: muestra(res && res.timestamps, 240).map(x => String(x).slice(0, 10)),
@@ -580,11 +590,15 @@ function abrirCompartir(row, ctx, res) {
       const nivel = ($(".comp-nivel input:checked", host) || {}).value || "usar";
       const doc = documentoCompartible(row, ctx, res, nivel, $("#comp-autor", host).value.trim());
       const r = await api.post("/api/compartir/remoto", doc);
-      guardarEnlace({ codigo: r.codigo, secreto: r.secreto, url: r.url, nombre: row.name, creado: new Date().toISOString() });
+      guardarEnlace({ codigo: r.codigo, secreto: r.secreto, url: r.url, nombre: row.name,
+                      nivel, creado: new Date().toISOString() });
       $("#comp-url", host).value = r.url;
       $("#comp-abrir", host).href = r.url;
       $("#comp-listo", host).hidden = false;
-      crear.hidden = true;
+      /* SE PUEDE CREAR OTRO SIN CERRAR: quien comparte "para usar" suele
+         querer también uno "para mirar", y había que cerrar y reabrir. */
+      crear.disabled = false;
+      crear.innerHTML = `${icono("seguir")} ${esc(t("comp.otro"))}`;
       $("#comp-copiar", host).onclick = async () => {
         try { await navigator.clipboard.writeText(r.url); } catch (e) { $("#comp-url", host).select(); document.execCommand("copy"); }
         $("#comp-copiar", host).textContent = t("comp.copiado");
@@ -603,7 +617,8 @@ function misEnlacesHTML() {
     <h2>${esc(t("comp.mis_enlaces"))} <span class="hint">${esc(t("comp.mis_enlaces_sub"))}</span></h2>
     ${lista.length ? `<div class="enlaces">${lista.map(e => `
       <div class="enlace ${e.apagado ? "apagado" : ""}" data-codigo="${esc(e.codigo)}">
-        <div><b>${esc(e.nombre)}</b><span class="muted">${esc(e.url)} · ${esc(String(e.creado).slice(0, 10))}</span></div>
+        <div><b>${esc(e.nombre)}</b> <span class="tag-nivel">${esc(t(e.nivel === "mirar" ? "comp.nivel_mirar" : "comp.nivel_usar"))}</span>
+          <span class="muted">${esc(e.url)} · ${esc(String(e.creado).slice(0, 10))}</span></div>
         <div class="controls">
           ${e.apagado ? `<span class="muted">${esc(t("comp.apagado"))}</span>` : `
           <button class="btn ghost small" data-enlace-copiar="${esc(e.url)}">${esc(t("comp.copiar"))}</button>
@@ -2059,8 +2074,14 @@ function abrirGuiaBingx(nombreEstrategia, simbolo) {
     navigate("operar", "claves");
   };
   host.onclick = (e) => { if (e.target === host) close(); };
+  /* ESCAPE CIERRA LA CAPA DE ARRIBA, no la de atrás: con Compartir abierto
+     cerraba la ficha y dejaba el diálogo flotando (2 de septiembre). */
   document.addEventListener("keydown", function esckey(e) {
-    if (e.key === "Escape") { close(); document.removeEventListener("keydown", esckey); }
+    if (e.key !== "Escape") return;
+    const capas = $$(".overlay");
+    if (capas[capas.length - 1] !== host) return;
+    close();
+    document.removeEventListener("keydown", esckey);
   });
 }
 
@@ -2120,18 +2141,25 @@ async function abrirPortafolio(elegidas) {
           toast(t("op.conectar_primero"), "err"); close(); navigate("operar", "claves"); return;
         }
         const plan = await api.post("/api/bot/plan-conjunto", { ids: elegidas.map(x => x.id), usar_pct: 90 });
+        /* UNA QUE NO PUEDE NO FRENA A LAS DEMÁS: cortaba en la primera y
+           dejaba el conjunto a medias sin intentar el resto. */
+        const fallos = [];
         for (const d of plan.detalle) {
           const fila = elegidas.find(x => x.id === d.id);
-          const archivo = await api.post("/api/export/bingx/objeto", {
-            spec: fila.spec, name: fila.name, dataset_id: (fila.meta || {}).dataset_id,
-            timeframe: (fila.meta || {}).timeframe, settings: { commission_pct: (fila.meta || {}).commission },
-            metrics: (fila.meta || {}).metrics, oos: (fila.meta || {}).oos,
-          });
-          await api.post("/api/bot/encender", { bot: archivo, modo: "practica", exchange: "binance",
-                                                estrategia_id: d.id, porcion: (plan.porciones[d.id] || 0) / 100 });
-          prendidos += 1;
+          try {
+            const archivo = await api.post("/api/export/bingx/objeto", {
+              spec: fila.spec, name: fila.name, dataset_id: (fila.meta || {}).dataset_id,
+              timeframe: (fila.meta || {}).timeframe, settings: { commission_pct: (fila.meta || {}).commission },
+              metrics: (fila.meta || {}).metrics, oos: (fila.meta || {}).oos,
+            });
+            await api.post("/api/bot/encender", { bot: archivo, modo: "practica", exchange: "binance",
+                                                  estrategia_id: d.id, porcion: (plan.porciones[d.id] || 0) / 100 });
+            prendidos += 1;
+          } catch (err) { fallos.push(`${fila.name}: ${err.message}`); }
         }
-        toast(t("conj.encendido", { n: prendidos }), "ok");
+        toast(fallos.length
+          ? t("conj.parcial", { n: prendidos, f: fallos.length, motivo: fallos[0] })
+          : t("conj.encendido", { n: prendidos }), fallos.length ? "err" : "ok");
         close(); SEL_PF.clear(); navigate("operar", "bot");
       } catch (e) {
         toast(t("conj.fallo", { n: prendidos, err: e.message }), "err");

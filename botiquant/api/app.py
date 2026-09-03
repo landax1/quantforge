@@ -3792,6 +3792,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             botones = (f"<a class='btn pri' href='/api/s/{e(codigo)}/pine' download>Usar en TradingView</a>"
                        f"<a class='btn' href='/api/s/{e(codigo)}/mql5' download>Usar en MetaTrader 5</a>")
         botones += "<a class='btn' href='/'>Abrir en BotiQuant</a>"
+        # LOS COSTOS, DICHOS: la página cerraba con "con los costos indicados"
+        # y no indicaba ninguno (2 de septiembre).
+        c = d.get("costos") or {}
+        partes = []
+        if c.get("commission_pct"):
+            partes.append(f"comisión {num(c['commission_pct'], 3)}%")
+        if c.get("spread"):
+            partes.append(f"spread {num(c['spread'], 2)}")
+        if c.get("slippage"):
+            partes.append(f"deslizamiento {num(c['slippage'], 3)}")
+        if c.get("initial_capital"):
+            partes.append(f"capital inicial {num(c['initial_capital'], 0)}")
+        costos_txt = ("Costos: " + " · ".join(partes) + ". ") if partes else ""
         return f"""<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'>
 <meta name='robots' content='noindex'>
 <title>{e(titulo)} · BotiQuant</title>
@@ -3826,7 +3839,7 @@ h1{{font-size:28px;margin:0 0 4px;letter-spacing:-.02em}}.sub{{color:var(--dim);
 {('<div class="graf">' + grafico + '</div>') if grafico else ''}
 {('<div class="reglas"><b>Reglas</b><ul>' + reglas + '</ul>' + ('<p style="margin:8px 0 0;color:var(--dim);font-size:13px">' + e(d.get('salidas') or '') + '</p>' if d.get('salidas') else '') + '</div>') if reglas else ''}
 <div class='btns'>{botones}</div>
-<p class='pie'>Medida sobre datos históricos con los costos indicados. No es una recomendación de inversión: probala en una cuenta demo antes de ponerle plata.</p>
+<p class='pie'>{costos_txt}Medida sobre datos históricos con esos costos. No es una recomendación de inversión: probala en una cuenta demo antes de ponerle plata.</p>
 </main></body></html>"""
 
     @app.get("/api/descarga")

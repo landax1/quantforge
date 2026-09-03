@@ -254,6 +254,7 @@ const STR = {
   "comp.copiar": ["Copy", "Copiar"],
   "comp.copiado": ["Copied", "Copiado"],
   "comp.abrir": ["Open", "Abrir"],
+  "comp.otro": ["Create another link", "Crear otro enlace"],
   "comp.nota": ["You can turn it off whenever you like from Learn → My links.", "Lo podés apagar cuando quieras desde Aprender → Mis enlaces."],
   "comp.mis_enlaces": ["My links", "Mis enlaces"],
   "comp.mis_enlaces_sub": ["The strategies you shared. Turning one off makes its link stop opening at once.", "Las estrategias que compartiste. Apagar una hace que su enlace deje de abrir en el acto."],
@@ -1539,6 +1540,7 @@ const STR = {
     "From each strategy's backtest, aggregated. An expectation, not a promise: the traffic light will say if it stops being true.",
     "Del backtest de cada una, agregado. Una expectativa, no una promesa: el semáforo va a avisar si deja de cumplirse."],
   "conj.ops_cortas": ["{n} ops/mo", "{n} ops/mes"],
+  "conj.parcial": ["{n} turned on, {f} could not: {motivo}", "{n} encendidas, {f} no se pudieron: {motivo}"],
   "conj.encendido": ["{n} bots running", "{n} bots encendidos"],
   "conj.fallo": [
     "Started {n} and then one failed: {err}. The ones already running stay on.",

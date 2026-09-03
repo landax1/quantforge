@@ -100,3 +100,14 @@ def test_hay_un_tope_por_dia(c):
 def test_un_enlace_que_no_existe(c):
     assert c.get("/s/nada").status_code == 404
     assert c.get("/api/s/nada").status_code == 404
+
+
+def test_la_pagina_dice_con_que_costos_se_midio(c):
+    """Cerraba con \"con los costos indicados\" sin indicar ninguno, y el
+    documento traía los del mercado en pantalla en vez de los de la
+    estrategia (2 de septiembre de 2026)."""
+    d = c.post("/api/compartir", json=_doc()).json()
+    pagina = c.get(f"/s/{d['codigo']}").text
+    assert "Costos:" in pagina
+    assert "comisión" in pagina and "0.040" in pagina
+    assert "capital inicial" in pagina
