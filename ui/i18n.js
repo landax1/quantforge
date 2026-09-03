@@ -29,7 +29,11 @@ const STR = {
   "nav.mining": ["Search", "Buscar"],
   "nav.operar_cfd": ["Take to MetaTrader", "Llevar a MetaTrader"],
   "nav.ajustes": ["Settings", "Ajustes"],
-  "nav.aprobadas": ["Approved", "Aprobadas"],
+  /* "APROBADAS" CONTRADECÍA A SUS PROPIAS FILAS: adentro conviven las que
+     aprobaron y las que aguantaron a medias, y tres usuarios de prueba
+     leyeron "Aprobadas" con todas las filas en ámbar (2 de septiembre).
+     "Las que aguantaron" es cierto para las dos. */
+  "nav.aprobadas": ["They held", "Las que aguantaron"],
   "nav.piloto_avanzado": ["Autopilot (advanced)", "Automático (avanzado)"],
   /* LAS BANDEJAS: cada una contiene sólo lo que necesita una decisión ahora. */
   "saved.sub_aprobadas": ["They held on data they never saw. \"Partly held\" means it made money in most stretches but kept less of its edge outside: worth running in demo, not worth trusting blind. Turn one on, or combine several into a portfolio.",
@@ -41,7 +45,7 @@ const STR = {
      se queda a la vista, con su porqué, hasta que se limpia. */
   "flujo.trajimos": ["Brought from Search", "Trajimos de Buscar"],
   "flujo.trajimos_sub": ["{n} being tested", "{n} en prueba"],
-  "flujo.aprobadas": ["Approved", "Aprobadas"],
+  "flujo.aprobadas": ["They held", "Las que aguantaron"],
   "flujo.aprobadas_sub": ["{n} held on data they never saw", "{n} aguantaron datos que no vieron"],
   "flujo.no_pasaron": ["Did not hold", "No pasaron"],
   "flujo.no_pasaron_sub": ["{n} were describing the past", "{n} describían el pasado"],
@@ -2103,7 +2107,7 @@ const STR = {
   /* LAS CUATRO ETAPAS DEL CAMINO, que también son los filtros de la lista. */
   "etapa.por_probar": ["To test", "Por probar"],
   "etapa.por_probar_sub": ["just found · test them", "recién encontradas · probalas"],
-  "etapa.aprobadas": ["Approved", "Aprobadas"],
+  "etapa.aprobadas": ["They held", "Las que aguantaron"],
   "etapa.aprobadas_sub": ["{n} partly held", "{n} a medias"],
   "etapa.aprobadas_sub0": ["held on data they never saw", "aguantaron datos que no vieron"],
   "etapa.operando": ["Trading", "Operando"],

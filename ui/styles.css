@@ -713,7 +713,7 @@ button.btn {
 }
 button.btn:hover { background: var(--accent-hover); }
 button.btn:active { background: var(--accent-active); }
-button.btn:disabled { opacity: .4; cursor: default; background: var(--accent); }
+button.btn:disabled { opacity: .4; cursor: not-allowed; background: var(--accent); }
 button.btn.ghost {
   background: var(--card-2); color: var(--text-2); border-color: var(--border);
 }
