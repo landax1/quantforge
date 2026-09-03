@@ -430,3 +430,21 @@ def test_el_ciclo_no_promueve_lo_que_salio_sobreajustado_fuera_de_muestra(tmp_pa
             assert buena in t.ids and mala not in t.ids
     finally:
         orq.ORQUESTADOR = None
+
+
+def test_el_ciclo_y_reencender_anotan_de_que_estrategia_salio_el_bot():
+    """El botón manual ya guardaba `estrategia_id` en el documento del bot;
+    el ciclo y "reencender" pasaban por otro camino y no. Tras un reinicio
+    los ocho robots volvían sin id y la lista no podía saber cuáles estaban
+    de verdad en el aire: "Operar 8" contra "Operando 9" (3 de septiembre de
+    2026). No hay Binance en la suite, así que se mira el camino compartido."""
+    import inspect
+    import re
+    from botiquant.api import app as mod
+
+    fuente = inspect.getsource(mod)
+    i = fuente.index("def _encender_del_ciclo")
+    cuerpo = fuente[i:fuente.index("PILOTO.encender(Bot(", i)]
+    assert re.search(r'doc\["estrategia_id"\]\s*=\s*str\(fila\.get\("id"\)', cuerpo), (
+        "el camino del ciclo tiene que anotar de qué estrategia salió el bot "
+        "ANTES de encenderlo")

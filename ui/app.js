@@ -5346,16 +5346,20 @@ PAGES.saved = async (main) => {
 let COLA_PRUEBAS = null;
 const COLA_PENDIENTE = [];
 
-/* GUARDAR YA ES PROBAR. Nadie guarda una estrategia para no probarla: lo
-   que se manda a Probar entra en la cola y llega con su veredicto. La cola
-   admite agregados mientras corre. */
+/* GUARDAR NO ES PROBAR. Acá decía lo contrario: "nadie guarda una estrategia
+   para no probarla", y lo que se mandaba a Probar entraba solo en la cola de
+   walk-forward. Con una búsqueda que deja veinticinco, eran veinticinco
+   pruebas de cuatro tramos cada una arrancando sin que nadie las pidiera, y el
+   servidor quedaba ocupado hasta que la aplicación se arrastraba: abrir una
+   ficha tardaba más de 45 segundos. El usuario lo dijo con todas las letras
+   el 3 de septiembre de 2026: "eso lo debería hacer manualmente el usuario".
+
+   Ahora mandar a Probar las deja en la bandeja Probar, contadas y a la vista.
+   Probar es un botón: "Probar N" con las elegidas, o "Probar las N que
+   faltan" arriba de la lista. La cola sigue existiendo para eso. */
 function encolarPruebas(ids) {
-  const nuevos = (ids || []).filter(id => id && !COLA_PENDIENTE.some(x => x.id === id));
-  if (!nuevos.length) return;
-  const porId = Object.fromEntries((S.saved || []).map(x => [x.id, x]));
-  nuevos.forEach(id => COLA_PENDIENTE.push(porId[id] || { id, name: "" }));
-  if (COLA_PRUEBAS) { toast(t("saved.en_cola", { n: COLA_PENDIENTE.length }), "ok"); return; }
-  probarVarias(COLA_PENDIENTE.splice(0), document);
+  const n = (ids || []).filter(Boolean).length;
+  if (n) refreshSavedCount();
 }
 
 async function probarVarias(lista, main) {

@@ -61,3 +61,14 @@ def test_la_relacion_riesgo_beneficio_cabe_en_su_frase():
     1:0.75" dejaba la frase en "a anywhere from…"."""
     m = re.search(r'"rr\.varias":\s*\["([^"]+)"', I18N)
     assert m and not m.group(1).lower().startswith(("anywhere", "a ", "an ")), m.group(1)
+
+
+def test_mandar_a_probar_no_arranca_ninguna_prueba():
+    """"Cuando minan las estrategias, después se pasan el test solas y se
+    rompe la plataforma" (el usuario, 3 de septiembre de 2026). Guardar
+    encolaba el walk-forward de cada una; ahora sólo las deja en Probar y
+    probar es un botón."""
+    cuerpo = APP[APP.index("function encolarPruebas"):]
+    cuerpo = cuerpo[:cuerpo.index(chr(10) + "}" + chr(10))]
+    assert "probarVarias(" not in cuerpo and "COLA_PENDIENTE" not in cuerpo, (
+        "mandar a Probar volvió a arrancar pruebas por su cuenta")

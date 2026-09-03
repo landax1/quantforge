@@ -3076,6 +3076,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             if f.get("accion") in ("abrir", "cerrar"):
                 db.anotar_operacion(sid, f)
 
+        # De qué estrategia salió, también por este camino: el botón manual
+        # ya lo anotaba y el ciclo y "reencender" no, así que tras un
+        # reinicio los ocho robots volvían sin id y la lista no podía saber
+        # cuáles estaban de verdad en el aire (3 de septiembre de 2026).
+        doc["estrategia_id"] = str(fila.get("id") or "")
         PILOTO.encender(Bot(
             doc=doc, adaptador=Binance(api_key, secret), modo=PRACTICA,
             porcion=porcion, oyente=anotar, adoptar=adoptar))

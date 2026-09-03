@@ -647,7 +647,7 @@ const STR = {
   "run.history": ["How the best score improved", "Evolución del mejor score"],
   "run.history_hint": ["how the search got better over time", "cómo fue mejorando la búsqueda"],
   "bank.guardar_todas": ["Send all {n} to Test", "Mandar las {n} a Probar"],
-  "bank.guardadas_n": ["{n} sent to Test", "{n} mandadas a Probar"],
+  "bank.guardadas_n": ["{n} sent to Test. Test them when you want: nothing runs on its own.", "{n} mandadas a Probar. Probalas cuando quieras: nada corre solo."],
   "run.bank_hint": [
     "{n} strategies ranked by score (robustness, not profit) · click any of them for the full analysis",
     "{n} estrategias ordenadas por score (robustez, no rentabilidad) · clic en cualquiera para analizarla a fondo"],
