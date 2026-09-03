@@ -8540,7 +8540,7 @@ function cablearNota(box, ctx) {
    Cuando todavía no se probó, este mismo lugar es la invitación a hacerlo: un
    botón y una frase de por qué conviene. Es lo que convierte una lista de
    estrategias en algo que tiene un siguiente paso. */
-function panelPrueba(ctx) {
+function panelPrueba(ctx, row) {
   if (!PRUEBAS) return "";
   if (!ctx || !ctx.strategy_id) return "";       // una fila del banco no se prueba
   const v = ctx.validacion || {};
@@ -8573,9 +8573,22 @@ function panelPrueba(ctx) {
         <b>${fmtNum(v.eficiencia, 2)}</b></div>
       <div class="metric"><span>${esc(t("wf.m_consistency"))}</span>
         <b>${v.tramos_ganadores}/${v.tramos}</b></div>
-      <div class="metric"><span>${esc(t("wf.m_oos_return"))}</span>
+      ${/* DOS "FUERA DE MUESTRA" QUE NO ERAN EL MISMO. El banco muestra el
+            tramo que la búsqueda se guardó (0,94× sobre 2024-07 → 2026-08) y
+            acá salía el de la prueba de robustez (+21,43% sobre 2021-06 →
+            2024-07). Los dos se llamaban igual y medían ventanas distintas,
+            así que ninguno de los dos se podía creer (3 de septiembre). */ ""}
+      <div class="metric"><span>${esc(t("wf.m_oos_return"))}
+          <em title="${esc(t("wf.m_oos_return_help"))}">?</em></span>
         <b class="${(v.retorno_fuera_pct ?? 0) >= 0 ? "pos" : "neg"}">${
           fmtPct(v.retorno_fuera_pct)}</b></div>
+      ${(() => {
+        const q = (row || {}).oos_ratio;
+        if (q == null) return "";
+        return `<div class="metric"><span>${esc(t("wf.m_tramo_guardado"))}
+          <em title="${esc(t("col.oos_help"))}">?</em></span>
+        <b class="${q >= 0.8 ? "pos" : q >= 0.5 ? "" : "neg"}">${fmtNum(q, 2)}×</b></div>`;
+      })()}
       ${mc ? `<div class="metric"><span>${esc(t("wf.m_bad_run"))}
           <em title="${esc(t("wf.m_bad_run_help"))}">?</em></span>
         <b class="${nivelDD(mc.dd_malo_pct, riesgoActual())}">${
@@ -8905,7 +8918,7 @@ function renderInspector(box, row, res, ctx) {
     d => d.id === (ctx ? ctx.dataset_id : S.sel.dataset_id));
   const esCripto = (dsBot || {}).source === "binance";
 
-  box.innerHTML = avisoRango + panelPrueba(ctx) + `
+  box.innerHTML = avisoRango + panelPrueba(ctx, row) + `
   <!-- Las tres vistas, sólo si la corrida reservó un tramo. Van ACÁ arriba de
        todo porque mandan sobre todo lo que sigue: el score, las cifras, la
        curva, el mapa mensual y las operaciones. Un control tiene que ir antes

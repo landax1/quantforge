@@ -2109,7 +2109,11 @@ const STR = {
     "How much of the in-sample performance survived outside it. 1.0 means it survived whole; 0.5 is normal and healthy; near 0 means the strategy was describing the past.",
     "Cuánto del rendimiento sobrevivió afuera. 1.0 es que sobrevivió entero; 0.5 es lo normal y sano; cerca de 0 es que la estrategia describía el pasado."],
   "wf.m_consistency": ["Winning stretches", "Tramos ganadores"],
-  "wf.m_oos_return": ["Return out of sample", "Retorno fuera de muestra"],
+  "wf.m_oos_return": ["Return in the robustness test", "Retorno en la prueba de robustez"],
+  "wf.m_oos_return_help": [
+    "Stitched from the newer stretch of each fold of this test, over its own window — which is not the stretch the search kept for later. Two honest numbers over two different periods.",
+    "Cosido con el tramo nuevo de cada fold de esta prueba, sobre su propia ventana — que no es el tramo que la búsqueda se guardó. Dos números honestos sobre dos períodos distintos."],
+  "wf.m_tramo_guardado": ["Stretch the search kept", "Tramo que se guardó la búsqueda"],
   "wf.m_bad_run": ["Worst plausible drawdown", "Peor caída plausible"],
   "wf.m_bad_run_help": [
     "From Monte Carlo: the same trades dealt in a different order a thousand times. The total profit comes out identical every time — what changes is the path, so this is how deep the hole could have been before it paid off.",
