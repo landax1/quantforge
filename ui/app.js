@@ -516,8 +516,10 @@ function documentoCompartible(row, ctx, res, nivel, autor) {
     timeframe: (ctx ? ctx.timeframe : S.sel.timeframe) || "1h",
     direccion: (g.direction || ctx?.direction || S.cfg.direction || ""),
     bloques: row.blocks || "", reglas, salidas: salidasEnCastellano(row).replace(/&[a-z#0-9]+;/g, " "),
-    costos: { spread: +g.spread || +S.cfg.spread || 0, slippage: +g.slippage || +S.cfg.slippage || 0,
-              commission_pct: +g.commission || +S.cfg.commission || 0, initial_capital: +g.capital || +S.cfg.capital || 10000 },
+    /* Los costos de LA ESTRATEGIA, no del mercado elegido ahora. Con `||`
+       un spread de 0 real se perdía y salía el del mercado en pantalla. */
+    costos: { spread: +(g.spread ?? S.cfg.spread ?? 0), slippage: +(g.slippage ?? S.cfg.slippage ?? 0),
+              commission_pct: +(g.commission ?? S.cfg.commission ?? 0), initial_capital: +(g.capital ?? S.cfg.capital ?? 10000) },
     metricas: m,
     curva: muestra(res && res.equity, 240),
     fechas: muestra(res && res.timestamps, 240).map(x => String(x).slice(0, 10)),
@@ -525,6 +527,7 @@ function documentoCompartible(row, ctx, res, nivel, autor) {
                                   eficiencia: v.eficiencia, retorno_fuera_pct: v.retorno_fuera_pct,
                                   detalle: v.detalle ? { tramos: v.detalle.tramos } : null } : null,
     mundo: S.mundo, spec: row.spec,
+    utc_offset: ds && ds.utc_offset != null ? ds.utc_offset : (S.cfg.brokerUtc || 0),
   };
 }
 
@@ -579,6 +582,13 @@ function abrirCompartir(row, ctx, res) {
         $("#comp-copiar", host).textContent = t("comp.copiado");
       };
     } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      }
       toast(e.message, "err");
       crear.disabled = false;
       crear.innerHTML = `${icono("seguir")} ${esc(t("comp.crear"))}`;
@@ -653,7 +663,8 @@ function animarCifras(root) {
    van marcando solas y desaparecen cuando están los tres. La primera vez
    decide si el usuario vuelve, y esto le dice qué sigue sin explicarle nada. */
 const PRIMEROS = ["buscaste", "probaste", "encendiste"];
-const PP_ROTULO = () => ({ buscaste: t("pp.buscaste"), probaste: t("pp.probaste"), encendiste: t("pp.encendiste") });
+const PP_ROTULO = () => ({ buscaste: t("pp.buscaste"), probaste: t("pp.probaste"),
+                           encendiste: t(S.mundo === "metatrader" ? "pp.exportaste" : "pp.encendiste") });
 function primerPaso(cual) {
   try { localStorage.setItem("qf.pp." + cual, "1"); } catch (e) { /* nada */ }
   marcarPrimerosPasos();
@@ -833,7 +844,14 @@ function atarPanelPiloto(caja) {
       PILOTO_PARAMS = { ...(r.params || p) };
       toast(t("pil.guardado"), "ok");
       const est = $("[data-pil-estado]", caja); if (est) est.textContent = t("pil.guardado");
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
     g.disabled = false;
   };
 }
@@ -998,7 +1016,19 @@ const api = {
     const r = await fetch(url, opts);
     if (!r.ok) {
       let msg = `${r.status}`;
-      try { msg = (await r.json()).detail || msg; } catch (e) { /* noop */ }
+      try {
+        const d = (await r.json()).detail;
+        /* El detalle puede ser un objeto (las compuertas del bot mandan
+           {mensaje, puertas}); mostrarlo crudo daba "[object Object]". */
+        msg = (d && typeof d === "object") ? (d.mensaje || d.detail || JSON.stringify(d)) : (d || msg);
+      } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } /* noop */ }
       // el código viaja con el error para que quien llama pueda distinguir
       // "falta cuenta" de un fallo cualquiera
       throw Object.assign(new Error(msg), { status: r.status });
@@ -1181,8 +1211,16 @@ function puedeBorrar(d) {
    par: "BTCUSDT H1" → btc. Lo que no tiene logo sigue con sus iniciales. */
 const LOGOS_CRIPTO = new Set(["btc", "eth", "bnb", "sol", "xrp", "doge", "ada",
                               "link", "sui", "arb", "uni", "xmr", "zec"]);
+/* Y LOS DE METATRADER 5: banderas (flag-icons, licencia MIT) para índices,
+   pares y bonos; marcas propias para oro, petróleo y gas. */
+const LOGOS_CFD = { sp500: "us", eurusd: "eu", xauusd: "xau", bund: "de", wti: "wti", gas: "gas", btcusd: "btc" };
 function logoCripto(nombre, cls = "logo-cripto") {
   const token = String(nombre || "").trim().split(/\s+/)[0].toLowerCase();
+  const cfd = LOGOS_CFD[token];
+  if (cfd) {
+    const carpeta = cfd === "btc" ? "cripto" : "cfd";
+    return `<img class="${cls}" src="/static/iconos/${carpeta}/${cfd}.svg" alt="" width="32" height="32">`;
+  }
   const m = token.match(/^([a-z]+?)(usdt|usd|busd|usdc)$/);
   const moneda = m ? m[1] : token;
   if (!LOGOS_CRIPTO.has(moneda)) return "";
@@ -2102,6 +2140,13 @@ async function abrirPortafolio(elegidas) {
         toast(t("conj.encendido", { n: prendidos }), "ok");
         close(); SEL_PF.clear(); navigate("operar", "bot");
       } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      }
         toast(t("conj.fallo", { n: prendidos, err: e.message }), "err");
         encConj.disabled = false;
       }
@@ -2131,7 +2176,14 @@ async function abrirPortafolio(elegidas) {
         (d.avisos || []).forEach(a => toast(a.texto, "warn"));
         toast(t("pf.export_ok", { n: (d.archivos || []).length,
                                   carpeta: d.carpeta }), "ok");
-      } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
+      } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } if (!pedirCuenta(e.status)) toast(e.message, "err"); }
       bajar.disabled = false;
     };
   } catch (e) {
@@ -2734,9 +2786,14 @@ function tarjetaVuelo(v) {
 
     ${(v.registro || []).length ? `
     <div class="bot-registro mt">
-      ${v.registro.slice(0, 5).map(f => `
+      ${/* SÓLO LO QUE PASÓ, y la última vuelta: el robot mira cada cinco
+            minutos y anotaba "esperó · sin señal" cinco veces seguidas; se ve
+            la última espera y todas las acciones. Hora local, como la vela. */
+        [...v.registro.filter(f => f.accion && f.accion !== "nada").slice(0, 4),
+         ...(v.registro[0] && v.registro[0].accion === "nada" ? [v.registro[0]] : [])]
+        .sort((a, b) => String(b.cuando).localeCompare(String(a.cuando))).map(f => `
         <div class="bot-fila">
-          <span class="bot-hora">${esc(String(f.cuando || "").slice(11, 19))}</span>
+          <span class="bot-hora">${esc(horaLocal(f.cuando))}</span>
           <span class="bot-que">${esc(rotuloAccion(f.accion))}</span>
           <span class="bot-det">${esc(f.bloqueado || f.error || f.motivo || "")}</span>
         </div>`).join("")}
@@ -2813,7 +2870,14 @@ function atarVuelos(main) {
         await api.post("/api/bot/apagar", { simbolo: b.dataset.apagar });
         toast(t("bot.apagado"), "ok");
         await navigate("operar");
-      } catch (e) { toast(e.message, "err"); }
+      } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
       b.disabled = false;
     };
   });
@@ -2826,7 +2890,14 @@ function atarVuelos(main) {
         toast(t("bot.panico_hecho"), "ok");
         await navigate("operar");
         if (r && r.cerrado) console.info("[bot] pánico:", r.cerrado);
-      } catch (e) { toast(e.message, "err"); }
+      } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
       b.disabled = false;
     };
   });
@@ -2837,7 +2908,14 @@ function atarVuelos(main) {
       await api.post("/api/bot/apagar", {});
       toast(t("bot.apagado"), "ok");
       await navigate("operar");
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
     todos.disabled = false;
   };
 }
@@ -3333,7 +3411,14 @@ const vistaBot = async (main, hayClave) => {
                               abiertas: fmtInt((d.posiciones || []).length),
                               mejor: mejor ? t("op.historia_mejor", { sim: mejor[0], pnl: (mejor[1] > 0 ? "+" : "") + fmtNum(mejor[1], 2) }) : "" })
         : t("op.historia_nada");
-    } catch (e) { $(".help-note", caja).textContent = e.message; }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } $(".help-note", caja).textContent = e.message; }
   })();
 
   /* Lo que corre se redibuja solo cada treinta segundos: el robot decide una
@@ -3400,6 +3485,13 @@ const vistaTablero = async (main, hayClave) => {
     try {
       d = await api.get("/api/cuenta/rendimiento");
     } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      }
       caja.innerHTML = `<div class="card"><div class="bot-alerta">
         <span class="g-ic">${icono("alerta")}</span>
         <span>${esc(e.message)}</span></div></div>`;
@@ -3640,7 +3732,14 @@ const vistaClaves = async (main, por) => {
            la función más fuerte del producto, y escondida no existe. Si
            venía de "Encender" en Probar, vuelve ahí con la elegida. */
         await navigate("operar", PREELEGIDA ? "bot" : "piloto");
-      } catch (e) { toast(e.message, "err"); b.innerHTML = original; }
+      } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); b.innerHTML = original; }
       b.disabled = false;
     };
   });
@@ -3653,7 +3752,14 @@ const vistaClaves = async (main, por) => {
       try {
         pintarPasos(casa, entorno,
                     await api.post(`/api/exchanges/${casa}/${entorno}/comprobar`, {}));
-      } catch (e) { toast(e.message, "err"); }
+      } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
       b.disabled = false;
     };
   });
@@ -3674,7 +3780,14 @@ const vistaClaves = async (main, por) => {
         await api.del(`/api/exchanges/${casa}/${entorno}`);
         toast(t("ex.borrada"), "ok");
         await navigate("operar");
-      } catch (e) { toast(e.message, "err"); }
+      } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
     };
   });
 };
@@ -3951,6 +4064,13 @@ PAGES.data = async (main) => {
                              n: meta.rows.toLocaleString(localeNum()) }), "ok");
       navigate("data");
     } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      }
       toast(t("data.download_failed", { motivo: e.message }), "err");
       hideProgress("dl-prog");
       $$("[data-dl]", main).forEach(x => x.disabled = false);
@@ -4006,7 +4126,14 @@ PAGES.data = async (main) => {
         j => setProgress("imp-prog", j));
       toast(t("data.imported", { nombre: meta.name, n: fmtInt(meta.rows) }), "ok");
       navigate("data");
-    } catch (e) { toast(e.message, "err"); hideProgress("imp-prog"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); hideProgress("imp-prog"); }
     const btn = $("#imp-go"); if (btn) btn.disabled = false;
   };
 
@@ -4022,7 +4149,14 @@ PAGES.data = async (main) => {
       const meta = await r.json();
       toast(t("data.uploaded", { nombre: meta.name, n: fmtInt(meta.rows) }), "ok");
       navigate("data");
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
   };
 
   $$("[data-del]", main).forEach(b => b.onclick = async () => {
@@ -4279,6 +4413,31 @@ let FILTRO_ETAPA = "vigentes";
 /* La estrategia que Probar manda a encender: Operar la preelige. */
 let PREELEGIDA = null;
 
+/* LO PROBADO SE QUEDA EN PROBAR HASTA QUE SE LIMPIA. Antes desaparecía al
+   segundo de terminar y el usuario no veía por qué pasó o no pasó. Ahora
+   sigue a la vista con su porqué; "Limpiar" lo saca de acá (ya está en su
+   bandeja). Lo limpiado se recuerda en esta máquina. */
+function limpiadas() {
+  try { return new Set(JSON.parse(localStorage.getItem("qf.limpiadas") || "[]")); } catch (e) { return new Set(); }
+}
+function limpiar(ids) {
+  const set = limpiadas(); ids.forEach(id => set.add(id));
+  try { localStorage.setItem("qf.limpiadas", JSON.stringify([...set].slice(-500))); } catch (e) { /* nada */ }
+}
+
+/* El resumen de la prueba, en una celda: tramos, eficiencia, afuera, caída. */
+function pruebaResumen(s) {
+  const v = s.validacion || {};
+  if (!v.estado) return `<span class="muted">—</span>`;
+  const partes = [];
+  if (v.tramos) partes.push(`${v.tramos_ganadores ?? "?"}/${v.tramos}`);
+  if (v.eficiencia != null) partes.push(`ef ${fmtNum(v.eficiencia, 2)}`);
+  if (v.retorno_fuera_pct != null) partes.push(`<b class="${v.retorno_fuera_pct >= 0 ? "pos" : "neg"}">${fmtPct(v.retorno_fuera_pct)}</b>`);
+  if (v.mc && v.mc.dd_malo_pct != null) partes.push(`<span class="muted">dd ${fmtNum(v.mc.dd_malo_pct, 1)}%</span>`);
+  return `<span class="prueba-res">${partes.join(" · ")}</span>`;
+}
+let REINTENTO_OCUPADO = null;
+
 /* ENCENDER ES UN CLIC. La porción sale de la misma regla del Piloto —la
    cuenta repartida entre los robots que puede haber— y el modo es demo,
    siempre. Sin cuenta conectada, manda a conectarla y guarda la elegida. */
@@ -4297,6 +4456,9 @@ async function encenderDirecto(s, boton) {
       settings: { commission_pct: m.commission }, metrics: m.metrics, oos: m.oos,
     });
     const [e, c] = await Promise.all([api.get("/api/bot"), api.get("/api/ciclo").catch(() => null)]);
+    if ((e.vuelos || []).filter(v => v.encendido).length >= (e.maximo || 8)) {
+      throw Object.assign(new Error(t("bot.sin_lugar") + ". " + t("bot.sin_lugar_sub")), { status: 409 });
+    }
     const libre = typeof e.porcion_libre === "number" ? e.porcion_libre : 1;
     const max = (c && c.params && c.params.max_en_practica) || e.maximo || 8;
     const porcion = Math.max(0.01, Math.min(libre, Math.round(100 / max) / 100));
@@ -4486,7 +4648,8 @@ PAGES.saved = async (main) => {
         m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
       <td class="num ${nivelDD(m.max_drawdown_pct, riesgoDeCtx(ctx))}">${
         m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
-      ${PRUEBAS ? `<td class="celda-estado ${RECIEN_PROBADAS.delete(s.id) ? "chip-cambia" : ""}">${chipEtapa(s)}</td>` : ""}
+      ${PRUEBAS ? `<td class="celda-estado ${RECIEN_PROBADAS.delete(s.id) ? "chip-cambia" : ""}">${chipEtapa(s)}</td>
+      <td class="celda-prueba">${pruebaResumen(s)}</td>` : ""}
       <td class="num" style="white-space:nowrap">
         ${/* LA ACCIÓN DICE EL PASO SIGUIENTE, según la etapa: probar las
               nuevas, encender las aprobadas, ver el robot de las que operan,
@@ -4525,14 +4688,40 @@ PAGES.saved = async (main) => {
   };
   /* LAS DESCARTADAS NO SE VEN POR DEFECTO: la lista que se mira es la de
      las que valen. Están a un clic, en su etapa o en "ver todas". */
-  const visibles = porEtapa[BANDEJA];
+  const yaLimpias = limpiadas();
+  const recienProbadas = items.filter(x => !estaRetirada(x) && etapaDe(x) !== "operando"
+    && ["aprobadas", "descartadas"].includes(etapaDe(x)) && !yaLimpias.has(x.id));
+  const visibles = BANDEJA === "por_probar"
+    ? [...porEtapa.por_probar, ...recienProbadas]
+    : porEtapa[BANDEJA];
   /* Una línea con lo que hay en las otras bandejas, con enlaces: para saber
      cuánto hay sin verlo todo junto. */
   const enlace = (v, txt) => `<button class="linkbtn ${BANDEJA === v ? "on" : ""}" data-bandeja="${v}">${esc(txt)}</button>`;
-  const camino = `<div class="bandejas-linea">
+  /* EL FLUJO, EN PROBAR: una caja con lo que trajimos y dos con a dónde
+     fue cada una, con las cuentas de esta tanda. */
+  const flujo = BANDEJA !== "por_probar" ? "" : (() => {
+    const ok = recienProbadas.filter(x => etapaDe(x) === "aprobadas").length;
+    const mal = recienProbadas.filter(x => etapaDe(x) === "descartadas").length;
+    return `<div class="flujo">
+      <div class="flujo-caja ${porEtapa.por_probar.length ? "on" : ""}">
+        <b>${esc(t("flujo.trajimos"))}</b><span class="flujo-n">${porEtapa.por_probar.length}</span>
+        <span class="flujo-sub">${esc(t("flujo.trajimos_sub", { n: porEtapa.por_probar.length }))}</span></div>
+      <i class="flujo-flecha" aria-hidden="true"></i>
+      <div class="flujo-ramas">
+        <div class="flujo-caja ok ${ok ? "on" : ""}"><b>${esc(t("flujo.aprobadas"))}</b><span class="flujo-n">${ok}</span>
+          <span class="flujo-sub">${esc(t("flujo.aprobadas_sub", { n: ok }))}</span></div>
+        <div class="flujo-caja mal ${mal ? "on" : ""}"><b>${esc(t("flujo.no_pasaron"))}</b><span class="flujo-n">${mal}</span>
+          <span class="flujo-sub">${esc(t("flujo.no_pasaron_sub", { n: mal }))}</span></div>
+      </div>
+      ${recienProbadas.length ? `<div class="flujo-limpiar">
+        <button class="btn ghost small" id="flujo-limpiar">${icono("basura", "ico-sm")} ${esc(t("flujo.limpiar"))}</button>
+        <span class="help-note">${esc(t("flujo.limpiar_sub"))}</span></div>` : ""}
+    </div>`;
+  })();
+  const camino = flujo + `<div class="bandejas-linea">
       ${enlace("por_probar", t("nav.saved") + " · " + cuentas.p)}
       ${enlace("aprobadas", t("nav.aprobadas") + " · " + cuentas.a)}
-      <button class="linkbtn" data-ir-operar>${esc(t("etapa.operando") + " · " + cuentas.o)}</button>
+      ${S.mundo === "metatrader" ? "" : `<button class="linkbtn" data-ir-operar>${esc(t("etapa.operando") + " · " + cuentas.o)}</button>`}
       ${enlace("descartadas", t("saved.descartadas_t") + " · " + cuentas.d)}
     </div>`;
 
@@ -4587,7 +4776,8 @@ PAGES.saved = async (main) => {
           <th>${esc(t("col.strategy"))}</th><th>${esc(t("mine.market"))}</th>
           <th class="num">${esc(t("col.annual"))}</th>
           <th class="num">${esc(t("col.maxdd"))}</th>
-          ${PRUEBAS ? `<th title="${esc(t("est.help"))}">${esc(t("col.status"))}</th>` : ""}
+          ${PRUEBAS ? `<th title="${esc(t("est.help"))}">${esc(t("col.status"))}</th>
+          <th title="${esc(t("col.prueba_help"))}">${esc(t("col.prueba"))}</th>` : ""}
           <th></th></tr></thead>
         <tbody>${visibles.length ? visibles.map(fila).join("")
           : `<tr><td colspan="7"><div class="empty-state" style="padding:24px">${
@@ -4598,15 +4788,36 @@ PAGES.saved = async (main) => {
 
   $$("[data-bandeja]", main).forEach(b => b.onclick = () => navigate("saved", b.dataset.bandeja));
   const irOp = $("[data-ir-operar]", main); if (irOp) irOp.onclick = () => navigate("operar", "bot");
+  const limpiarBtn = $("#flujo-limpiar", main);
+  if (limpiarBtn) limpiarBtn.onclick = () => { limpiar(recienProbadas.map(x => x.id)); navigate("saved", "por_probar"); };
   const irB = $("#bandeja-ir", main);
   if (irB) irB.onclick = () => (BANDEJA === "aprobadas" ? navigate("mining", "buscar") : navigate("saved", "aprobadas"));
   if (BANDEJA === "por_probar") atarExplicacion(main, "prueba-pagina", PASOS_PRUEBA());
+  /* LA SALA DE ESPERA SE VACÍA SOLA. El Piloto prueba por su cuenta y la
+     pantalla no se enteraba hasta recargar: cada 20 s se pregunta, y si
+     cambió lo que hay en la bandeja se repinta (nunca mientras corre una
+     prueba desde acá, para no pisar sus barras). */
+  const huella = () => (S.saved || []).map(x => x.id + ":" + etapaDe(x) + ":" + ((x.validacion || {}).estado || "")).sort().join("|");
+  const antes = huella();
+  const vigia = setInterval(async () => {
+    if (!document.body.contains(main) || S.page !== "saved") { clearInterval(vigia); return; }
+    if (COLA_PRUEBAS) return;
+    await refreshSavedCount();
+    if (huella() !== antes) { clearInterval(vigia); navigate("saved", S.vista); }
+  }, 20000);
   /* ABIERTA LA PRIMERA VEZ, PLEGADA DESPUÉS: la primera vez es la única en
      que hace falta leerla; después molesta. */
   try { localStorage.setItem("qf.vio_prueba", "1"); } catch (e) { /* nada */ }
   const faltan = $("#probar-faltan", main);
-  if (faltan) faltan.onclick = () => probarVarias(
-    items.filter(x => !estaRetirada(x) && estadoDe(x) === "sin_probar"), main);
+  if (faltan) faltan.onclick = () => {
+    /* EL CARTEL SE APAGA AL APRETARLO: seguía ofreciendo "probar las 5" con
+       las cinco ya en cola, y parecía que había que volver a apretar. */
+    const n = faltan.textContent.match(/\d+/)?.[0] || "";
+    faltan.disabled = true;
+    faltan.replaceWith(Object.assign(document.createElement("span"),
+      { className: "help-note", textContent: t("saved.probando_faltan", { n }) }));
+    probarVarias(items.filter(x => !estaRetirada(x) && estadoDe(x) === "sin_probar"), main);
+  };
 
   /* LA BARRA DE SELECCIÓN SIRVE DESDE UNA. Antes aparecía recién con dos y
      sólo para combinar; ahora con una o más ofrece probar, combinar (dos o
@@ -4643,7 +4854,14 @@ PAGES.saved = async (main) => {
         SEL_PF.clear();
         toast(t("sel.borradas", { n }), "ok");
         navigate("saved");
-      } catch (e) { toast(e.message, "err"); }
+      } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
     };
   };
   pintarBarra();
@@ -4701,7 +4919,15 @@ PAGES.saved = async (main) => {
         server_utc_offset: S.cfg.brokerUtc,
       });
       toast(t("exp.saved_in", { archivo: r.archivo, carpeta: r.carpeta }), "ok");
-    } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
+      if (S.mundo === "metatrader") primerPaso("encendiste");
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     b.disabled = false;
   });
 
@@ -4720,7 +4946,14 @@ PAGES.saved = async (main) => {
       await api.post(`/api/strategies/${s.id}/estado`, { estado: "retirada", motivo: motivo.trim() });
       toast(t("saved.retirada"), "ok");
       navigate("saved");
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
   });
 
   $$("[data-del-strat]", main).forEach(b => b.onclick = async () => {
@@ -4730,7 +4963,14 @@ PAGES.saved = async (main) => {
       await api.del(`/api/strategies/${s.id}`);
       toast(t("saved.deleted"), "ok");
       navigate("saved");
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
   });
 };
 
@@ -4770,16 +5010,33 @@ async function probarVarias(lista, main) {
       avance = barraPrueba(boton.closest("tr")?.querySelector(".celda-estado") || null, boton);
     }
     try {
-      const r = await probarEstrategia(s.id, avance);
+      /* EL SERVIDOR PRUEBA DE A UNA. Si está ocupado —minando, o el Piloto
+         probando lo suyo— contesta 429; antes eso se contaba como error en
+         silencio. Ahora se espera lugar y se vuelve a intentar, diciéndolo. */
+      let r = null;
+      for (let intento = 0; ; intento++) {
+        try { r = await probarEstrategia(s.id, avance); break; }
+        catch (e) {
+          if (e.status !== 429 || intento >= 40) throw e;
+          avance({ progress: 0, message: t("sel.esperando") });
+          await sleep(15000);
+        }
+      }
       // el trabajo devuelve el veredicto arriba o bajo `validacion`, según
       // el camino; se acepta cualquiera de los dos
       const v = (r && (r.validacion || r)) || {};
       cuenta[v.estado in cuenta ? v.estado : "error"] += 1;
       RECIEN_PROBADAS.add(s.id);
       primerPaso("probaste");
-      const filaHecha = $(`[data-probar="${s.id}"]`, document)?.closest("tr");
-      if (filaHecha) { filaHecha.classList.add("se-va"); await sleep(380); filaHecha.remove(); }
+      if (S.page === "saved" && S.vista !== "aprobadas") await navigate("saved", S.vista);
     } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      }
       cuenta.error += 1;
       if (pedirCuenta(e.status)) break;
     }
@@ -4812,7 +5069,11 @@ function barraPrueba(anfitrion, boton) {
   return (j) => {
     const pct = Math.max(2, Math.round((j.progress || 0) * 100));
     $(".pp-bar i", barra).style.transform = `scaleX(${pct / 100})`;
-    $(".pp-det", barra).textContent = `${pct}%` + (j.message ? ` · ${j.message}` : "");
+    const m = String(j.message || "").match(/^Fold (\d+)\/(\d+): Evaluated (\d+)\/(\d+)/);
+    const que = m ? t("wf.avance", { k: m[1], n: m[2], i: m[3], m: m[4] })
+      : /rebaraj/i.test(j.message || "") ? t("wf.avance_baraja")
+      : /prepar/i.test(j.message || "") ? t("wf.avance_prepara") : (j.message || "");
+    $(".pp-det", barra).textContent = `${pct}%` + (que ? ` · ${que}` : "");
   };
 }
 
@@ -4831,8 +5092,6 @@ async function correrPrueba(s, boton) {
     /* LA FILA SE VA: lo probado deja Probar y aparece en su bandeja nueva.
        Se la ve salir antes de repintar, para que el movimiento cuente la
        regla de las bandejas. */
-    const fila = boton.closest("tr");
-    if (fila) { fila.classList.add("se-va"); await sleep(380); }
     if (S.page === "saved") await navigate("saved", S.vista); else await refreshSavedCount();
   } catch (e) {
     if (!pedirCuenta(e.status)) toast(e.message, "err");
@@ -5339,7 +5598,14 @@ function pintarCorridas() {
       pintarCorridas();
       pintarBanco();
       toast(t("bank.run_deleted"), "ok");
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
   };
 }
 
@@ -5504,6 +5770,13 @@ function pintarBanco() {
         const r = await api.post("/api/export/mql5/archivo", cuerpo);
         listas++; carpeta = r.carpeta; terminal = r.terminal || "";
       } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      }
         if (pedirCuenta(e.status)) break;
         fallaron.push(f.name);
       }
@@ -5531,6 +5804,13 @@ function pintarBanco() {
       await cargarBanco({ corridas: false, mas: true });
       pintarBanco();
     } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      }
       toast(e.message, "err");
       mas.disabled = false;
       mas.textContent = t("bank.load_more");
@@ -5629,7 +5909,14 @@ function cablearBanco(host) {
       refrescar();
       await refreshSavedCount();
       toast(t("bank.copied", { n }), "ok");
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
     btn.disabled = false;
   });
 
@@ -5646,7 +5933,14 @@ function cablearBanco(host) {
       pintarCorridas();
       pintarBanco();
       toast(t("bank.removed", { n: ids.length }), "ok");
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
   });
 }
 
@@ -6160,7 +6454,7 @@ const vistaBuscar = async (main) => {
 
         <details class="sect">
           <summary><span class="sect-num">4</span>
-            <span class="sect-t"><b>${esc(t("mine.costs"))}</b><em id="sum-cost">—</em></span>
+            <span class="sect-t"><b>${esc(t(S.mundo === "exchange" ? "mine.costs_cripto" : "mine.costs"))}</b><em id="sum-cost">—</em></span>
             <span class="chev">›</span></summary>
           <div class="sect-body">
             <div class="fld-pair">
@@ -6824,7 +7118,14 @@ const vistaBuscar = async (main) => {
       const r = await api.post(`/api/jobs/${S.mineJobId}/pause`, { paused: !S.minePaused });
       pintarPausa(r.paused);
       toast(r.paused ? t("run.paused_toast") : t("run.resumed_toast"));
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
     btn.disabled = false;
   };
 
@@ -6922,6 +7223,13 @@ const vistaBuscar = async (main) => {
         toast(t("bank.pruned", { n: result.podadas }));
       }
     } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      }
       /* SI NO ARRANCÓ, LA PANTALLA VUELVE A "LISTA PARA BUSCAR". Antes
          quedaba el panel de "buscando" con cero probadas y la tarjeta de
          corrida activa en la barra lateral, sin ninguna búsqueda detrás: el
@@ -6933,6 +7241,11 @@ const vistaBuscar = async (main) => {
       S.mineLive = null;
       pintarCorrida(null, true);
       renderIdle();
+      if (S.avisoOcupado) {
+        const live = $("#m-live");
+        if (live) live.insertAdjacentHTML("afterbegin", `<div class="pista mb">${icono("alerta", "ico-sm")}<div>${esc(t("run.ocupado_largo"))}</div></div>`);
+        S.avisoOcupado = false;
+      }
     }
     S.mining = false; S.mineJobId = null; S.minePaused = false;
     try { localStorage.removeItem("qf.mineJob"); } catch (e) { /* modo privado */ }
@@ -7628,7 +7941,7 @@ function renderMining(snap, finished) {
         ${th("dd", esc(t("col.maxdd")), t("crit.maxDd"))}
         ${th("trades", esc(t("col.ops")), t("col.ops_help"))}
         ${th("months", esc(t("col.months_plus")), t("col.months_help"))}
-        ${snap.split ? th("oos", esc(t("col.oos")), t("col.oos_help")) : ""}
+        ${snap.split ? th("oos", t("col.oos"), t("col.oos_help")) : ""}
       </tr></thead>
       <tbody>${bank.map((r, i) => {
         const m = r.metrics;
@@ -7688,7 +8001,14 @@ function renderMining(snap, finished) {
         encolarPruebas((r.guardadas || []).map(g => g.id));
         todasAlBanco.replaceWith(Object.assign(document.createElement("span"),
           { className: "insp-guardada recien", innerHTML: `${icono("tilde", "ico-sm")} ${esc(t("bank.guardadas_n", { n: (r.guardadas || []).length }))}` }));
-      } catch (e) { toast(e.message, "err"); todasAlBanco.disabled = false; }
+      } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); todasAlBanco.disabled = false; }
     };
 
     const nuevo = $(".databank-wrap", bankBox);
@@ -8020,7 +8340,14 @@ function cablearNota(box, ctx) {
       ctx.notes = r.notes;
       estado.textContent = t("note.saved");
       toast(t("note.saved"), "ok");
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
     btn.disabled = false;
   };
 }
@@ -8452,8 +8779,8 @@ function renderInspector(box, row, res, ctx) {
        de la pantalla y estaba a dos pantallas y media de scroll. -->
   <div class="insp-pie">
     <div class="controls">
-      <button class="btn" id="insp-mql5">${icono("bajar")} MetaTrader 5 (.mq5)</button>
-      <button class="btn ghost" id="insp-bingx" ${esCripto ? "" : "disabled"}
+      <button class="btn ${esCripto ? "ghost" : ""}" id="insp-mql5">${icono("bajar")} MetaTrader 5 (.mq5)</button>
+      <button class="btn ${esCripto ? "" : "ghost"}" id="insp-bingx" ${esCripto ? "" : "hidden"}
         title="${esc(esCripto ? t("insp.bingx_hint") : t("insp.bingx_solo_cripto"))}"
         >${icono("seguir")} ${esc(t("insp.bingx_btn"))}</button>
       <button class="btn ghost" id="insp-pine">${icono("bajar")} TradingView (.pine)</button>
@@ -8586,7 +8913,14 @@ function renderInspector(box, row, res, ctx) {
       chip.innerHTML = `${icono("tilde", "ico-sm")} ${esc(t("insp.ya_guardada"))}`;
       btn.replaceWith(chip);
       return;
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
     btn.disabled = false;
   };
 
@@ -8616,7 +8950,14 @@ function renderInspector(box, row, res, ctx) {
       mostrarGuardado(r, formato, r.terminal
         ? t("export.installed", { terminal: r.terminal })
         : aviso);
-    } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     btn.disabled = false;
   }
 
@@ -8734,7 +9075,14 @@ function renderInspector(box, row, res, ctx) {
         const g = await api.post("/api/export/pine/archivo", cuerpoExport());
         mostrarGuardado(g, t("export.copy_failed"));
       }
-    } catch (e) { if (!pedirCuenta(e.status)) toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } if (!pedirCuenta(e.status)) toast(e.message, "err"); }
     btn.disabled = false;
   };
 }
@@ -8967,6 +9315,13 @@ function abrirLicencia() {
       toast(t("lic.puesta_ok"), "ok");
       cerrar();
     } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      }
       // el servidor ya explica por que no sirve, en castellano
       $("#lic-estado", host).innerHTML = `<span class="neg">${esc(e.message)}</span>`;
       btn.disabled = false;
@@ -8981,7 +9336,14 @@ function abrirLicencia() {
       renderLicencia();
       toast(t("lic.sacada"), "ok");
       cerrar();
-    } catch (e) { toast(e.message, "err"); }
+    } catch (e) {
+      /* SERVIDOR OCUPADO (429): antes la pantalla volvía a "listo" y el aviso
+         se perdía. Se dice en el panel y se reintenta solo en 30 segundos. */
+      if (e && e.status === 429) {
+        REINTENTO_OCUPADO = setTimeout(() => { const b = $("#m-start"); if (b && !S.mining) b.click(); }, 30000);
+        toast(t("run.ocupado"), "err");
+        S.avisoOcupado = true;
+      } toast(e.message, "err"); }
   };
 }
 

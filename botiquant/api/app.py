@@ -3151,8 +3151,19 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 fallos.append({**a, "motivo": str(exc)})
         return {"encendidas": encendidas, "fallos": fallos}
 
+    _MEMO_RENDIMIENTO: dict[str, Any] = {"cuando": 0.0, "valor": None}
+
     @app.get("/api/cuenta/rendimiento")
     def cuenta_rendimiento() -> dict[str, Any]:
+        """Con memoria de 30 s: son cuatro pedidos al exchange (5 s) y la
+        pantalla lo pide desde tres lugares al abrir Operar."""
+        if _MEMO_RENDIMIENTO["valor"] is not None and time.time() - _MEMO_RENDIMIENTO["cuando"] < 30:
+            return _MEMO_RENDIMIENTO["valor"]
+        valor = _cuenta_rendimiento_crudo()
+        _MEMO_RENDIMIENTO.update(cuando=time.time(), valor=valor)
+        return valor
+
+    def _cuenta_rendimiento_crudo() -> dict[str, Any]:
         """Lo que la CUENTA hizo, no lo que los bots recuerdan.
 
         ==================================================================
@@ -3591,8 +3602,9 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             "timeframe": str(payload.get("timeframe") or "")[:8],
             "direccion": str(payload.get("direccion") or "")[:10],
             "bloques": str(payload.get("bloques") or "")[:200],
-            "reglas": [str(x)[:200] for x in (payload.get("reglas") or [])][:20],
-            "salidas": str(payload.get("salidas") or "")[:200],
+            # "Para mirar" es sin reglas: ni las ejecutables ni las escritas.
+            "reglas": [str(x)[:200] for x in (payload.get("reglas") or [])][:20] if nivel == "usar" else [],
+            "salidas": str(payload.get("salidas") or "")[:200] if nivel == "usar" else "",
             "costos": {k: float(v) for k, v in (payload.get("costos") or {}).items()
                        if isinstance(v, (int, float)) and k in ("spread", "slippage", "commission_pct", "initial_capital")},
             "metricas": {k: v for k, v in (payload.get("metricas") or {}).items()
@@ -3601,6 +3613,9 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             "fechas": [str(x)[:10] for x in (payload.get("fechas") or [])][:240],
             "validacion": payload.get("validacion") if isinstance(payload.get("validacion"), dict) else None,
             "mundo": "exchange" if payload.get("mundo") == "exchange" else "metatrader",
+            # las horas que el servidor del bróker adelanta a UTC: el .mq5 las
+            # necesita para operar la franja horaria correcta
+            "utc_offset": float(payload.get("utc_offset") or 0),
         }
         if nivel == "usar":
             doc["spec"] = payload.get("spec") or {}
@@ -3697,9 +3712,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                                      comision_pct=float((doc.get("costos") or {}).get("commission_pct") or 0.0))
             archivo = f"{nombre}.pine"
         elif formato == "mql5":
-            codigo_txt = export_mql5(spec, ea_name=nombre, symbol_hint=simbolo,
-                                     timeframe_hint=doc.get("timeframe") or "", metrics=doc.get("metricas") or None)
-            archivo = f"{nombre}.mq5"
+            ea = nombre if nombre.startswith("BQ_") else f"BQ_{nombre}"
+            codigo_txt = export_mql5(spec, ea_name=ea, symbol_hint=simbolo,
+                                     timeframe_hint=doc.get("timeframe") or "", metrics=doc.get("metricas") or None,
+                                     server_utc_offset=int(round(doc.get("utc_offset") or 0)))
+            archivo = f"{ea}.mq5"
         else:
             raise HTTPException(404, "Formato desconocido.")
         return PlainTextResponse(codigo_txt, media_type="text/plain",

@@ -23,17 +23,33 @@ def _lento(freno: threading.Event):
     return fn
 
 
-def test_the_machine_stops_taking_work_when_full():
+def test_the_machine_queues_work_when_full():
+    """EL CUPO GLOBAL ENCOLA, NO RECHAZA. Con un solo lugar, cada prueba que
+    se pedía mientras el Piloto probaba lo suyo volvía con 429; cuatro
+    personas probaron la aplicación el 2 de septiembre y las cuatro chocaron
+    con eso. Ahora espera su turno y arranca sola."""
+    import time
     freno = threading.Event()
     jobs = JobManager(max_running=2, max_por_usuario=99)
     try:
-        jobs.submit("mine", _lento(freno), dueno="ana")
-        jobs.submit("mine", _lento(freno), dueno="beto")
-
+        jobs.submit("probar", _lento(freno), dueno="ana")
+        jobs.submit("probar", _lento(freno), dueno="beto")
+        tercero = jobs.submit("probar", _lento(freno), dueno="caro")
+        assert jobs.get(tercero).status == "queued"
+        # una BÚSQUEDA, en cambio, no espera en cola: se rechaza con texto
         with pytest.raises(DemasiadoTrabajo, match="capacidad"):
-            jobs.submit("mine", _lento(freno), dueno="caro")
+            jobs.submit("mine", _lento(freno), dueno="dani")
+        assert "cola" in jobs.get(tercero).message.lower()
+        # y para quien sondea sigue siendo "running", con la marca de cola
+        assert jobs.get(tercero).to_dict()["status"] == "running"
+        assert jobs.get(tercero).to_dict()["en_cola"] is True
     finally:
         freno.set()
+    for _ in range(100):
+        if jobs.get(tercero).status == "done":
+            break
+        time.sleep(0.05)
+    assert jobs.get(tercero).status == "done", "el encolado tiene que arrancar solo al liberarse un lugar"
 
 
 def test_one_person_cannot_take_every_slot():

@@ -68,6 +68,9 @@ def test_para_mirar_no_entrega_las_reglas(c):
     assert c.get(f"/api/s/{d['codigo']}/pine").status_code == 403
     pagina = c.get(f"/s/{d['codigo']}").text
     assert "Usar en TradingView" not in pagina
+    # ni las reglas escritas: "las reglas quedan con vos" tiene que ser cierto
+    assert "cruza arriba" not in pagina
+    assert c.get(f"/api/s/{d['codigo']}").json()["reglas"] == []
 
 
 def test_apagar_exige_el_secreto_y_el_enlace_deja_de_abrir(c):

@@ -18,7 +18,8 @@ from typing import Any, Callable
 class Job:
     id: str
     kind: str
-    status: str = "running"          # running | done | error
+    status: str = "running"          # queued | running | done | error
+    runner: Any = None               # lo que corre; queda guardado mientras espera lugar
     progress: float = 0.0            # 0..1
     message: str = ""
     result: Any = None
@@ -31,10 +32,16 @@ class Job:
     reanudar: threading.Event = field(default_factory=threading.Event)
 
     def to_dict(self, include_result: bool = True) -> dict[str, Any]:
+        # "queued" se muestra como "running": quien sondea espera igual, y
+        # así ningún cliente viejo toma la espera por un final. La cola va
+        # aparte, en `en_cola`.
         d: dict[str, Any] = {
-            "id": self.id, "kind": self.kind, "status": self.status,
+            "id": self.id, "kind": self.kind,
+            "status": "running" if self.status == "queued" else self.status,
             "progress": round(self.progress, 4), "message": self.message,
         }
+        if self.status == "queued":
+            d["en_cola"] = True
         if self.paused:
             d["paused"] = True
         if self.status == "error":
@@ -44,6 +51,10 @@ class Job:
         if self.status == "running" and self.partial is not None:
             d["partial"] = self.partial
         return d
+
+    @property
+    def espera(self) -> bool:
+        return self.status == "queued"
 
 
 @dataclass(slots=True)
@@ -116,13 +127,23 @@ class JobManager:
         return sum(1 for j in self._jobs.values()
                    if j.status == "running" and (dueno is None or j.owner == dueno))
 
-    def _tomar_lugar(self, dueno: str | None) -> None:
-        """Levanta DemasiadoTrabajo si no hay lugar. Se llama con el lock puesto."""
-        if self._corriendo() >= self._max_running:
-            raise DemasiadoTrabajo(
-                "El servidor está minando al máximo de su capacidad. "
-                "Probá de nuevo en un minuto.")
-        if dueno is not None and self._corriendo(dueno) >= self._max_por_usuario:
+    def _tomar_lugar(self, dueno: str | None, busqueda: bool = False) -> None:
+        """Levanta DemasiadoTrabajo sólo por el cupo POR PERSONA. Se llama con
+        el lock puesto.
+
+        EL CUPO GLOBAL YA NO RECHAZA: ENCOLA. Con un solo lugar de trabajo
+        (dos núcleos), cada prueba que el usuario pedía mientras el Piloto
+        probaba lo suyo volvía con 429 y la pantalla lo mostraba como error o
+        no lo mostraba; probado por cuatro personas el 2 de septiembre, las
+        cuatro chocaron con eso. Ahora el trabajo queda "queued" y arranca
+        solo cuando se libera un lugar, en el orden en que llegó.
+        """
+        # el cupo POR PERSONA cuenta también lo que espera en cola: si no,
+        # una persona podría apilar diez búsquedas y quedarse con la cola entera
+        ocupando = sum(1 for j in self._jobs.values()
+                       if j.status in ("running", "queued") and j.owner == dueno
+                       and (not busqueda or j.kind == "mine"))
+        if dueno is not None and ocupando >= self._max_por_usuario:
             raise DemasiadoTrabajo(
                 "Ya tenés una búsqueda abierta. Esperá a que termine o frenala "
                 "antes de empezar otra — una búsqueda en pausa también ocupa "
@@ -132,10 +153,6 @@ class JobManager:
                dueno: str | None = None) -> str:
         """Run ``fn(progress)`` in a thread; ``progress(frac, msg)`` updates status."""
         job = Job(id=uuid.uuid4().hex[:10], kind=kind, owner=dueno)
-        with self._lock:
-            self._tomar_lugar(dueno)
-            self._jobs[job.id] = job
-            self._trim()
 
         def progress(frac: float, msg: str = "") -> None:
             job.progress = max(0.0, min(1.0, frac))
@@ -151,19 +168,54 @@ class JobManager:
                 job.status = "error"
                 job.error = f"{type(exc).__name__}: {exc}"
                 traceback.print_exc()
+            finally:
+                self._despachar()
 
-        threading.Thread(target=runner, daemon=True).start()
+        self._admitir(job, runner, dueno)
         return job.id
+
+    def _admitir(self, job: Job, runner: Callable[[], None], dueno: str | None) -> None:
+        """Arranca el trabajo si hay lugar; si no, lo deja en cola."""
+        with self._lock:
+            self._tomar_lugar(dueno, busqueda=(job.kind == "mine"))
+            job.runner = runner
+            # nace EN COLA y no "running": si naciera corriendo se contaría a
+            # sí mismo en el cupo y con un solo lugar quedaría esperando para
+            # siempre (pasó en las pruebas el 2 de septiembre)
+            job.status = "queued"
+            job.message = "En cola: esperando que se libere un lugar"
+            if self._corriendo() >= self._max_running and job.kind == "mine":
+                # UNA BÚSQUEDA NO ESPERA EN COLA: es pausable, se mira mientras
+                # corre y dos a la vez se pisan la pantalla. Se rechaza con un
+                # texto que la pantalla muestra y reintenta. Las pruebas sí
+                # esperan su turno.
+                raise DemasiadoTrabajo(
+                    "El servidor está minando al máximo de su capacidad. "
+                    "Probá de nuevo en un minuto.")
+            self._jobs[job.id] = job
+            self._trim()
+            if self._corriendo() < self._max_running:
+                self._lanzar(job)
+
+    def _lanzar(self, job: Job) -> None:
+        job.status = "running"
+        runner, job.runner = job.runner, None
+        threading.Thread(target=runner, daemon=True).start()
+
+    def _despachar(self) -> None:
+        """Al terminar un trabajo, arranca el siguiente que esperaba."""
+        with self._lock:
+            for j in list(self._jobs.values()):
+                if self._corriendo() >= self._max_running:
+                    break
+                if j.status == "queued" and j.runner is not None:
+                    self._lanzar(j)
 
     def submit_streaming(self, kind: str, fn: Callable[[JobHandle], Any],
                          dueno: str | None = None) -> str:
         """Run ``fn(handle)`` in a thread; the handle streams partial snapshots
         and exposes a cooperative ``cancelled`` flag."""
         job = Job(id=uuid.uuid4().hex[:10], kind=kind, owner=dueno)
-        with self._lock:
-            self._tomar_lugar(dueno)
-            self._jobs[job.id] = job
-            self._trim()
         handle = JobHandle(job)
 
         def runner() -> None:
@@ -175,8 +227,10 @@ class JobManager:
                 job.status = "error"
                 job.error = f"{type(exc).__name__}: {exc}"
                 traceback.print_exc()
+            finally:
+                self._despachar()
 
-        threading.Thread(target=runner, daemon=True).start()
+        self._admitir(job, runner, dueno)
         return job.id
 
     def cancel(self, job_id: str) -> bool:
@@ -219,7 +273,7 @@ class JobManager:
                        for j in self._jobs.values())
 
     def _trim(self) -> None:
-        finished = [j for j in self._jobs.values() if j.status != "running"]
+        finished = [j for j in self._jobs.values() if j.status not in ("running", "queued")]
         while len(self._jobs) > self._max_jobs and finished:
             victim = finished.pop(0)
             self._jobs.pop(victim.id, None)
