@@ -1513,7 +1513,7 @@ const STR = {
   "tab.saldo": ["Balance", "Saldo"],
   "tab.neto": ["Net result", "Resultado neto"],
   "tab.cerradas": ["Closed trades", "Operaciones cerradas"],
-  "tab.wr": ["Win rate", "Win rate"],
+  "tab.wr": ["Trades closed in the green", "Operaciones cerradas en ganancia"],
   "tab.pnl": ["Trading P&L", "P&L de las operaciones"],
   "tab.comision": ["Fees", "Comisiones"],
   "tab.funding": ["Funding", "Funding"],
@@ -2277,6 +2277,7 @@ const STR = {
   //: doce abreviaturas separadas por coma; el orden es enero → diciembre
   "chart.months": ["Jan,Feb,Mar,Apr,May,Jun,Jul,Aug,Sep,Oct,Nov,Dec",
                    "Ene,Feb,Mar,Abr,May,Jun,Jul,Ago,Sep,Oct,Nov,Dic"],
+  "chart.year": ["Year", "Año"],
 
   /* ------------------------------------------------------------- genéricos */
   "ui.cancel": ["Cancel", "Cancelar"],

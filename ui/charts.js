@@ -196,7 +196,7 @@ const Charts = (() => {
     monthly.forEach(m => { map[`${m.year}-${m.month}`] = m.return_pct; });
     const maxAbs = Math.max(1, ...monthly.map(m => Math.abs(m.return_pct)));
     let html = `<table class="heat-table"><thead><tr><th></th>${
-      MONTHS.map(m => `<th>${m}</th>`).join("")}<th>Year</th></tr></thead><tbody>`;
+      MONTHS.map(m => `<th>${m}</th>`).join("")}<th>${t("chart.year")}</th></tr></thead><tbody>`;
     for (const y of years) {
       let yearTotal = 1;
       let row = `<tr><th>${y}</th>`;
