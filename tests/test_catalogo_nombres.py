@@ -229,7 +229,10 @@ def test_el_portafolio_no_esta_atado_al_modo_avanzado():
     assert "const PORTAFOLIO = true;" in app
     # las casillas y la barra tienen que colgar de PORTAFOLIO, no de AVANZADO
     assert 'PORTAFOLIO ? `<td class="tick"><input type="checkbox" data-pf=' in app
-    assert "barra.hidden = !PORTAFOLIO" in app
+    # La barra ahora aparece DESDE UNA tildada (probar, borrar) y el botón de
+    # combinar desde dos; sigue sin depender de AVANZADO.
+    assert "barra.hidden = n < 1;" in app
+    assert 'PORTAFOLIO && n >= 2 ? `<button class="btn' in app
 
 
 def test_la_pista_del_portafolio_aparece_recien_con_DOS_guardadas():
@@ -240,7 +243,9 @@ def test_la_pista_del_portafolio_aparece_recien_con_DOS_guardadas():
     casillas que no están.
     """
     app = (UI / "app.js").read_text(encoding="utf-8")
-    assert "PORTAFOLIO && items.length >= 2" in app, (
+    # La pista vive en Aprobadas, que es donde se decide combinar, y cuenta
+    # las de ESA bandeja (2 de septiembre de 2026).
+    assert 'PORTAFOLIO && BANDEJA === "aprobadas" && visibles.length >= 2' in app, (
         "la pista tiene que colgar del interruptor Y de que haya dos")
 
 
