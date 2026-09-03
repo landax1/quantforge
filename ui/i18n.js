@@ -2121,7 +2121,9 @@ const STR = {
     "Stitched from the newer stretch of each fold of this test, over its own window — which is not the stretch the search kept for later. Two honest numbers over two different periods.",
     "Cosido con el tramo nuevo de cada fold de esta prueba, sobre su propia ventana — que no es el tramo que la búsqueda se guardó. Dos números honestos sobre dos períodos distintos."],
   "wf.m_tramo_guardado": ["Stretch the search kept", "Tramo que se guardó la búsqueda"],
+  "wf.tramo_ventana": ["Measured over {desde} → {hasta}.", "Medido sobre {desde} → {hasta}."],
   "wf.m_bad_run": ["Worst plausible drawdown", "Peor caída plausible"],
+  "wf.dd_malo_corto": ["worst plausible", "peor plausible"],
   "wf.m_bad_run_help": [
     "From Monte Carlo: the same trades dealt in a different order a thousand times. The total profit comes out identical every time — what changes is the path, so this is how deep the hole could have been before it paid off.",
     "De Monte Carlo: las mismas operaciones repartidas en otro orden mil veces. La ganancia total sale idéntica siempre — lo que cambia es el camino, así que esto es qué tan hondo pudo haber sido el pozo antes de que empezara a pagar."],

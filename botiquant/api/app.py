@@ -2223,6 +2223,12 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 # tienen swap 0, que es justo por qué nadie lo había visto
                 # (3 de septiembre de 2026).
                 "swap": ajustes.get("swap_anual"),
+                # EL TRAMO QUE LA BÚSQUEDA SE GUARDÓ. La ficha muestra
+                # "Tramo que se guardó la búsqueda: 0,80×" y hasta ahora no
+                # había manera de saber sobre qué días estaba medido: 105 de
+                # 121 estrategias lo mostraban sin ventana en ningún lado
+                # (3 de septiembre de 2026). La corrida ya lo sabe.
+                "split": ctx.get("split"),
                 "capital": ajustes.get("initial_capital"),
                 "sizing": "lots" if por_lotes else "risk",
                 "riskPct": None if por_lotes else riesgo.get("size_value"),

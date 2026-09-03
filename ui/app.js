@@ -4682,7 +4682,14 @@ function pruebaResumen(s) {
   if (v.tramos) partes.push(`${v.tramos_ganadores ?? "?"}/${v.tramos}`);
   if (v.eficiencia != null) partes.push(`${t("wf.ef_corto")} ${fmtNum(v.eficiencia, 2)}`);
   if (v.retorno_fuera_pct != null) partes.push(`<b class="${v.retorno_fuera_pct >= 0 ? "pos" : "neg"}">${fmtPct(v.retorno_fuera_pct)}</b>`);
-  if (v.mc && v.mc.dd_malo_pct != null) partes.push(`<span class="muted">dd ${fmtNum(v.mc.dd_malo_pct, 1)}%</span>`);
+  /* NO ES LA MISMA CAÍDA que la columna "Caída máxima" de al lado: aquélla es
+     la que efectivamente pasó, ésta es la peor plausible rebarajando las
+     operaciones, y suele ser el doble. Las dos decían "dd" en la misma fila
+     (3 de septiembre de 2026). */
+  if (v.mc && v.mc.dd_malo_pct != null) {
+    partes.push(`<span class="muted" title="${esc(t("wf.m_bad_run_help"))}">${
+      esc(t("wf.dd_malo_corto"))} ${fmtNum(v.mc.dd_malo_pct, 1)}%</span>`);
+  }
   return `<span class="prueba-res">${partes.join(" · ")}</span>`;
 }
 let REINTENTO_OCUPADO = null;
@@ -8729,9 +8736,17 @@ function panelPrueba(ctx, row) {
       ${(() => {
         const q = (row || {}).oos_ratio;
         if (q == null) return "";
+        /* Y SOBRE QUÉ DÍAS. Se mostraba el número sin ventana en ningún
+           lado —105 de 121 estrategias— justo al lado del otro "fuera de
+           muestra", que cubre otro período (3 de septiembre de 2026). */
+        const sp = ctx.split || {};
+        const cuando = sp.oos_from
+          ? " " + t("wf.tramo_ventana", { desde: sp.oos_from, hasta: sp.oos_to })
+          : "";
         return `<div class="metric"><span>${esc(t("wf.m_tramo_guardado"))}
-          <em title="${esc(t("col.oos_help"))}">?</em></span>
-        <b class="${q >= 0.8 ? "pos" : q >= 0.5 ? "" : "neg"}">${fmtNum(q, 2)}×</b></div>`;
+          <em title="${esc(t("col.oos_help") + cuando)}">?</em></span>
+        <b class="${q >= 0.8 ? "pos" : q >= 0.5 ? "" : "neg"}">${fmtNum(q, 2)}×</b>
+        ${sp.oos_from ? `<small class="muted">${esc(sp.oos_from)} → ${esc(sp.oos_to)}</small>` : ""}</div>`;
       })()}
       ${mc ? `<div class="metric"><span>${esc(t("wf.m_bad_run"))}
           <em title="${esc(t("wf.m_bad_run_help"))}">?</em></span>
