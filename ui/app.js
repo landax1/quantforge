@@ -1919,6 +1919,44 @@ function chipValues(root, sel) {
 /* ------------------------------------------------------------- navigation */
 const PAGES = {};
 
+/* LA DIRECCIÓN DICE DÓNDE ESTÁS.
+
+   La aplicación no tocaba la URL nunca: el botón Atrás del navegador te sacaba
+   de la aplicación entera, Adelante volvía recargando, y recargar desde
+   cualquier sección te devolvía a Buscar. Con el fragmento —#/saved/aprobadas—
+   Atrás y Adelante recorren las pantallas y una recarga te deja donde estabas.
+
+   En la ventana de escritorio no hay barra de direcciones, así que el
+   fragmento no se ve; los atajos del navegador sí funcionan igual. */
+//: Las únicas pantallas partidas en bandejas. Las demás no llevan segunda
+//: parte: sin esta lista, Aprender heredaba la bandeja de la pantalla
+//: anterior y la dirección quedaba en "#/consejos/aprobadas".
+const CON_BANDEJA = new Set(["mining", "saved", "operar"]);
+
+function rutaDe(page, vista) {
+  const segunda = CON_BANDEJA.has(page) ? vista : null;
+  return "#/" + [page, segunda].filter(Boolean).join("/");
+}
+
+/** Lee la dirección. Devuelve null si no nombra una pantalla que exista: una
+ *  URL vieja o escrita a mano no puede dejar la aplicación en blanco. */
+function rutaActual() {
+  const partes = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
+  if (!partes.length || !PAGES[partes[0]]) return null;
+  return { page: partes[0], vista: partes[1] };
+}
+
+//: Mientras se navega por el historial no se vuelve a apilar, o cada Atrás
+//: crearía una entrada nueva y el botón dejaría de avanzar.
+let VOLVIENDO = false;
+
+window.addEventListener("popstate", () => {
+  const r = rutaActual();
+  if (!r) return;
+  VOLVIENDO = true;
+  navigate(r.page, r.vista).finally(() => { VOLVIENDO = false; });
+});
+
 async function refreshDatasets() {
   [S.datasets, S.catalog] = await Promise.all([
     api.get("/api/datasets"), api.get("/api/catalog"),
@@ -1947,6 +1985,13 @@ async function refreshDatasets() {
 
 async function navigate(page, vista) {
   S.page = page;
+  if (!VOLVIENDO) {
+    const ruta = rutaDe(page, vista || (page === "operar" ? S.vistaOperar : S.vista));
+    // reemplazar en vez de apilar cuando es la misma pantalla: si no, quedarse
+    // quieto llenaba el historial de entradas iguales
+    if (location.hash === ruta) history.replaceState(null, "", ruta);
+    else history.pushState(null, "", ruta);
+  }
   // la vista pedida va a la memoria de SU sección, ver S.vista / S.vistaOperar
   if (vista) { if (page === "operar") S.vistaOperar = vista; else S.vista = vista; }
   /* ACTIVO POR PÁGINA Y VISTA: Probar y Aprobadas son la misma página con
@@ -9688,6 +9733,11 @@ function pedirCuenta(status) {
   // los contadores ya se pidieron arriba, pero sin esperarlos: la bienvenida
   // necesita saber si hay algo hecho ANTES de decidir si aparece
   await Promise.allSettled([refreshSavedCount(), refreshBancoCount()]);
-  navigate(tocaBienvenida() ? "bienvenida"
-    : S.datasets.length ? "mining" : "data");
+  /* La dirección manda sobre el arranque por omisión, salvo que toque la
+     bienvenida: alguien que abre por primera vez tiene que ver la bienvenida
+     aunque haya quedado un fragmento viejo pegado. */
+  const guardada = rutaActual();
+  if (tocaBienvenida()) navigate("bienvenida");
+  else if (guardada) navigate(guardada.page, guardada.vista);
+  else navigate(S.datasets.length ? "mining" : "data");
 })();
