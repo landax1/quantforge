@@ -50,6 +50,12 @@ def mundo_de_fuente(source: str | None) -> str | None:
     le adivina el mundo, y por eso tampoco cuenta como "ya hay datos" de uno.
     """
     f = str(source or "").strip().lower()
+    if "@" in f:
+        # "upload@exchange": un CSV propio importado DESDE una sección lleva
+        # su mundo. Sin esto un histórico de oro subido a mano se veía en
+        # Cripto con "Encender en demo" ofrecido (3 de septiembre de 2026).
+        _, _, m = f.partition("@")
+        return m if m in ("exchange", "metatrader") else None
     if f == "binance":
         return "exchange"
     if f in ("upload", "import", "sample", ""):

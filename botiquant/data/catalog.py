@@ -743,9 +743,14 @@ def mundo_de_nombre(nombre: str) -> str | None:
     "BTCUSDT", y esa confusión ya hizo que el CFD de bitcoin se quedara con los
     datos del perpetuo.
     """
-    token = (str(nombre).strip().split() or [""])[0].lower()
-    for entry in CATALOG:
-        if token == entry["label"].lower():
+    # Tokens ENTEROS, cortados por espacio o guión bajo: "GER40_H1" y
+    # "ARIEL XAUUSD H1" son CFD aunque el primer token no sea el símbolo
+    # (3 de septiembre de 2026). Sigue sin ser por subcadena.
+    tokens = [t for t in re.split(r"[\s_]+", str(nombre).strip().lower()) if t]
+    por_label = {entry["label"].lower(): entry for entry in CATALOG}
+    for token in tokens:
+        entry = por_label.get(token)
+        if entry:
             return mundo_de_entrada(entry)
     return None
 

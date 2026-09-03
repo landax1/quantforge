@@ -302,9 +302,13 @@ const INST_FAMILIA = {
    catálogo; los que no se pueden clasificar —un CSV propio— pertenecen a los
    dos, porque adivinarles un mundo sería peor que dejarlos a la vista. */
 function mundoDeDataset(nombre) {
-  const token = String(nombre || "").trim().split(/\s+/)[0].toLowerCase();
-  const enCat = (S.catalog || []).find(c => c.label.toLowerCase() === token);
-  return enCat ? (enCat.mundo || "metatrader") : null;
+  // tokens enteros, por espacio o guión bajo ("GER40_H1", "ARIEL XAUUSD H1")
+  const tokens = String(nombre || "").trim().toLowerCase().split(/[\s_]+/).filter(Boolean);
+  const enCat = (S.catalog || []).find(c => tokens.includes(c.label.toLowerCase()));
+  if (enCat) return enCat.mundo || "metatrader";
+  /* un CSV propio: el mundo desde el que se importó, si el servidor lo sabe */
+  const propio = (S.datasets || []).find(d => d.name === nombre);
+  return propio && propio.mundo ? propio.mundo : null;
 }
 
 /* Los históricos que se ven en el mundo elegido, EN EL ORDEN DEL CATÁLOGO.
@@ -2046,6 +2050,9 @@ async function refreshDatasets() {
 
 async function navigate(page, vista) {
   S.page = page;
+  /* la barra fija de "búsqueda terminada" es de Buscar: en Probar quedaba
+     pegada y, apretada ahí, mentía "ya no están en el banco" (3-sep-2026) */
+  if (page !== "mining") { const bf = $("#barra-fin"); if (bf) bf.hidden = true; }
   if (!VOLVIENDO) {
     const ruta = rutaDe(page, vista || (page === "operar" ? S.vistaOperar : S.vista));
     // reemplazar en vez de apilar cuando es la misma pantalla: si no, quedarse
@@ -3381,9 +3388,17 @@ function panelBot(e, hayClave) {
      esta bien; ofrecerla no. Suelta se veia como un error al apretar Start, y
      adentro de un conjunto era peor: encendia dos, fallaba en la tercera y
      dejaba el conjunto a medias. */
+  /* LA MISMA PUERTA QUE EL SERVIDOR. Ofrecía cuatro que /api/bot rechazaba
+     al encender (no pasan la cantera de práctica) y escondía ocho con
+     trailing sin decirlo (3 de septiembre de 2026). */
+  const candidatas = (S.saved || []).filter(x => cripto.has((x.meta || {}).dataset_id) && !estaRetirada(x));
+  const conTrailing = (x) => ((x.spec || {}).risk || {}).trail_atr > 0;
+  const sinCantera = (x) => (((x.cantera || {}).practica || {}).pasa === false);
+  const escondidas = { t: candidatas.filter(conTrailing).length,
+                       c: candidatas.filter(x => !conTrailing(x) && sinCantera(x)).length };
   const operables = (S.saved || []).filter(
     x => cripto.has((x.meta || {}).dataset_id)
-      && !(((x.spec || {}).risk || {}).trail_atr > 0)
+      && !conTrailing(x) && !sinCantera(x)
       /* Y NO LAS RETIRADAS. El cementerio existe para no volver a encender lo
          que ya se sabe que no sirve, y retirar EXIGE un motivo justamente por
          eso — ofrecerlas de nuevo en el desplegable tiraba ese trabajo a la
@@ -3433,6 +3448,8 @@ function panelBot(e, hayClave) {
                placeholder="0"></label>
     </div>
     <p class="help-note">${esc(t("bot.tope_nota"))}</p>
+    ${escondidas.t + escondidas.c ? `<p class="help-note">${esc(t("bot.no_ofrecidas",
+        { n: escondidas.t + escondidas.c, t: escondidas.t, c: escondidas.c }))}</p>` : ""}
     <div class="fld-pair mt">
       <!-- QUE PORCION DE LA CUENTA. Se ofrece lo que queda libre, no el 100%:
            el default tiene que ser algo que entre. -->
@@ -4253,7 +4270,14 @@ PAGES.data = async (main) => {
     <tr>
       <td><b>${esc(d.name)}</b></td>
       <td><span class="badge ${d.source === "sample" ? "yellow" : "green"}">${
-        d.source === "sample" ? esc(t("data.synthetic")) : esc(d.source)}</span></td>
+        d.source === "sample" ? esc(t("data.synthetic")) : esc(String(d.source || "").split("@")[0])}</span>${
+        /* un CSV propio importado antes de que se anotara su sección: se le
+           pone acá. Sin sección se veía en las dos (3 de septiembre de 2026). */
+        ["upload", "import"].includes(String(d.source || "").split("@")[0]) && mundoDeDataset(d.name) === null
+          ? ` <select class="sel-mundo" data-mundo="${esc(d.id)}" title="${esc(t("data.seccion_help"))}">
+              <option value="">${esc(t("data.seccion"))}</option>
+              <option value="metatrader">${esc(t("mundo.cfds"))}</option>
+              <option value="exchange">${esc(t("mundo.cripto"))}</option></select>` : ""}</td>
       <td class="num">${d.rows.toLocaleString(localeNum())}</td>
       <td class="muted">${esc(String(d.start).slice(0, 16))}</td>
       <td class="muted">${esc(String(d.end).slice(0, 16))}</td>
@@ -4433,7 +4457,7 @@ PAGES.data = async (main) => {
     const fd = new FormData();
     fd.append("file", f);
     try {
-      const r = await fetch("/api/datasets/upload",
+      const r = await fetch("/api/datasets/upload?mundo=" + encodeURIComponent(S.mundo || ""),
         { method: "POST", body: fd, headers: { "X-Idioma": idioma() } });
       if (!r.ok) throw new Error((await r.json()).detail || r.status);
       const meta = await r.json();
@@ -4448,6 +4472,15 @@ PAGES.data = async (main) => {
      novecientas es lo correcto— pero se dice: antes un CSV con un precio
      negativo y una marca repetida entraba con el tilde verde y nada más, y
      quien lo subió minaba sobre datos rotos creyendo que estaban enteros. */
+  $$("[data-mundo]", main).forEach(sel => sel.onchange = async () => {
+    if (!sel.value) return;
+    try {
+      await api.post(`/api/datasets/${sel.dataset.mundo}/mundo`, { mundo: sel.value });
+      await refreshDatasets();
+      toast(t("data.seccion_puesta"), "ok");
+      navigate("data");
+    } catch (e) { toast(e.message, "err"); }
+  });
   $$("[data-del]", main).forEach(b => b.onclick = async () => {
     // con el nombre adentro: "¿Borrar este dataset?" no dice CUAL, y la
     // pantalla tiene cuatro botones iguales uno debajo del otro
@@ -4518,6 +4551,9 @@ async function refreshRobots() {
        dice la estrategia: demotarlas todas sería peor que el desajuste. */
     ROBOTS_VIVOS = prendidos.length && !ids.length ? null : new Set(ids);
     const rc = $("#robots-count"); if (rc) rc.textContent = e.cuantos || "";
+    /* el menú contaba "29 aguantaron" con 30 hasta la primera navegación:
+       se pintó antes de saber qué robots viven (3 de septiembre de 2026) */
+    if (S.saved && S.saved.length) refreshSavedCount();
   } catch (err) { /* sin bots no hay número */ }
 }
 async function refreshCuenta() {
@@ -4869,8 +4905,12 @@ function filaProbar(s) {
 function itemRepisa(s, caja) {
   const v = s.validacion || {};
   const medio = estadoDe(s) === "aceptable";
+  // "4 de 4 tramos · No pasó" sin decir por qué desconcertaba: la eficiencia
+  // baja es el motivo casi siempre, así que va al lado (3 de septiembre de 2026)
   const sub = t("fp.tramos", { g: v.tramos_ganadores ?? "?", n: v.tramos ?? "?" }) + " · "
-    + (caja === "ok" ? t(medio ? "est.aceptable" : "est.aprobada") : t("est.no_paso"));
+    + (caja === "ok" ? t(medio ? "est.aceptable" : "est.aprobada") : t("est.no_paso"))
+    + (caja !== "ok" && v.veredicto === "ruina" ? " · " + t("fp.por_ruina", { dd: fmtNum((v.mc || {}).dd_malo_pct, 0) })
+       : caja !== "ok" && v.eficiencia != null ? ` · ${t("wf.ef_corto")} ${fmtNum(v.eficiencia, 2)}` : "");
   const afuera = v.retorno_fuera_pct != null
     ? `<b class="${v.retorno_fuera_pct >= 0 ? "pos" : "neg"}">${fmtPct(v.retorno_fuera_pct)}</b> ${esc(t("fp.afuera"))}` : "";
   // a la derecha, el dato que importa de esa repisa: cuánto rindió afuera,
@@ -4886,7 +4926,9 @@ function escenaProbar(esperan, porEtapa, recienProbadas) {
   const porFecha = (a, b) => String((b.validacion || {}).probada || "").localeCompare(String((a.validacion || {}).probada || ""));
   const ya = limpiadas();
   const ok = [...porEtapa.aprobadas].sort(porFecha);
-  const mal = [...porEtapa.descartadas].filter(x => !ya.has(x.id)).sort(porFecha);
+  // retiradas sin probar no son "no pasaron": no se probaron (3-sep-2026)
+  const mal = [...porEtapa.descartadas].filter(x => !ya.has(x.id) && estadoDe(x) === "no_paso").sort(porFecha);
+  const seguir = !corriendoAhora() ? colaPendienteGuardada().filter(id => esperan.some(x => x.id === id && !enCola(id))) : [];
   const elegidas = esperan.filter(x => SEL_PF.has(x.id) && !enCola(x.id)).length;
   const corriendo = !!COLA_PRUEBAS;
   return `<div class="fp-escena">
@@ -4895,6 +4937,7 @@ function escenaProbar(esperan, porEtapa, recienProbadas) {
         <h2>${esc(t("fp.encontradas"))} <em>${esperan.length}</em></h2>
         <div class="fp-acc">
           ${elegidas && !corriendo ? `<button class="btn ghost" id="fp-probar-elegidas">${esc(t("fp.probar_elegidas", { n: elegidas }))}</button>` : ""}
+          ${seguir.length ? `<button class="btn primary" id="fp-seguir" data-ids="${esc(seguir.join(","))}">${esc(t("fp.seguir", { n: seguir.length }))}</button>` : ""}
           ${esperan.some(x => !enCola(x.id)) && !corriendo ? `<button class="btn" id="fp-probar-todas">${esc(t("fp.probar_todas"))}</button>` : ""}
           ${corriendo ? `<span class="help-note">${esc(t("saved.probando_faltan", { n: COLA_PRUEBAS.total }))}</span>` : ""}
         </div>
@@ -5354,6 +5397,11 @@ PAGES.saved = async (main) => {
   // el escenario de Probar
   const pe = $("#fp-probar-elegidas", main);
   if (pe) pe.onclick = () => probarVarias(visibles.filter(x => SEL_PF.has(x.id) && !enCola(x.id)), main);
+  const sg = $("#fp-seguir", main);
+  if (sg) sg.onclick = () => {
+    const ids = new Set(String(sg.dataset.ids || "").split(",").filter(Boolean));
+    probarVarias((S.saved || []).filter(x => ids.has(x.id)), main);
+  };
   const pt = $("#fp-probar-todas", main);
   if (pt) pt.onclick = () => probarVarias(visibles.filter(x => !enCola(x.id)), main);
   const fo = $("#fp-operar", main);
@@ -5508,6 +5556,11 @@ PAGES.saved = async (main) => {
 
   $$("[data-probar]", main).forEach(b => b.onclick = async () => {
     const s = items.find(x => x.id === b.dataset.probar);
+    /* POR LA MISMA COLA. Probar una sola fila corría aparte: la fila no se
+       encendía, "Probar todas" seguía activo y, al terminar otra prueba, el
+       repintado le devolvía el botón a una fila cuya prueba seguía corriendo
+       en el servidor, así que se podía encolar dos veces (3-sep-2026). */
+    if (S.page === "probar" || b.closest(".fp-fila")) { await probarVarias([s], main); return; }
     await correrPrueba(s, b);
   });
   $$("[data-encender]", main).forEach(b => b.onclick = () => encenderDirecto(
@@ -5582,6 +5635,22 @@ function animarFlujo(main, previas) {
    el resto de la aplicación mientras tanto: la cola vive fuera de la
    pantalla, y si la pantalla se repinta, la cola sigue. */
 let COLA_PRUEBAS = null;
+
+/* LA COLA NO MUERE EN SILENCIO CON UNA RECARGA. Recargar a mitad de "Probar
+   todas" devolvía las que faltaban a "Probar" sin avisar (3-sep-2026). Lo que
+   falta se anota en el navegador; al volver, la pantalla ofrece seguir. No
+   sigue sola: probar lo decide quien mira. */
+function guardarColaPendiente(ids) {
+  try {
+    if (ids && ids.length) localStorage.setItem("bq_cola_pendiente", JSON.stringify(ids));
+    else localStorage.removeItem("bq_cola_pendiente");
+  } catch (e) { /* sin almacenamiento no hay memoria de la cola */ }
+}
+function corriendoAhora() { return !!COLA_PRUEBAS; }
+function colaPendienteGuardada() {
+  try { return JSON.parse(localStorage.getItem("bq_cola_pendiente") || "[]") || []; }
+  catch (e) { return []; }
+}
 const COLA_PENDIENTE = [];
 
 /* GUARDAR NO ES PROBAR. Acá decía lo contrario: "nadie guarda una estrategia
@@ -5603,6 +5672,7 @@ function encolarPruebas(ids) {
 async function probarVarias(lista, main) {
   if (!lista.length || COLA_PRUEBAS) { COLA_PENDIENTE.push(...lista); return; }
   COLA_PRUEBAS = { total: lista.length, hechas: 0, ids: lista.map(x => x.id) };
+  guardarColaPendiente(COLA_PRUEBAS.ids);
   /* LAS FILAS SE ENTERAN EN EL ACTO. En el escenario de Probar cada fila
      lleva su botón "Probar" hasta que se redibuja; al arrancar la cola, el
      botón pasa a ser la celda de estado —"en cola · N antes"— para que la
@@ -5677,6 +5747,7 @@ async function probarVarias(lista, main) {
       if (pedirCuenta(e.status)) break;
     }
     COLA_PRUEBAS.hechas = i + 1;
+    guardarColaPendiente(lista.slice(i + 1).map(x => x.id));
     // lo que se agregó mientras corría, al final de esta misma cola
     if (COLA_PENDIENTE.length) {
       lista.push(...COLA_PENDIENTE.splice(0));
@@ -5685,6 +5756,7 @@ async function probarVarias(lista, main) {
     }
   }
   COLA_PRUEBAS = null;
+  guardarColaPendiente([]);
   /* EL VEREDICTO SE AVISA AUNQUE NO ESTÉS MIRANDO: la usuaria de prueba
      cambió de pantalla y no supo nunca que su estrategia había aprobado. */
   toast(t("sel.resumen", { a: cuenta.aprobada, m: cuenta.aceptable, f: cuenta.no_paso })
@@ -6315,7 +6387,7 @@ function pintarBanco() {
         ? t("ui.selected", { n: b.sel.size }) : t("bank.sel_hint"))}</span>
       ${b.sel.size ? `
         <button class="btn small" id="sel-guardar">${icono("marcador","ico-sm")} ${esc(t("insp.save"))}</button>
-        <button class="btn small" id="sel-exportar">${icono("bajar","ico-sm")} ${esc(t("bank.export_all"))}</button>
+        ${S.mundo === "exchange" ? "" : `<button class="btn small" id="sel-exportar">${icono("bajar","ico-sm")} ${esc(t("bank.export_all"))}</button>`}
         <button class="btn ghost small" id="sel-borrar">${icono("basura","ico-sm")} ${esc(t("bank.remove"))}</button>
         <button class="linkbtn" id="sel-limpiar">${esc(t("ui.clear"))}</button>` : ""}
     </div>
@@ -6527,12 +6599,16 @@ function cablearBanco(host) {
       await refreshSavedCount();
       encolarPruebas((r.guardadas || []).map(g => g.id));
       const n = r.guardadas.length;
+      const m = Array.isArray(r.ya_estaban) ? r.ya_estaban.length : Number(r.ya_estaban || 0);
       // guardar es COPIAR: la fila sigue en el banco. Si además la sacara,
       // revisar una corrida la iría vaciando a medida que uno la mira.
       b.sel.clear();
       refrescar();
       await refreshSavedCount();
-      toast(t("bank.copied", { n }), "ok");
+      /* decía "Guardadas en Mis estrategias: 0" cuando las diez ya estaban
+         en Probar: pantalla que ya no existe y cuenta a medias (3-sep-2026) */
+      if (!n && m) toast(t("bank.ya_estaban_todas", { m }), "ok");
+      else toast(t("bank.copied", { n }) + (m ? t("bank.ya_estaban", { m }) : ""), "ok");
     } catch (e) {
        toast(e.message, "err"); }
     btn.disabled = false;
@@ -8670,10 +8746,13 @@ function renderMining(snap, finished) {
      algo, la acción también vive en una barra fija abajo. */
   const barraFin = $("#barra-fin");
   if (barraFin) {
-    const hay = finished && snap.corrida_id && bank.length;
+    /* cuenta SÓLO las que faltan mandar, y se redibuja cuando cambia: decía
+       "Mandar las 10" con siete ya mandadas (3 de septiembre de 2026) */
+    const sinMandar = bank.filter(f => !f.guardada).length;
+    const hay = finished && snap.corrida_id && sinMandar;
     barraFin.hidden = !hay;
-    if (hay && !barraFin.dataset.n) {
-      barraFin.dataset.n = String(bank.length);
+    if (hay && barraFin.dataset.n !== String(sinMandar)) {
+      barraFin.dataset.n = String(sinMandar);
       barraFin.innerHTML = `<span>${esc(t("run.listo", { n: bank.length }))}</span>
         <button class="btn" id="fin-a-probar">${icono("marcador")} ${esc(t("bank.guardar_todas", { n: bank.filter(f => !f.guardada).length }))}</button>`;
       $("#fin-a-probar", barraFin).onclick = () => { const b = $("#guardar-todas", bankBox); if (b) b.click(); };

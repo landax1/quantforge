@@ -331,6 +331,12 @@ class Database:
         return self._rows(
             f"SELECT * FROM datasets WHERE 1=1{cond} ORDER BY created DESC", args)
 
+    def set_dataset_source(self, ds_id: str, source: str, user_id: str | None = None) -> None:
+        """Cambia el origen ("upload" → "upload@exchange"): así un CSV propio
+        importado antes de que se anotara su sección la recibe después."""
+        cond, args = self._de(user_id)
+        self._exec(f"UPDATE datasets SET source=? WHERE id=?{cond}", (source, ds_id) + args)
+
     def delete_dataset(self, ds_id: str, user_id: str | None = None) -> None:
         # Acá NO se usa _VISIBLE: ver un instrumento compartido es una cosa y
         # borrárselo a todo el mundo es otra. Sin dueño propio, no se borra.

@@ -72,7 +72,9 @@ const STR = {
   "fp.por_que": ["see why", "ver por qué"],
   "fp.encender_corto": ["Turn on", "Encender"],
   "fp.encender": ["Turn on in demo", "Encender en demo"],
-  "fp.ver_todas": ["See all {n} →", "Ver las {n} →"],
+  "fp.seguir": ["Resume: {n} left from the last batch", "Seguir: faltan {n} de la última tanda"],
+  "fp.ver_todas": ["See all · {n} →", "Ver todas · {n} →"],
+  "fp.por_ruina": ["plausible fall {dd}%", "caída plausible {dd}%"],
   "fp.limpiar": ["Clear", "Limpiar"],
   "fp.sub_ok": ["data they never saw", "datos que nunca vieron"],
   "fp.sub_no": ["they were describing the past", "describían el pasado"],
@@ -436,6 +438,12 @@ const STR = {
   "data.add": ["Add a symbol or data", "Agregar símbolo o data"],
   "data.add_sub": ["Import any CSV from MT4/MT5, TradingView, Dukascopy or Binance",
                    "Importá cualquier CSV de MT4/MT5, TradingView, Dukascopy o Binance"],
+  "data.seccion": ["Section…", "Sección…"],
+  "data.seccion_help": [
+    "This file was imported before the app noted its section. Choose where it belongs.",
+    "Este archivo se importó antes de que la aplicación anotara su sección. Elegí a cuál pertenece."],
+  "data.seccion_puesta": ["Section saved. Its strategies now show only there.",
+                          "Sección guardada. Sus estrategias se ven sólo ahí."],
   "data.synthetic": ["synthetic", "sintético"],
   "data.shared": ["shared", "compartido"],
   "data.shared_help": ["Shared instrument: every user has it",
@@ -936,8 +944,9 @@ const STR = {
   "bank.confirm_remove": ["Remove {n} strategies from the databank?",
                           "¿Quitar {n} estrategias del banco?"],
   "bank.sin_instrumento": ["deleted instrument", "instrumento borrado"],
-  "bank.copied": ["Saved to My strategies: {n} — they also stay in the databank",
-                  "Guardadas en Mis estrategias: {n} — siguen también en el banco"],
+  "bank.copied": ["Sent to Test: {n} — they also stay here", "Mandadas a Probar: {n} — siguen también acá"],
+  "bank.ya_estaban": [" · {m} were already there", " · {m} ya estaban"],
+  "bank.ya_estaban_todas": ["All {m} were already in Test", "Las {m} ya estaban en Probar"],
   /* --------------------------------------- las reglas, en palabras
      El operador de una condicion se lee como parte de una frase —"EMA(20)
      cruza arriba de EMA(60)"— asi que se traduce. El indicador y sus
@@ -1889,6 +1898,9 @@ const STR = {
   "bot.acc_cerrar": ["closed", "cerró"],
   "bot.acc_panico": ["panic stop", "pánico"],
   "bot.tope": ["Daily loss limit", "Tope de pérdida diaria"],
+  "bot.no_ofrecidas": [
+    "{n} more are not offered here: {t} use a trailing stop (the robot cannot run it yet) and {c} do not pass the practice gate.",
+    "{n} más no se ofrecen acá: {t} usan trailing (el robot todavía no lo corre) y {c} no pasan la puerta de práctica."],
   "bot.tope_nota": ["In account currency. When the day's REALISED losses reach it, the bot stops until tomorrow. 0 means no limit. Floating losses do not count: that is what the stop is for.",
                     "En la moneda de la cuenta. Cuando las pérdidas REALIZADAS del día llegan ahí, el bot se detiene hasta mañana. 0 es sin tope. Las pérdidas flotantes no cuentan: para eso está el stop."],
   "bot.no_habilitado": ["not qualified yet", "todavía no habilitada"],

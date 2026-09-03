@@ -49,7 +49,7 @@ from botiquant.data.catalog import (BY_KEY, CATALOG, MINIMOS_PERPETUO,
 from botiquant.data.catalog import download as catalog_download
 from botiquant.data.loader import parse_ohlcv_csv
 from botiquant.data.sample import generate_sample
-from botiquant.data.semilla import sembrar
+from botiquant.data.semilla import sembrar, mundo_de_fuente
 from botiquant.data.store import DataStore
 from botiquant.database.db import Database
 from botiquant.licencia import firmar
@@ -140,6 +140,11 @@ CALCULO = (
 #: el resto —fechas, rutas, cantidades— son numeros y nombres propios, que
 #: no se traducen.
 ERRORES_EN: dict[str, str] = {
+    "Esa tarea ya no existe.": "That task no longer exists.",
+    "Sólo un histórico propio cambia de sección.": "Only your own history can change section.",
+    "Sección desconocida.": "Unknown section.",
+    "Falta la estrategia.": "The strategy is missing.",
+    "Un conjunto son al menos dos estrategias.": "A set is at least two strategies.",
     # --- rango de fechas y datos
     "La fecha 'desde' tiene que ser anterior a la de 'hasta'":
         "The 'from' date has to come before the 'to' date",
@@ -255,6 +260,9 @@ ERRORES_EN: dict[str, str] = {
 
 #: Los que llevan datos adentro: se compara el comienzo y se cambia solo eso.
 ERRORES_EN_PREFIJO: tuple[tuple[str, str], ...] = (
+    ("Instrumento desconocido: ", "Unknown instrument: "),
+    ("Exchange desconocido: ", "Unknown exchange: "),
+    ("Fecha inválida: ", "Invalid date: "),
     ("Fecha inv\u00e1lida:", "Invalid date:"),
     ("No existe el archivo:", "No such file:"),
     ("No se pudo escribir en", "Could not write to"),
@@ -467,7 +475,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     def _spec(payload: dict[str, Any]) -> StrategySpec:
         raw = payload.get("spec")
         if not raw:
-            raise HTTPException(400, "spec is required")
+            raise HTTPException(400, "Falta la estrategia.")
         return StrategySpec.from_dict(raw)
 
     def _settings(payload: dict[str, Any]) -> BacktestSettings:
@@ -563,6 +571,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             else:
                 stop, target = default_stop_points(d.get("last_close") or 0.0)
             out.append({**d, "suggested_stop": stop, "suggested_target": target,
+                        # a qué sección pertenece (None: no se sabe)
+                        "mundo": mundo_de_fuente(d.get("source")),
                         "suggested_spread": entry["spread"] if entry else None,
                         "suggested_slippage": entry["slippage"] if entry else None,
                         # LA COMISIÓN, para los instrumentos que cobran así.
@@ -610,6 +620,12 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                     "filas_leidas": df.attrs.get("filas_leidas")}
         return meta
 
+    def _fuente_con_mundo(base: str, mundo: Any) -> str:
+        """"upload@exchange" cuando la pantalla dice desde qué sección se
+        importó; "upload" a secas si no lo dice (un cliente viejo)."""
+        m = str(mundo or "").strip().lower()
+        return f"{base}@{m}" if m in ("exchange", "metatrader") else base
+
     @app.post("/api/datasets/upload")
     async def upload_dataset(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
         content = await file.read()
@@ -618,7 +634,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         name = (file.filename or "upload.csv").rsplit(".", 1)[0]
-        return _con_descartes(store.add(name, df, source="upload",
+        return _con_descartes(store.add(name, df,
+                                        source=_fuente_con_mundo("upload", request.query_params.get("mundo")),
                                         user_id=duenio(request)), df)
 
     @app.post("/api/datasets/sample")
@@ -785,7 +802,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             progress(0.25, "Parseando velas…")
             df = parse_ohlcv_csv(content)
             progress(0.70, f"{len(df):,} velas — guardando en el workspace…")
-            meta = _con_descartes(store.add(name, df, source="import"), df)
+            meta = _con_descartes(store.add(name, df, source=_fuente_con_mundo("import", payload.get("mundo"))), df)
             progress(1.0, "Listo")
             return meta
         return {"job_id": jobs.submit("import", work)}
@@ -794,6 +811,25 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     #: demás es infraestructura compartida — los instrumentos del catálogo
     #: existen una sola vez y los minan todos.
     BORRABLE = {"upload"}
+
+    @app.post("/api/datasets/{ds_id}/mundo")
+    def poner_mundo_dataset(request: Request, ds_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """A qué sección pertenece un CSV propio importado ANTES de que la
+        importación lo anotara. Sólo los propios: los del catálogo ya lo saben."""
+        yo = duenio(request)
+        try:
+            fila = db.get_dataset(ds_id, yo)
+        except KeyError as exc:
+            raise HTTPException(404, str(exc)) from exc
+        base = str(fila.get("source") or "").partition("@")[0]
+        if base not in ("upload", "import"):
+            raise HTTPException(400, "Sólo un histórico propio cambia de sección.")
+        mundo = str(payload.get("mundo") or "").strip().lower()
+        if mundo not in ("exchange", "metatrader"):
+            raise HTTPException(400, "Sección desconocida.")
+        db.set_dataset_source(ds_id, f"{base}@{mundo}", yo)
+        _MUNDOS_CACHE["hasta"] = 0.0
+        return {"id": ds_id, "source": f"{base}@{mundo}", "mundo": mundo}
 
     @app.delete("/api/datasets/{ds_id}")
     def delete_dataset(request: Request, ds_id: str) -> dict[str, str]:
@@ -815,7 +851,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             raise HTTPException(
                 403, "Este instrumento es compartido y no se puede borrar. "
                      "Sólo podés borrar los CSV que subiste vos.")
-        if MULTIUSER and fila.get("source", "") not in BORRABLE:
+        if MULTIUSER and str(fila.get("source", "")).partition("@")[0] not in BORRABLE:
             raise HTTPException(
                 403, "Este instrumento es compartido y no se puede borrar. "
                      "Sólo podés borrar los CSV que subiste vos.")
@@ -1021,13 +1057,13 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     def job_status(job_id: str) -> dict[str, Any]:
         job = jobs.get(job_id)
         if job is None:
-            raise HTTPException(404, "Job not found")
+            raise HTTPException(404, "Esa tarea ya no existe.")
         return job.to_dict()
 
     @app.post("/api/jobs/{job_id}/stop")
     def stop_job(job_id: str) -> dict[str, str]:
         if not jobs.cancel(job_id):
-            raise HTTPException(404, "Job not found")
+            raise HTTPException(404, "Esa tarea ya no existe.")
         return {"status": "stopping"}
 
     @app.post("/api/jobs/{job_id}/pause")
@@ -1962,7 +1998,23 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         if not mundo:
             return True
         m = mundo_de_nombre(nombre_dataset or "")
+        if m is None:
+            # un CSV propio: el mundo desde el que se importó, si se sabe
+            m = _mundos_propios().get(nombre_dataset or "")
         return m is None or m == mundo
+
+    _MUNDOS_CACHE: dict[str, Any] = {"hasta": 0.0, "mapa": {}}
+
+    def _mundos_propios() -> dict[str, str]:
+        """Nombre → mundo de los históricos importados a mano. Se relee cada
+        dos segundos: se consulta una vez por fila y la tabla casi no cambia."""
+        ahora = time.monotonic()
+        if ahora > _MUNDOS_CACHE["hasta"]:
+            _MUNDOS_CACHE["mapa"] = {
+                str(d.get("name") or ""): mundo_de_fuente(d.get("source"))
+                for d in (store.list(None) or []) if mundo_de_fuente(d.get("source"))}
+            _MUNDOS_CACHE["hasta"] = ahora + 2.0
+        return _MUNDOS_CACHE["mapa"]
 
     def _corridas_del_mundo(dueno, mundo: str):
         """Las corridas de la sección, y sus ids (None = sin recorte)."""
