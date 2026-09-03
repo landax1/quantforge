@@ -1006,6 +1006,15 @@ const CRITERIA = () => CRIT_DEF.map(c => ({
 }));
 const CRIT_BY_KEY = () => Object.fromEntries(CRITERIA().map(c => [c.key, c]));
 
+/* Lo que cada filtro quiere decir, en castellano. Las claves van enteras
+   para que el examen de textos pueda seguirlas. */
+const LLANO = () => ({
+  minPf: t("llano.minPf"), minRetDd: t("llano.minRetDd"), maxDd: t("llano.maxDd"),
+  minWinRate: t("llano.minWinRate"), minTradesMonth: t("llano.minTradesMonth"),
+  minTradesWeek: t("llano.minTradesWeek"), minCagr: t("llano.minCagr"),
+  minSharpe: t("llano.minSharpe"), minExposure: t("llano.minExposure"),
+});
+
 // un valor guardado por debajo del piso del criterio (ej. max DD 1%) no dejaría
 // pasar nada: vuelve al recomendado
 for (const cr of CRITERIA()) {
@@ -7263,7 +7272,11 @@ function textoPlanIdle() {
           trades: S.cfg.minTrades,
         })}${on.length
           ? " " + t("idle.and_meet", {
-              lista: on.map(cr => `<b>${esc(cr.label)} ${S.cfg[cr.key]}${cr.unit}</b>`).join(", ") })
+              /* CADA FILTRO, DICHO: "Profit factor ≥ 1.15" es la métrica; lo
+                 que significa es "ganaron más de lo que perdieron". Se dice lo
+                 segundo y la métrica queda al pasar el mouse. */
+              lista: on.map(cr => `<b title="${esc(cr.label)} ${S.cfg[cr.key]}${cr.unit}">${
+                esc((LLANO()[cr.key] || cr.label).replace("{v}", S.cfg[cr.key] + cr.unit))}</b>`).join(", ") })
           : ""}</p>
         ${ses.length === 1 && ses[0] !== "todo"
           ? `<p class="idle-ses">${icono("info","ico-sm")} ${esc(t("idle.session_one",

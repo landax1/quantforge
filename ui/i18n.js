@@ -1195,6 +1195,16 @@ const STR = {
   "rr.varias": ["1:{desde} to 1:{hasta} (searched)",
                 "de 1:{desde} a 1:{hasta} (se busca)"],
   "idle.and_meet": ["and, on top of that: {lista}.", "y además: {lista}."],
+  /* CADA FILTRO EN CASTELLANO: la métrica exacta queda al pasar el mouse. */
+  "llano.minPf": ["earned more than they lost ({v}×)", "ganaron más de lo que perdieron ({v}×)"],
+  "llano.minRetDd": ["earned {v} times what they fell", "ganaron {v} veces lo que cayeron"],
+  "llano.maxDd": ["never fell more than {v}", "nunca cayeron más de {v}"],
+  "llano.minWinRate": ["closed at least {v} of trades in the green", "cerraron en ganancia al menos el {v} de las operaciones"],
+  "llano.minTradesMonth": ["traded {v} times a month or more", "operaron {v} veces por mes o más"],
+  "llano.minTradesWeek": ["traded {v} times a week or more", "operaron {v} veces por semana o más"],
+  "llano.minCagr": ["returned {v} a year or more", "rindieron {v} al año o más"],
+  "llano.minSharpe": ["gained steadily (Sharpe {v})", "ganaron parejo (Sharpe {v})"],
+  "llano.minExposure": ["were in the market at least {v} of the time", "estuvieron en el mercado al menos el {v} del tiempo"],
   "idle.session_one": ["Only during {nombre} ({horas}).", "Sólo durante {nombre} ({horas})."],
   "idle.session_many": [
     "The search will pick the best of {n} trading sessions for each strategy.",
