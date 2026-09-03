@@ -1611,7 +1611,16 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     #: común: decir "no pasó" de algo que sobrevivió en la mitad de los tramos
     #: sería mentir en la dirección contraria.
     ESTADOS = {"robust": "aprobada", "acceptable": "aceptable",
-               "overfitted": "no_paso"}
+               "overfitted": "no_paso", "ruina": "no_paso"}
+    #: Caída plausible (percentil 95 de Monte Carlo) a partir de la cual una
+    #: estrategia no aguanta aunque haya ganado en todos los tramos.
+    RUINA_DD_PCT = 60.0
+
+    def _compone(spec: StrategySpec) -> bool:
+        """Con lotes fijos la ganancia no depende del tamaño de la cuenta; con
+        riesgo por porcentaje sí, y Monte Carlo tiene que rebarajar
+        rendimientos, no dinero."""
+        return getattr(spec.risk, "size_mode", "") != "fixed_units"
 
     def _resumen_mc(mc: dict[str, Any]) -> dict[str, Any]:
         """Lo poco de Monte Carlo que hay que mirar, sin la distribución entera.
@@ -1724,12 +1733,23 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 mc = monte_carlo(
                     pnls, initial_capital=float(ajustes.get("initial_capital") or 10_000.0),
                     simulations=int(PRUEBA["simulations"]),
-                    ruin_threshold_pct=float(PRUEBA["ruin_threshold_pct"]))
+                    ruin_threshold_pct=float(PRUEBA["ruin_threshold_pct"]),
+                    compuesto=_compone(spec))
 
             resumen = wf["summary"]
+            estado = ESTADOS.get(resumen["verdict"], "no_paso")
+            veredicto = resumen["verdict"]
+            # LA RUINA PESA EN EL VEREDICTO. Una estrategia salía "aguantó a
+            # medias" con una caída plausible de más del 100 % de la cuenta:
+            # el walk-forward y Monte Carlo no se hablaban. Si rebarajando sus
+            # propias operaciones la caída plausible se come más de la mitad
+            # de la cuenta, no aguantó, gane donde gane (3 de septiembre de
+            # 2026). El umbral es una decisión del producto y se puede mover.
+            if mc and estado != "no_paso" and float(mc["max_drawdown_pct"]["p95"]) >= RUINA_DD_PCT:
+                estado, veredicto = "no_paso", "ruina"
             salida = {
-                "estado": ESTADOS.get(resumen["verdict"], "no_paso"),
-                "veredicto": resumen["verdict"],
+                "estado": estado,
+                "veredicto": veredicto,
                 "tramos": resumen["folds"],
                 "tramos_ganadores": resumen["profitable_folds"],
                 "eficiencia": resumen["wf_efficiency"],
@@ -2004,8 +2024,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 var = sum((x - media) ** 2 for x in sh) / (len(sh) - 1)
                 por_corrida[cid] = (media, var ** 0.5, len(sh))
 
-        intentos_de = {c["id"]: int(c.get("tested") or 0)
-                       for c in (db.list_corridas(duenio(request)) or [])}
+        corridas_du = db.list_corridas(duenio(request)) or []
+        intentos_de = {c["id"]: int(c.get("tested") or 0) for c in corridas_du}
+        dataset_de = {c["id"]: str(c.get("dataset_name") or "") for c in corridas_du}
+        ya_guardadas = {((x.get("meta") or {}).get("corrida_id"), x.get("name"))
+                        for x in db.list_strategies(duenio(request))}
 
         for f in filas:
             entrada = {"metrics": f.get("metrics"), "oos": f.get("oos")}
@@ -2016,6 +2039,10 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 "por_que_no": cantera.por_que_no(r),
             }
             cid = str(f.get("corrida_id") or "")
+            # YA ESTÁ EN PROBAR: la pantalla cuenta y manda sólo las que no
+            # están, en vez de decir "Mandar las 10" con las diez guardadas.
+            f["guardada"] = (cid, _nombre_con_mercado(str(f.get("name") or ""),
+                                                      dataset_de.get(cid, ""))) in ya_guardadas
             if cid in por_corrida and intentos_de.get(cid, 0) >= 2:
                 media, desvio, muestra = por_corrida[cid]
                 f["azar"] = azar.contexto(
@@ -2206,6 +2233,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         Un "sistema interminable" que no se alimenta de lo que encuentra.
         """
         guardadas: list[dict[str, Any]] = []
+        existentes = {((x.get("meta") or {}).get("corrida_id"), x.get("name"))
+                      for x in db.list_strategies(dueno)}
         for f in filas:
             fila, ctx = f["fila"], f["contexto"]
             ajustes = ctx.get("settings") or {}
@@ -2253,6 +2282,13 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             # Probar convivían tres "S-001" (2 de septiembre). S-001-ETH dice
             # de dónde salió sin abrirla.
             nombre = _nombre_con_mercado(f["nombre"], f["dataset_name"] or "")
+            # NO SE GUARDA DOS VECES. Volver a Buscar y apretar "Mandar las 10
+            # a Probar" las guardaba de nuevo, duplicadas (el usuario, 3 de
+            # septiembre de 2026). La misma fila de la misma corrida es la
+            # misma estrategia: si ya está, se saltea.
+            if (f["corrida_id"], nombre) in existentes:
+                continue
+            existentes.add((f["corrida_id"], nombre))
             sid = db.save_strategy(
                 nombre, fila.get("spec") or {},
                 notes="", meta=meta, user_id=dueno)
@@ -2281,7 +2317,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         filas = db.get_banco(ids, dueno)
         if not filas:
             raise HTTPException(404, "Esas estrategias ya no están en el banco.")
-        return {"guardadas": _guardar_filas_del_banco(filas, dueno)}
+        guardadas = _guardar_filas_del_banco(filas, dueno)
+        return {"guardadas": guardadas, "ya_estaban": len(filas) - len(guardadas)}
 
     # --------------------------------------------------------------- results
     @app.get("/api/results")

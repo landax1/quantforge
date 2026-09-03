@@ -8590,7 +8590,7 @@ function renderMining(snap, finished) {
             antes de probarlas juntas. */
         finished && snap.corrida_id && bank.length
           ? `<button class="btn small" id="guardar-todas" style="margin-left:auto">${
-              icono("marcador", "ico-sm")} ${esc(t("bank.guardar_todas", { n: bank.length }))}</button>` : ""}</h2>
+              icono("marcador", "ico-sm")} ${esc(t("bank.guardar_todas", { n: bank.filter(f => !f.guardada).length }))}</button>` : ""}</h2>
     ${bank.length ? `<div class="databank-wrap"><table>
       <!-- OCHO COLUMNAS, NO DIECISEIS.
            La tabla tenia dieciseis y por eso necesitaba scroll horizontal: para
@@ -8668,7 +8668,7 @@ function renderMining(snap, finished) {
     if (hay && !barraFin.dataset.n) {
       barraFin.dataset.n = String(bank.length);
       barraFin.innerHTML = `<span>${esc(t("run.listo", { n: bank.length }))}</span>
-        <button class="btn" id="fin-a-probar">${icono("marcador")} ${esc(t("bank.guardar_todas", { n: bank.length }))}</button>`;
+        <button class="btn" id="fin-a-probar">${icono("marcador")} ${esc(t("bank.guardar_todas", { n: bank.filter(f => !f.guardada).length }))}</button>`;
       $("#fin-a-probar", barraFin).onclick = () => { const b = $("#guardar-todas", bankBox); if (b) b.click(); };
     }
   }
@@ -8677,7 +8677,10 @@ function renderMining(snap, finished) {
       todasAlBanco.disabled = true;
       try {
         const filas = await api.get("/api/banco?" + new URLSearchParams({ corrida: snap.corrida_id, limite: "200" }));
-        const r = await api.post("/api/banco/guardar", { ids: filas.map(f => f.banco_id) });
+        /* SÓLO LAS QUE NO ESTÁN. Volver a Buscar decía "Mandar las 10" y las
+           mandaba todas otra vez, duplicadas (el usuario, 3 de septiembre de
+           2026). El servidor además las rechaza; esto evita pedirlas. */
+        const r = await api.post("/api/banco/guardar", { ids: filas.filter(f => !f.guardada).map(f => f.banco_id) });
         (r.guardadas || []).forEach(g => RECIEN_GUARDADAS.add(g.id));
         toast(t("bank.guardadas_n", { n: (r.guardadas || []).length }), "ok");
         await refreshSavedCount();

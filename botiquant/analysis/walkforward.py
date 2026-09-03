@@ -148,6 +148,13 @@ def _verdict(efficiency: float, consistency: float) -> str:
     Al revés no vale: una eficiencia alta con consistencia baja significa que
     un tramo afortunado tapó a los demás, y eso sí es una advertencia.
     """
+    # PISO DE EFICIENCIA, gane donde gane. Una estrategia ganó en los cuatro
+    # tramos con eficiencia 0,03 —conservó el TRES por ciento de lo que hacía
+    # adentro— y salía "aguantó a medias". Ganar por un pelo en cada tramo
+    # perdiendo el 97 % de la ventaja no es aguantar: es que el ajuste
+    # describía el pasado y afuera quedó casi nada (3 de septiembre de 2026).
+    if efficiency < 0.1:
+        return "overfitted"
     if consistency >= 0.99:
         # ganó en todos: como mínimo aguanta, y aguanta bien si además
         # conservó buena parte de lo que prometía

@@ -187,3 +187,21 @@ def test_el_swap_viaja_con_la_estrategia(guardada, monkeypatch):
     assert "swap" in (fila.get("meta") or {}), (
         "la estrategia guardada no lleva su swap: al volver a medirla se usa 0 "
         "aunque se haya minado con otro")
+
+
+def test_mandar_dos_veces_la_misma_fila_no_la_duplica(guardada):
+    """Volver a Buscar y apretar "Mandar las N a Probar" las guardaba otra
+    vez: dos S-004-BTC idénticas en Probar (3 de septiembre de 2026)."""
+    c, _ = guardada
+    filas = c.get("/api/banco").json()
+    antes = len(c.get("/api/strategies").json())
+    r = c.post("/api/banco/guardar", json={"ids": [f["banco_id"] for f in filas]})
+    assert r.status_code == 200, r.text[:200]
+    cuerpo = r.json()
+    assert cuerpo["ya_estaban"] >= 1, "la que ya estaba tenía que contarse como tal"
+    despues = len(c.get("/api/strategies").json())
+    assert despues == antes + len(cuerpo["guardadas"])
+    # y una segunda vez no agrega nada
+    r2 = c.post("/api/banco/guardar", json={"ids": [f["banco_id"] for f in filas]}).json()
+    assert r2["guardadas"] == []
+    assert len(c.get("/api/strategies").json()) == despues

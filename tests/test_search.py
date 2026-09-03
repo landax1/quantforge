@@ -148,3 +148,46 @@ def test_portfolio_math(df, ema_spec):
     assert len(port["correlation"]) == 2
     assert abs(sum(port["risk_contribution_pct"]) - 100.0) < 1.0
     assert -1.0 <= port["metrics"]["avg_correlation"] <= 1.0
+
+
+def test_ganar_en_todos_los_tramos_no_alcanza_con_eficiencia_casi_nula():
+    """S-001-BTC: 4 de 4 tramos ganados, eficiencia 0,03, y salía "aguantó a
+    medias". Conservar el 3 % de la ventaja no es aguantar (3 de septiembre
+    de 2026)."""
+    from botiquant.analysis.walkforward import _verdict
+
+    assert _verdict(0.03, 1.0) == "overfitted"
+    assert _verdict(0.09, 1.0) == "overfitted"
+    # y con eficiencia digna, ganar en todos sigue valiendo lo de siempre
+    assert _verdict(0.2, 1.0) == "acceptable"
+    assert _verdict(0.5, 1.0) == "robust"
+
+
+def test_monte_carlo_compuesto_no_inventa_caidas_de_mas_del_cien_por_ciento():
+    """S-001-BTC: caída plausible de 328 %. Rebarajar ganancias en dinero de
+    una estrategia que compone ponía pérdidas de cuenta grande sobre la
+    cuenta chica del arranque. Con rendimientos compuestos la caída queda
+    acotada y "ruina" quiere decir ruina (3 de septiembre de 2026)."""
+    import numpy as np
+
+    rng = np.random.default_rng(1)
+    # una estrategia que arriesga un % y le fue muy bien: las operaciones
+    # tardías son enormes en dinero comparadas con el capital inicial
+    equity, pnls = 10_000.0, []
+    for _ in range(300):
+        r = rng.normal(0.02, 0.06)
+        pnls.append(equity * r)
+        equity += pnls[-1]
+    viejo = monte_carlo(pnls, initial_capital=10_000, simulations=300, compuesto=False)
+    nuevo = monte_carlo(pnls, initial_capital=10_000, simulations=300)
+    assert viejo["max_drawdown_pct"]["worst"] > 100, "el caso que reproduce el 328 %"
+    assert nuevo["max_drawdown_pct"]["worst"] <= 100
+    assert nuevo["max_drawdown_pct"]["p95"] < viejo["max_drawdown_pct"]["p95"]
+    assert nuevo["compuesto"] is True
+
+
+def test_con_lotes_fijos_monte_carlo_sigue_rebarajando_dinero():
+    r = monte_carlo([10, -5, 8, -3, 12, -4, 9], initial_capital=1_000, simulations=200,
+                    compuesto=False)
+    assert r["compuesto"] is False
+    assert r["max_drawdown_pct"]["worst"] <= 100

@@ -18,6 +18,7 @@ def monte_carlo(
     simulations: int = 1000,
     ruin_threshold_pct: float = 30.0,
     seed: int = 42,
+    compuesto: bool = True,
 ) -> dict[str, Any]:
     """Run the simulation and summarise distributions.
 
@@ -33,8 +34,29 @@ def monte_carlo(
     rng = np.random.default_rng(seed)
 
     # bootstrap: simulations × n resampled trade sequences
-    samples = pnls[rng.integers(0, n, size=(simulations, n))]
-    equity = initial_capital + np.cumsum(samples, axis=1)
+    if compuesto:
+        # RENDIMIENTOS, NO DINERO. Una estrategia que arriesga un porcentaje
+        # compone: su operación número 400 se hizo con una cuenta seis veces
+        # más grande que la primera. Rebarajar los pesos y ponerle una
+        # pérdida de 5.000 a una cuenta de 10.000 daba "caídas plausibles"
+        # de 328 % —una cuenta no puede caer más del 100 %— y fundía en la
+        # simulación cuentas que en la realidad nunca estuvieron en peligro
+        # (3 de septiembre de 2026). El rendimiento de cada operación sale de
+        # su ganancia sobre la cuenta que había justo antes, en el orden en
+        # que ocurrieron; después se rebarajan esos rendimientos y se
+        # componen. Así la caída queda acotada al 100 % y "ruina" quiere
+        # decir ruina.
+        antes = initial_capital + np.concatenate([[0.0], np.cumsum(pnls)[:-1]])
+        with np.errstate(divide="ignore", invalid="ignore"):
+            rets = np.where(antes > 0, pnls / antes, 0.0)
+        rets = np.clip(rets, -0.999, None)          # una operación no pierde más que la cuenta
+        muestra = rets[rng.integers(0, n, size=(simulations, n))]
+        equity = initial_capital * np.cumprod(1.0 + muestra, axis=1)
+    else:
+        # con lotes fijos la ganancia en dinero no depende del tamaño de la
+        # cuenta, y rebarajar el dinero es lo correcto
+        samples = pnls[rng.integers(0, n, size=(simulations, n))]
+        equity = initial_capital + np.cumsum(samples, axis=1)
     equity = np.hstack([np.full((simulations, 1), initial_capital), equity])
 
     peaks = np.maximum.accumulate(equity, axis=1)
@@ -67,6 +89,7 @@ def monte_carlo(
     return {
         "simulations": simulations,
         "trades_per_sim": n,
+        "compuesto": bool(compuesto),
         "initial_capital": initial_capital,
         "bands": bands,
         "final_equity": {
