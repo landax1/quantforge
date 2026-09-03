@@ -3613,7 +3613,9 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             "instrumento": str(payload.get("instrumento") or "")[:60],
             "timeframe": str(payload.get("timeframe") or "")[:8],
             "direccion": str(payload.get("direccion") or "")[:10],
-            "bloques": str(payload.get("bloques") or "")[:200],
+            # "Para mirar" tampoco publica los bloques: son la receta de la
+            # estrategia dicha en dos palabras (2 de septiembre).
+            "bloques": str(payload.get("bloques") or "")[:200] if nivel == "usar" else "",
             # "Para mirar" es sin reglas: ni las ejecutables ni las escritas.
             "reglas": [str(x)[:200] for x in (payload.get("reglas") or [])][:20] if nivel == "usar" else [],
             "salidas": str(payload.get("salidas") or "")[:200] if nivel == "usar" else "",
