@@ -593,6 +593,21 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                         "min_cagr": entry.get("min_cagr") if entry else None})
         return out
 
+    def _con_descartes(meta: dict[str, Any], df) -> dict[str, Any]:
+        """Suma al alta lo que el cargador tuvo que tirar del archivo.
+
+        Un CSV con un precio negativo, una marca repetida y filas cortadas
+        entraba con el tilde verde y sin una palabra: quien lo subió minaba
+        sobre datos rotos creyendo que estaban enteros (3 de septiembre de
+        2026). El alta no falla por eso —tirar tres filas de novecientas es lo
+        correcto—, pero se dice.
+        """
+        tirado = getattr(df, "attrs", {}).get("descartadas") or {}
+        if tirado:
+            meta = {**meta, "descartadas": tirado,
+                    "filas_leidas": df.attrs.get("filas_leidas")}
+        return meta
+
     @app.post("/api/datasets/upload")
     async def upload_dataset(request: Request, file: UploadFile = File(...)) -> dict[str, Any]:
         content = await file.read()
@@ -601,7 +616,8 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
         name = (file.filename or "upload.csv").rsplit(".", 1)[0]
-        return store.add(name, df, source="upload", user_id=duenio(request))
+        return _con_descartes(store.add(name, df, source="upload",
+                                        user_id=duenio(request)), df)
 
     @app.post("/api/datasets/sample")
     def create_sample(request: Request, payload: dict[str, Any]) -> dict[str, Any]:
@@ -767,7 +783,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             progress(0.25, "Parseando velas…")
             df = parse_ohlcv_csv(content)
             progress(0.70, f"{len(df):,} velas — guardando en el workspace…")
-            meta = store.add(name, df, source="import")
+            meta = _con_descartes(store.add(name, df, source="import"), df)
             progress(1.0, "Listo")
             return meta
         return {"job_id": jobs.submit("import", work)}

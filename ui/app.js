@@ -556,6 +556,24 @@ function documentoCompartible(row, ctx, res, nivel, autor) {
   };
 }
 
+/* ESCAPE CIERRA LA VENTANA DE ARRIBA, nunca la de atrás.
+
+   Cada diálogo ataba su propio `keydown` y cerraba sin mirar: con la ficha de
+   una estrategia abajo y Compartir arriba, Escape cerraba la ficha y dejaba
+   Compartir flotando sobre otra pantalla, sin nadie escuchando. La regla vive
+   acá una sola vez para que no se pierda en el próximo diálogo que se agregue
+   (3 de septiembre de 2026). */
+function cerrarConEscape(host, close) {
+  document.addEventListener("keydown", function esckey(e) {
+    if (e.key !== "Escape") return;
+    if (!host.isConnected) { document.removeEventListener("keydown", esckey); return; }
+    const capas = $$(".overlay");
+    if (capas[capas.length - 1] !== host) return;   // hay algo más arriba
+    close();
+    document.removeEventListener("keydown", esckey);
+  });
+}
+
 function abrirCompartirPortafolio(elegidas, r) {
   const m = r.metrics || {};
   const partes = (r.componentes || []).map((c, i) => ({
@@ -614,6 +632,7 @@ function abrirCompartir(row, ctx, res, docFijo) {
   const close = () => host.remove();
   $(".sheet-close", host).onclick = close;
   host.onclick = (e) => { if (e.target === host) close(); };
+  cerrarConEscape(host, close);
   $$(".comp-nivel input", host).forEach(r => r.onchange = () =>
     $$(".comp-nivel", host).forEach(l => l.classList.toggle("on", $("input", l).checked)));
   const crear = $("#comp-crear", host);
@@ -1137,6 +1156,26 @@ const fmtMoney = (v) => (v < 0 ? "-$" : "$") +
   Math.abs(+v || 0).toLocaleString(localeNum(), { maximumFractionDigits: 0 });
 const fmtNum = (v, d = 2) => (+v).toFixed(d);
 const fmtInt = (v) => (+v || 0).toLocaleString(localeNum());
+
+/* Las filas que el cargador tuvo que tirar, en castellano y con el motivo.
+   Se muestra aparte del "listo" para que no se lea como parte del éxito. */
+function avisarDescartes(meta) {
+  const d = (meta || {}).descartadas;
+  if (!d) return;
+  /* Las claves se nombran enteras a propósito: armarlas con "csv." + motivo
+     las vuelve invisibles para la prueba que verifica que ninguna falte, y
+     una clave que falta se dibuja cruda en la pantalla. */
+  const COMO = {
+    sin_precio: () => t("csv.sin_precio", { n: d.sin_precio }),
+    precio_invalido: () => t("csv.precio_invalido", { n: d.precio_invalido }),
+    vela_incoherente: () => t("csv.vela_incoherente", { n: d.vela_incoherente }),
+    repetida: () => t("csv.repetida", { n: d.repetida }),
+  };
+  const partes = Object.keys(d).filter(k => COMO[k]).map(k => COMO[k]());
+  toast(t("csv.descartadas", { total: Object.values(d).reduce((a, b) => a + b, 0),
+                               leidas: fmtInt(meta.filas_leidas || 0),
+                               detalle: partes.join(", ") }), "err");
+}
 
 /* duración legible: 45s, 3m 20s, 1h 04m */
 function fmtDur(seconds) {
@@ -1670,6 +1709,16 @@ function harvestCfg(root, { normalizar = false } = {}) {
       S.cfg[k] = cr.min;
       return;
     }
+    /* Y EL TOPE QUE DECLARA EL PROPIO CAMPO. Sólo se hacía valer el de los
+       criterios, así que el `min="100"` del capital inicial era decorativo:
+       con capital 0 la búsqueda arrancaba, no abría ni una operación, y el
+       diagnóstico culpaba al mínimo de operaciones. El usuario aflojaba
+       filtros persiguiendo un fantasma (3 de septiembre de 2026). */
+    if (normalizar) {
+      const piso = parseFloat(el.min), techo = parseFloat(el.max);
+      if (Number.isFinite(piso) && n < piso) { el.value = piso; S.cfg[k] = piso; return; }
+      if (Number.isFinite(techo) && n > techo) { el.value = techo; S.cfg[k] = techo; return; }
+    }
     S.cfg[k] = n;
   });
   saveCfg();
@@ -2130,15 +2179,7 @@ function abrirGuiaBingx(nombreEstrategia, simbolo) {
     navigate("operar", "claves");
   };
   host.onclick = (e) => { if (e.target === host) close(); };
-  /* ESCAPE CIERRA LA CAPA DE ARRIBA, no la de atrás: con Compartir abierto
-     cerraba la ficha y dejaba el diálogo flotando (2 de septiembre). */
-  document.addEventListener("keydown", function esckey(e) {
-    if (e.key !== "Escape") return;
-    const capas = $$(".overlay");
-    if (capas[capas.length - 1] !== host) return;
-    close();
-    document.removeEventListener("keydown", esckey);
-  });
+  cerrarConEscape(host, close);
 }
 
 
@@ -2165,9 +2206,7 @@ async function abrirPortafolio(elegidas) {
   const close = () => host.remove();
   $(".sheet-close", host).onclick = close;
   host.onclick = (e) => { if (e.target === host) close(); };
-  document.addEventListener("keydown", function esckey(e) {
-    if (e.key === "Escape") { close(); document.removeEventListener("keydown", esckey); }
-  });
+  cerrarConEscape(host, close);
 
   const body = $("#pf-body", host);
   try {
@@ -4253,11 +4292,16 @@ PAGES.data = async (main) => {
       if (!r.ok) throw new Error((await r.json()).detail || r.status);
       const meta = await r.json();
       toast(t("data.uploaded", { nombre: meta.name, n: fmtInt(meta.rows) }), "ok");
+      avisarDescartes(meta);
       navigate("data");
     } catch (e) {
        toast(e.message, "err"); }
   };
 
+  /* LO QUE EL ARCHIVO TRAÍA MAL. El alta no falla —tirar tres filas de
+     novecientas es lo correcto— pero se dice: antes un CSV con un precio
+     negativo y una marca repetida entraba con el tilde verde y nada más, y
+     quien lo subió minaba sobre datos rotos creyendo que estaban enteros. */
   $$("[data-del]", main).forEach(b => b.onclick = async () => {
     // con el nombre adentro: "¿Borrar este dataset?" no dice CUAL, y la
     // pantalla tiene cuatro botones iguales uno debajo del otro
@@ -4780,7 +4824,8 @@ PAGES.saved = async (main) => {
     return;
   }
 
-  // las que ya no existen no pueden seguir tildadas
+  // las que ya no existen no pueden seguir tildadas. La poda por bandeja va
+  // más abajo, apenas se sabe qué filas están a la vista.
   const vivas = new Set(items.map(x => x.id));
   [...SEL_PF].forEach(k => { if (!vivas.has(k)) SEL_PF.delete(k); });
 
@@ -4865,6 +4910,16 @@ PAGES.saved = async (main) => {
   const visibles = BANDEJA === "por_probar"
     ? [...porEtapa.por_probar, ...recienProbadas]
     : porEtapa[BANDEJA];
+
+  /* LA SELECCIÓN ES DE ESTA BANDEJA. Sobrevivía al cambio de bandeja: se
+     tildaban las 25 de Probar, se pasaba a Las que aguantaron —cuatro filas a
+     la vista— y la barra seguía diciendo "25 seleccionadas" con el botón en
+     "Borrar 25". Veintiuna estrategias que el usuario no tenía delante, y
+     borrarlas de verdad, porque el borrado recorría TODAS las guardadas y no
+     las de la pantalla. Encontradas ya se limpiaba así; esto lo empareja
+     (3 de septiembre de 2026). */
+  const aLaVista = new Set(visibles.map(x => x.id));
+  [...SEL_PF].forEach(k => { if (!aLaVista.has(k)) SEL_PF.delete(k); });
   /* Una línea con lo que hay en las otras bandejas, con enlaces: para saber
      cuánto hay sin verlo todo junto. */
   const enlace = (v, txt) => `<button class="linkbtn ${BANDEJA === v ? "on" : ""}" data-bandeja="${v}">${esc(txt)}</button>`;
@@ -5003,7 +5058,9 @@ PAGES.saved = async (main) => {
     const n = SEL_PF.size;
     barra.hidden = n < 1;
     if (n < 1) return;
-    const elegidas = items.filter(x => SEL_PF.has(x.id));
+    // de las visibles: el conjunto ya está podado, y esto lo deja explícito
+    // para el que lo lea después
+    const elegidas = visibles.filter(x => SEL_PF.has(x.id));
     const probables = elegidas.filter(x => !estaRetirada(x));
     barra.innerHTML = `<span>${esc(t("ui.selected", { n }))}</span>
       <button class="linkbtn" id="pf-nada">${esc(t("ui.clear"))}</button>
@@ -8726,9 +8783,7 @@ async function openInspector(row, ctx) {
   const close = () => host.remove();
   $(".sheet-close", host).onclick = close;
   host.onclick = (e) => { if (e.target === host) close(); };
-  document.addEventListener("keydown", function esckey(e) {
-    if (e.key === "Escape") { close(); document.removeEventListener("keydown", esckey); }
-  });
+  cerrarConEscape(host, close);
 
   try {
     const cfg = S.cfg;

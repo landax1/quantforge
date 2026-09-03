@@ -21,6 +21,15 @@ _COLUMN_ALIASES: dict[str, str] = {
     "real_volume": "volume", "volume_btc": "volume",
     "time": "time", "date": "date", "datetime": "time", "timestamp": "time",
     "open_time": "time", "gmt time": "time", "local time": "time",
+    # Lo que escribe una planilla en castellano. Un archivo exportado de Excel
+    # en es-AR traía "fecha;apertura;maximo;minimo;cierre;volumen" y no se
+    # reconocía ni una columna (3 de septiembre de 2026).
+    "fecha": "date", "hora": "time", "fecha_hora": "time", "fecha y hora": "time",
+    "apertura": "open", "abertura": "open",
+    "maximo": "high", "máximo": "high",
+    "minimo": "low", "mínimo": "low",
+    "cierre": "close", "ultimo": "close", "último": "close",
+    "volumen": "volume",
 }
 
 
@@ -32,9 +41,15 @@ def parse_ohlcv_csv(content: bytes | str) -> pd.DataFrame:
     """
     text = content.decode("utf-8-sig", errors="replace") if isinstance(content, bytes) else content
     sep = _sniff_separator(text)
-    df = pd.read_csv(io.StringIO(text), sep=sep)
+    # Punto y coma es lo que usa una planilla configurada en castellano, y esa
+    # misma planilla escribe la coma como separador decimal: leerlo con el
+    # punto dejaba "1801,27" como texto y el archivo entero sin una sola vela
+    # válida (3 de septiembre de 2026).
+    decimal = "," if sep == ";" else "."
+    df = pd.read_csv(io.StringIO(text), sep=sep, decimal=decimal)
     if df.shape[1] < 5:
-        raise ValueError("File needs at least time + OHLC columns")
+        raise ValueError("El archivo necesita al menos una columna de tiempo "
+                         "y las cuatro de precio (apertura, m\u00e1ximo, m\u00ednimo, cierre).")
 
     df.columns = [str(c).strip().lower().replace('"', "") for c in df.columns]
 
@@ -50,18 +65,53 @@ def parse_ohlcv_csv(content: bytes | str) -> pd.DataFrame:
     out = pd.DataFrame(index=ts)
     for col in ("open", "high", "low", "close"):
         if col not in df.columns:
-            raise ValueError(f"Missing column: {col}")
+            raise ValueError(f"Falta la columna {col}.")
         out[col] = pd.to_numeric(df[col].to_numpy(), errors="coerce")
     if "volume" in df.columns:
         out["volume"] = pd.to_numeric(df["volume"].to_numpy(), errors="coerce")
     else:
         out["volume"] = 0.0
 
-    out = out.dropna(subset=["open", "high", "low", "close"])
+    # LO QUE SE TIRA SE CUENTA Y SE DICE. Antes esto era un `dropna` y un
+    # deduplicado en silencio: un archivo con un `low` negativo, una marca de
+    # tiempo repetida y tres filas cortadas entraba con el tilde verde y sin
+    # una palabra. Quien lo subió minaba sobre datos rotos creyendo que
+    # estaban enteros (3 de septiembre de 2026).
+    total = len(out)
+    descartes: dict[str, int] = {}
+
+    def _tirar(mascara, motivo: str) -> None:
+        nonlocal out
+        n = int(mascara.sum())
+        if n:
+            descartes[motivo] = descartes.get(motivo, 0) + n
+            out = out[~mascara]
+
+    _tirar(out[["open", "high", "low", "close"]].isna().any(axis=1), "sin_precio")
     out["volume"] = out["volume"].fillna(0.0)
-    out = out[~out.index.duplicated(keep="first")].sort_index()
+    # Un precio no puede ser cero ni negativo, y la vela tiene que cerrar
+    # dentro de su propio rango. Una sola vela incoherente le mueve el ATR y
+    # los máximos a toda la serie.
+    _tirar((out[["open", "high", "low", "close"]] <= 0).any(axis=1), "precio_invalido")
+    _tirar((out["high"] < out["low"])
+           | (out["high"] < out[["open", "close"]].max(axis=1))
+           | (out["low"] > out[["open", "close"]].min(axis=1)), "vela_incoherente")
+    _tirar(pd.Series(out.index.duplicated(keep="first"), index=out.index), "repetida")
+    out = out.sort_index()
+
     if len(out) < 100:
-        raise ValueError(f"Only {len(out)} valid rows found — need at least 100 bars")
+        # ANTES DECÍA "Only 0 valid rows found — need at least 100 bars": en
+        # inglés con la aplicación en castellano, y sin decir qué mirar. El
+        # cero casi siempre es la cabecera, el separador o la coma decimal.
+        detalle = ("Revisá el separador de columnas, los nombres de las columnas "
+                   "y el separador decimal." if len(out) == 0 else
+                   f"Se leyeron {total} filas y quedaron {len(out)} v\u00e1lidas.")
+        raise ValueError(f"El archivo dej\u00f3 {len(out)} velas y hacen falta al "
+                         f"menos 100. {detalle}")
+    # Viajan con el marco: ningún llamador se rompe y el que quiera avisar,
+    # avisa. `attrs` sobrevive al guardado en el workspace.
+    out.attrs["filas_leidas"] = total
+    out.attrs["descartadas"] = descartes
     return out
 
 
@@ -88,11 +138,47 @@ def _apply_positional_names(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _a_fechas(crudo: pd.Series) -> pd.Series:
+    """Convierte texto a fechas, mirando si el archivo usa día/mes o mes/día.
+
+    `format="mixed"` deja que pandas decida cada fila por separado y por
+    omisión pone el mes primero. Con velas horarias de veinticinco días
+    fechadas 02/01/2023 → 26/01/2023 eso daba once meses de historia
+    desordenada, guardada igual y etiquetada "1h": la búsqueda después minaba
+    sobre una serie que no existió nunca. Encontrado el 3 de septiembre de 2026.
+
+    La regla es simple y no adivina cuando no hace falta: se parsea de las dos
+    maneras y gana la que deje las velas EN ORDEN. Un archivo de velas viene
+    ordenado en el tiempo; el orden es la evidencia. Si las dos quedan
+    ordenadas, el archivo es ambiguo (todos los días ≤ 12) y se deja el
+    criterio de siempre, que es el ISO y el de MetaTrader.
+    """
+    texto = crudo.astype(str)
+    intentos = []
+    for dia_primero in (False, True):
+        try:
+            ts = pd.to_datetime(texto, errors="coerce", format="mixed",
+                                dayfirst=dia_primero)
+        except (ValueError, TypeError):
+            continue
+        validas = int(ts.notna().sum())
+        limpias = ts.dropna()
+        ordenada = bool(limpias.is_monotonic_increasing) if len(limpias) > 1 else True
+        intentos.append((validas, ordenada, dia_primero, ts))
+
+    if not intentos:
+        return pd.to_datetime(texto, errors="coerce")
+    # más filas parseadas manda; a igualdad de filas, la que quede ordenada;
+    # y a igualdad de las dos cosas, el criterio de siempre (mes primero)
+    mejor = max(intentos, key=lambda x: (x[0], x[1], not x[2]))
+    return mejor[3]
+
+
 def _build_timestamp(df: pd.DataFrame) -> pd.DatetimeIndex:
     if "date" in df.columns and "time" in df.columns and \
             not pd.api.types.is_numeric_dtype(df["time"]):
         raw = df["date"].astype(str) + " " + df["time"].astype(str)
-        ts = pd.to_datetime(raw, errors="coerce", format="mixed")
+        ts = _a_fechas(raw)
     elif "time" in df.columns:
         col = df["time"]
         if pd.api.types.is_numeric_dtype(col):
@@ -101,19 +187,18 @@ def _build_timestamp(df: pd.DataFrame) -> pd.DatetimeIndex:
             unit = "ms" if med > 1e11 else "s"          # Binance uses ms epochs
             ts = pd.to_datetime(vals, unit=unit, errors="coerce")
         else:
-            ts = pd.to_datetime(col.astype(str).str.replace(".", "-", regex=False),
-                                errors="coerce", format="mixed")
+            ts = _a_fechas(col.astype(str).str.replace(".", "-", regex=False))
     elif "date" in df.columns:
-        ts = pd.to_datetime(df["date"].astype(str).str.replace(".", "-", regex=False),
-                            errors="coerce", format="mixed")
+        ts = _a_fechas(df["date"].astype(str).str.replace(".", "-", regex=False))
     else:
-        raise ValueError("No time/date column found")
+        raise ValueError("No se encontró ninguna columna de fecha ni de hora.")
 
     ts = pd.DatetimeIndex(ts)
     if ts.tz is not None:
         ts = ts.tz_convert("UTC").tz_localize(None)
     if ts.isna().all():
-        raise ValueError("Could not parse timestamps")
+        raise ValueError("No se pudieron leer las fechas. Revisá el "
+                         "formato de la columna de tiempo y el separador de columnas.")
     return ts
 
 

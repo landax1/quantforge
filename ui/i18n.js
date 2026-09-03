@@ -399,6 +399,13 @@ const STR = {
   "data.import_path": ["Import by path", "Importar por ruta"],
   "data.need_path": ["Paste the path to the CSV", "Pegá la ruta del CSV"],
   "data.imported": ["Imported: {nombre} ({n} bars)", "Importado: {nombre} ({n} velas)"],
+  "csv.descartadas": [
+    "{total} of the {leidas} rows were left out: {detalle}. The rest was imported.",
+    "Se dejaron afuera {total} de las {leidas} filas: {detalle}. El resto se importó."],
+  "csv.sin_precio": ["{n} with no price", "{n} sin precio"],
+  "csv.precio_invalido": ["{n} with a zero or negative price", "{n} con un precio cero o negativo"],
+  "csv.vela_incoherente": ["{n} that close outside their own range", "{n} que cierran fuera de su propio rango"],
+  "csv.repetida": ["{n} repeating a timestamp", "{n} que repiten una marca de tiempo"],
   "data.uploaded": ["Uploaded: {nombre} ({n} bars)", "Subido: {nombre} ({n} velas)"],
   "data.in_workspace": ["Datasets in the workspace", "Datasets en el workspace"],
   "data.none": ["No data yet", "Todavía no hay datos"],
