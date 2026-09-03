@@ -2753,6 +2753,16 @@ function panelEscalera(ctx) {
    frase en el idioma equivocado sigue siendo mejor que ninguna. */
 /* Lo que escribe el motor, dicho en el idioma de la pantalla. Lo que no se
    reconoce se muestra tal cual: mejor una frase en español que nada. */
+/* Por qué se cerró cada operación. El motor escribe "stop", "target",
+   "signal", "time" y "end"; en pantalla se dice qué pasó. */
+const SALIDAS = () => ({
+  stop: t("sal_r.stop"), target: t("sal_r.target"), signal: t("sal_r.signal"),
+  time: t("sal_r.time"), end: t("sal_r.end"),
+});
+function motivoSalida(r) {
+  return SALIDAS()[String(r || "")] || r || "";
+}
+
 function traducirMotivo(m) {
   const x = String(m || "");
   if (!x) return "";
@@ -8677,7 +8687,7 @@ function renderInspector(box, row, res, ctx) {
         <td class="num ${t.pnl >= 0 ? "pos" : "neg"}">${fmtMoney(t.pnl)}</td>
         <td class="num ${t.pnl_pct >= 0 ? "pos" : "neg"}">${fmtNum(t.pnl_pct, 2)}%</td>
         <td class="num">${t.bars}</td>
-        <td class="muted">${esc(t.exit_reason)}</td></tr>`).join("")}
+        <td class="muted">${esc(motivoSalida(t.exit_reason))}</td></tr>`).join("")}
       </tbody></table></div>`;
   };
   const rotuloTrades = (r) => {

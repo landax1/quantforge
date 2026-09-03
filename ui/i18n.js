@@ -1086,6 +1086,11 @@ const STR = {
   "tr.result": ["Result", "Resultado"],
   "tr.bars": ["Bars", "Barras"],
   "tr.reason": ["Reason", "Motivo"],
+  "sal_r.stop": ["stop hit", "tocó el stop"],
+  "sal_r.target": ["target hit", "llegó al objetivo"],
+  "sal_r.signal": ["exit signal", "señal de salida"],
+  "sal_r.time": ["time limit", "se acabó el tiempo"],
+  "sal_r.end": ["end of data", "se terminaron los datos"],
 
   /* ------------------------- por qué no entra ninguna candidata */
   "diag.trades": [
