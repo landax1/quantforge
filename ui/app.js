@@ -2059,6 +2059,11 @@ async function navigate(page, vista) {
     b.dataset.page === page && (!b.dataset.vista || b.dataset.vista === vistaAct
       || (page === "saved" && b.dataset.vista === "por_probar" && !["aprobadas"].includes(vistaAct)))));
   const main = $("#main");
+  /* Dónde estaba cada ficha del flujo ANTES de vaciar la pantalla. La
+     pantalla de Probar lo anotaba al dibujarse, pero para entonces esto ya
+     había borrado todo y el mapa salía vacío: la ficha aparecía en su caja
+     nueva sin que se la viera llegar (3 de septiembre de 2026). */
+  FLUJO_PREVIO = posicionesDelFlujo();
   main.innerHTML = "";
   try {
     await PAGES[page](main);
@@ -4814,7 +4819,7 @@ function accionEtapa(s) {
   const et = etapaDe(s);
   const cripto = mundoDeDataset((s.meta || {}).dataset_name || "") !== "metatrader";
   if (et === "por_probar") {
-    if (enCola(s.id)) return `<span class="help-note">${esc(t("sel.en_cola_chip"))}</span>`;
+    if (enCola(s.id)) return "";       // la columna Estado ya lo dice
     return `<button class="btn small" data-probar="${esc(s.id)}">${esc(t("wf.test_it"))}</button>`;
   }
   if (et === "aprobadas") {
@@ -5083,17 +5088,53 @@ PAGES.saved = async (main) => {
        recién probado y todavía sin limpiar— y las solapas de abajo son los
        totales: "No pasaron 68" acá y "Descartadas 72" ahí abajo se leían
        como dos respuestas a la misma pregunta (3 de septiembre de 2026). */
+    /* EL MOTOR SE VE FUNCIONAR. Antes las cajas tenían sólo cuentas; con la
+       cola corriendo, una fila giraba, las demás decían "en cola" y nadie
+       entendía qué pasaba ("es muy difícil de entender lo que está pasando
+       ahí", 3 de septiembre de 2026). Ahora cada estrategia es una ficha:
+       están todas en la caja de la izquierda, la que se está probando late,
+       y cuando llega su veredicto la ficha se desliza a la caja que le toca.
+       Clic en una ficha abre su porqué. La tabla de abajo es el detalle. */
+    const actual = COLA_PRUEBAS && COLA_PRUEBAS.actual;
+    const ficha = (x, caja) => {
+      const probando = x.id === actual;
+      const cola = !probando && enCola(x.id);
+      const clase = probando ? " probando" : cola ? " cola" : "";
+      const nota = probando ? t("flujo.chip_probando") : cola ? t("sel.en_cola_chip")
+        : caja === "ok" ? (estadoDe(x) === "aceptable" ? t("est.aceptable") : t("est.aprobada"))
+        : caja === "mal" ? t("est.no_paso") : t("est.sin_probar");
+      return `<button class="flujo-chip${clase}" data-sid="${esc(x.id)}" data-caja="${caja}"
+        title="${esc(nota)}">${esc(x.name)}</button>`;
+    };
+    const fichas = (lista, caja) => {
+      const TOPE = 40;
+      /* LA MÁS NUEVA PRIMERO. Con la caja llena, la recién probada caía
+         detrás del "+N" y no se la veía llegar: justo la única que importa
+         en ese momento. Las de la izquierda quedan en su orden de llegada. */
+      if (caja !== "in") {
+        lista = [...lista].sort((a, b) =>
+          String((b.validacion || {}).probada || "").localeCompare(String((a.validacion || {}).probada || "")));
+      }
+      return `<div class="flujo-chips">${lista.slice(0, TOPE).map(x => ficha(x, caja)).join("")}${
+        lista.length > TOPE ? `<span class="flujo-mas">+${lista.length - TOPE}</span>` : ""}</div>`;
+    };
+    const aguantaron = recienProbadas.filter(x => etapaDe(x) === "aprobadas");
+    const noPasaron = recienProbadas.filter(x => etapaDe(x) === "descartadas");
     return `<p class="help-note">${esc(t("flujo.de_esta_tanda"))}</p>
-    <div class="flujo">
+    <div class="flujo ${actual ? "corriendo" : ""}">
       <div class="flujo-caja ${porEtapa.por_probar.length ? "on" : ""}">
         <b>${esc(t("flujo.trajimos"))}</b><span class="flujo-n">${porEtapa.por_probar.length}</span>
-        <span class="flujo-sub">${esc(t("flujo.trajimos_sub", { n: porEtapa.por_probar.length }))}</span></div>
+        <span class="flujo-sub">${esc(actual ? t("flujo.trajimos_probando", { n: porEtapa.por_probar.length })
+                                              : t("flujo.trajimos_sub", { n: porEtapa.por_probar.length }))}</span>
+        ${fichas(porEtapa.por_probar, "in")}</div>
       <i class="flujo-flecha" aria-hidden="true"></i>
       <div class="flujo-ramas">
         <div class="flujo-caja ok ${ok ? "on" : ""}"><b>${esc(t("flujo.aprobadas"))}</b><span class="flujo-n">${ok}</span>
-          <span class="flujo-sub">${esc(t("flujo.aprobadas_sub", { n: ok }))}</span></div>
+          <span class="flujo-sub">${esc(t("flujo.aprobadas_sub", { n: ok }))}</span>
+          ${fichas(aguantaron, "ok")}</div>
         <div class="flujo-caja mal ${mal ? "on" : ""}"><b>${esc(t("flujo.no_pasaron"))}</b><span class="flujo-n">${mal}</span>
-          <span class="flujo-sub">${esc(t("flujo.no_pasaron_sub", { n: mal }))}</span></div>
+          <span class="flujo-sub">${esc(t("flujo.no_pasaron_sub", { n: mal }))}</span>
+          ${fichas(noPasaron, "mal")}</div>
       </div>
       ${recienProbadas.length ? `<div class="flujo-limpiar">
         <button class="btn ghost small" id="flujo-limpiar">${icono("basura", "ico-sm")} ${esc(t("flujo.limpiar"))}</button>
@@ -5115,6 +5156,8 @@ PAGES.saved = async (main) => {
       ${BANDEJA === "descartadas" ? "" : `<p class="mt">${esc(t(BANDEJA === "aprobadas" ? "saved.vacio_aprobadas_sub" : "saved.vacio_probar_sub"))}</p>
       <button class="btn mt" id="bandeja-ir">${esc(t(BANDEJA === "aprobadas" ? "saved.vacio_aprobadas_btn" : "saved.vacio_probar_btn"))}</button>`}
     </div></div>` : "";
+  const posPrevias = FLUJO_PREVIO && FLUJO_PREVIO.size ? FLUJO_PREVIO : posicionesDelFlujo();
+  FLUJO_PREVIO = null;
   main.innerHTML = pageHead(TITULOS().saved, esc(subtitulo)) + camino +
     `${/* QUÉ HACE LA PRUEBA, sólo en la bandeja de Probar: dos preguntas y
           sin jerga, abierta la primera vez, con el recorrido animado. */
@@ -5168,6 +5211,12 @@ PAGES.saved = async (main) => {
     </div>
     <div class="barra-sel" id="barra-pf" hidden></div>`;
 
+  animarFlujo(main, posPrevias);
+  // clic en una ficha: la misma ficha que abre la fila de esa estrategia
+  $$(".flujo-chip", main).forEach(ch => ch.onclick = () => {
+    const fila = $(`tr[data-sid="${ch.dataset.sid}"] td:nth-child(2)`, main);
+    if (fila) fila.click(); else toast(t("flujo.chip_en_otra_bandeja"), "ok");
+  });
   $$("[data-bandeja]", main).forEach(b => b.onclick = () => navigate("saved", b.dataset.bandeja));
   const irOp = $("[data-ir-operar]", main); if (irOp) irOp.onclick = () => navigate("operar", "bot");
   const limpiarBtn = $("#flujo-limpiar", main);
@@ -5344,6 +5393,45 @@ PAGES.saved = async (main) => {
   });
 };
 
+/* EL VIAJE DE UNA FICHA. La cola redibuja la pantalla entera cuando llega
+   cada veredicto; con eso alcanza para que la ficha aparezca en su caja
+   nueva, pero no para que se la vea llegar. Se anota dónde estaba cada una
+   antes de redibujar y, si cambió de caja, arranca desde su lugar viejo y se
+   desliza al nuevo. Con "reducir movimiento" no se desplaza. */
+let FLUJO_PREVIO = null;   // lo anota `navigate` justo antes de vaciar la pantalla
+function posicionesDelFlujo() {
+  const m = new Map();
+  $$(".flujo-chip[data-sid]").forEach(ch => {
+    const r = ch.getBoundingClientRect();
+    m.set(ch.dataset.sid, { x: r.left, y: r.top, caja: ch.dataset.caja });
+  });
+  return m;
+}
+function animarFlujo(main, previas) {
+  if (!previas || !previas.size) return;
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  $$(".flujo-chip[data-sid]", main).forEach(ch => {
+    const antes = previas.get(ch.dataset.sid);
+    if (!antes || antes.caja === ch.dataset.caja) return;
+    const r = ch.getBoundingClientRect();
+    const dx = antes.x - r.left, dy = antes.y - r.top;
+    if (!dx && !dy) return;
+    /* Sin `requestAnimationFrame`: en una pestaña oculta o una ventana en
+       segundo plano no corre nunca, y la ficha quedaba clavada en su lugar
+       viejo hasta que alguien volvía a mirar. Un reflow forzado entre los
+       dos estilos alcanza para que la transición arranque. */
+    ch.style.transition = "none";
+    ch.style.transform = `translate(${dx}px, ${dy}px)`;
+    ch.classList.add("viajando");
+    void ch.offsetWidth;
+    ch.style.transition = "transform .55s cubic-bezier(.2,.8,.2,1)";
+    ch.style.transform = "";
+    const fin = () => ch.classList.remove("viajando");
+    ch.addEventListener("transitionend", fin, { once: true });
+    setTimeout(fin, 700);
+  });
+}
+
 /* VARIAS EN COLA, UNA POR VEZ. El servidor corre una prueba por usuario a
    la vez, así que en paralelo no ganaría nada; en cola cada fila muestra su
    avance y al final un resumen dice cuántas pasaron. Se puede seguir usando
@@ -5375,6 +5463,15 @@ async function probarVarias(lista, main) {
   toast(t("sel.en_cola", { n: lista.length }), "ok");
   for (let i = 0; i < lista.length; i++) {
     const s = lista[i];
+    COLA_PRUEBAS.actual = s.id;
+    /* LA FICHA LATE DESDE EL PRIMER SEGUNDO. La pantalla se redibuja recién
+       cuando llega un veredicto, así que la primera de la cola pasaba todo
+       su turno sin latir: con una sola en cola no se veía nunca. Se marca
+       en el acto, sin redibujar. */
+    $$(".flujo-chip.probando").forEach(c => c.classList.remove("probando"));
+    const chip = $(`.flujo-chip[data-sid="${s.id}"]`);
+    if (chip) { chip.classList.add("probando"); chip.classList.remove("cola"); chip.title = t("flujo.chip_probando"); }
+    $(".flujo")?.classList.add("corriendo");
     if (!s.name) { const f = (S.saved || []).find(x => x.id === s.id); if (f) Object.assign(s, f); }
     const boton = $(`[data-probar="${s.id}"]`, document);
     let avance = () => {};

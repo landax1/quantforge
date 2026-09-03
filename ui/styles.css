@@ -2496,6 +2496,26 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 /* ---- el flujo de Probar: trajimos → aprobadas / no pasaron ---- */
 .flujo { display: grid; grid-template-columns: 1fr 32px 1fr; gap: 12px; align-items: center; margin: 4px 0 16px; }
 .flujo-caja { background: var(--card); border: 1px solid var(--border-soft); border-radius: var(--r); padding: 12px 16px; display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: baseline; }
+
+/* ---- las fichas del flujo: una por estrategia, y se las ve viajar ---- */
+.flujo-chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; min-height: 8px; }
+.flujo-chip {
+  font: inherit; font-size: 12px; line-height: 1; padding: 6px 12px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg-soft); color: var(--text-2);
+  cursor: pointer; position: relative; will-change: transform;
+}
+.flujo-chip:hover { border-color: var(--accent); color: var(--text); }
+.flujo-chip.cola { opacity: .7; }
+.flujo-caja.ok .flujo-chip { border-color: color-mix(in srgb, var(--pos) 45%, transparent); color: var(--pos); }
+.flujo-caja.mal .flujo-chip { border-color: color-mix(in srgb, var(--neg) 45%, transparent); color: var(--neg); }
+/* la que se está probando late, y la caja de la izquierda respira mientras corre */
+.flujo-chip.probando { border-color: var(--accent); color: var(--text); background: var(--accent-soft); animation: late 1.2s ease-in-out infinite; }
+@keyframes late { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent); } 50% { box-shadow: 0 0 0 6px transparent; } }
+.flujo.corriendo .flujo-flecha { animation: fluye 1.2s linear infinite; }
+@keyframes fluye { from { opacity: .35; } 50% { opacity: 1; } to { opacity: .35; } }
+.flujo-chip.viajando { z-index: 5; box-shadow: 0 6px 18px var(--sombra-color); }
+.flujo-mas { font-size: 12px; color: var(--text-dim); align-self: center; }
+@media (prefers-reduced-motion: reduce) { .flujo-chip.probando, .flujo.corriendo .flujo-flecha { animation: none; } }
 .flujo-caja.on { border-color: var(--accent); }
 .flujo-caja.ok.on { border-color: var(--pos); } .flujo-caja.mal.on { border-color: var(--neg); }
 .flujo-caja b { font-size: 14px; }

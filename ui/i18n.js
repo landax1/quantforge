@@ -58,6 +58,9 @@ const STR = {
      tested" con diez estrategias quietas esperando (el usuario, 3 de
      septiembre: "cuando vas a testing no se empezaron a testear"). */
   "flujo.trajimos_sub": ["{n} waiting for you to test them", "{n} esperan que las pruebes"],
+  "flujo.trajimos_probando": ["{n} left · testing one after another", "{n} quedan · probando una tras otra"],
+  "flujo.chip_probando": ["Testing right now", "Probándose ahora"],
+  "flujo.chip_en_otra_bandeja": ["It moved to another tray: open it from there.", "Se movió a otra bandeja: abrila desde ahí."],
   "flujo.aprobadas": ["They held", "Las que aguantaron"],
   "flujo.aprobadas_sub": ["{n} held on data they never saw", "{n} aguantaron datos que no vieron"],
   "flujo.no_pasaron": ["Did not hold", "No pasaron"],
