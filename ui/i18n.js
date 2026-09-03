@@ -618,6 +618,7 @@ const STR = {
   "run.progreso": ["{k}/{meta} in the databank · {n} tested", "{k}/{meta} en el banco · {n} probadas"],
   "run.done": ["Search finished", "Búsqueda terminada"],
   "run.searching": ["Searching for strategies", "Buscando estrategias"],
+  "run.pausada": ["Paused — press Resume to carry on", "En pausa — dale a Seguir para continuar"],
   "run.trying": ["trying candidate #{n}", "probando candidata #{n}"],
   "run.preparing": ["preparing indicators…", "preparando indicadores…"],
   "run.until": ["It will not stop until it has <b>{goal}</b> that clear the bar — <b>{faltan}</b> to go.",
@@ -1248,7 +1249,11 @@ const STR = {
     "Cada candidata lleva la suya, de 1:{desde} a 1:{hasta} ({n} valores). Ensancha "
     + "lo que la búsqueda puede encontrar: medido, el abanico de win rate casi se "
     + "duplica."],
-  "rr.varias": ["anywhere from 1:{desde} to 1:{hasta}",
+  /* Va DENTRO de "a <b>{rr}</b> risk/reward", así que tiene que leerse como
+     un sustantivo: "anywhere from 1:0.5 to 1:0.75" dejaba la frase en "a
+     anywhere from…". El rango ya dice solo que la búsqueda los prueba todos,
+     y el tooltip de al lado lo explica (3 de septiembre de 2026). */
+  "rr.varias": ["1:{desde} to 1:{hasta}",
                 "de 1:{desde} a 1:{hasta} (se busca)"],
   "idle.and_meet": ["and, on top of that: {lista}.", "y además: {lista}."],
   /* CADA FILTRO EN CASTELLANO: la métrica exacta queda al pasar el mouse. */
@@ -1625,9 +1630,13 @@ const STR = {
 
   /* ---- la franja de agentes en Operar: qué está haciendo cada uno ---- */
   "ag.titulo": ["Autopilot", "Piloto automático"],
+  /* YA NO DICE QUE LAS PRUEBA. El ciclo dejó de mandar a probar por su
+     cuenta: probar es la decisión de una persona y además cada prueba es un
+     walk-forward completo que dejaba el servidor ocupado sin parar
+     (3 de septiembre de 2026). */
   "pil.reglas": [
-    "Its rules: every {h} h it searches for new strategies, tests them and turns on the ones that pass, up to {n} robots, one per symbol, on the demo account.",
-    "Sus reglas: cada {h} h busca estrategias nuevas, las prueba y enciende las que pasan, hasta {n} robots, uno por símbolo, en la cuenta demo."],
+    "Its rules: every {h} h it searches for new strategies and turns on the ones YOU tested and that held, up to {n} robots, one per symbol, on the demo account. Sending strategies to Test is yours.",
+    "Sus reglas: cada {h} h busca estrategias nuevas y enciende las que VOS probaste y aguantaron, hasta {n} robots, uno por símbolo, en la cuenta demo. Mandarlas a Probar es tuyo."],
   "pil.ultimas": ["What it did last", "Lo último que hizo"],
   /* LA EXPLICACIÓN ANIMADA: un recorrido de pasos con un punto que avanza.
      Los textos cortos van en el nodo; los largos, en el panel de abajo. */
@@ -1706,8 +1715,8 @@ const STR = {
   "ag.sub": ["What each one is doing right now. Refreshes every 30 seconds.",
              "Qué está haciendo cada uno ahora mismo. Se actualiza cada 30 segundos."],
   "ag.ciclo": ["The cycle", "El ciclo"],
-  "ag.ciclo_sub": ["Mines, validates, promotes and turns bots on by itself, on the demo account.",
-                   "Mina, valida, promueve y enciende bots por su cuenta, en la cuenta demo."],
+  "ag.ciclo_sub": ["Mines and turns on by itself the ones you already tested and that held, on the demo account.",
+                   "Mina y enciende por su cuenta las que ya probaste y aguantaron, en la cuenta demo."],
   "ag.ciclo_on": ["Turn the cycle on", "Encender el ciclo"],
   "ag.ciclo_off": ["Turn the cycle off", "Apagar el ciclo"],
   "ag.corriendo": ["running", "corriendo"],

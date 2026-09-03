@@ -7615,6 +7615,11 @@ function pintarPausa(on) {
   btn.classList.toggle("pausado", !!on);
   $("#m-runbar")?.classList.toggle("pausado", !!on);
   $("#nav [data-page='mining']")?.classList.toggle("pausado", !!on);
+  /* Y el título del panel, acá mismo: mientras está en pausa el trabajo no
+     informa, así que nadie lo vuelve a dibujar y quedaba en "Buscando
+     estrategias" con el contador quieto. */
+  const h = $("#m-live h2");
+  if (h && !h.dataset.fin) h.textContent = on ? t("run.pausada") : t("run.searching");
 }
 
 /* La columna de resultados antes de la primera corrida: explica el flujo y
@@ -8133,7 +8138,11 @@ function renderMining(snap, finished) {
      cuando sí los tenía. */
   const goalLado = `
       <div class="goal-title">
-        <h2>${esc(finished ? t("run.done") : t("run.searching"))}</h2>
+        ${/* EN PAUSA LO DICE. El botón cambiaba a "Seguir" pero el panel
+              seguía titulando "Buscando estrategias" con el contador
+              congelado: la pantalla decía una cosa y hacía otra
+              (3 de septiembre de 2026). */ ""}
+        <h2${finished ? ' data-fin="1"' : ""}>${esc(finished ? t("run.done") : S.minePaused ? t("run.pausada") : t("run.searching"))}</h2>
         ${finished ? "" : `<span class="mining-live">
           <span class="scanner"><i></i><i></i><i></i><i></i><i></i></span>
           ${esc(snap.tested ? t("run.trying", { n: fmtInt(snap.tested + 1) })

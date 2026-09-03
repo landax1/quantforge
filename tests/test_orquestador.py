@@ -57,7 +57,7 @@ def test_puede_decir_que_haria_sin_tocar_nada():
     le muestra al usuario antes de que empiece."""
     o, espia = _orq([_e("a", estados.NUEVA)], horas=99, en_practica=99)
     t = o.que_haria()
-    assert t.accion == ciclo.VALIDAR
+    assert t.accion == ciclo.MINAR
     assert espia.llamadas == [], "preguntar no puede ejecutar"
 
 
@@ -113,8 +113,11 @@ def test_un_error_en_una_accion_NO_apaga_el_ciclo():
     def revienta(ids):
         raise RuntimeError("la estrategia 3 no tiene dataset")
 
+    # La acción es MINAR y no VALIDAR porque el ciclo ya no manda a probar por
+    # su cuenta (3 de septiembre de 2026). Lo que la prueba mide sigue siendo
+    # lo mismo: una vuelta que revienta se anota y el ciclo sigue en pie.
     o = Orquestador(leer_estado=_estado([_e("a", estados.NUEVA)], 99, 99),
-                    acciones={ciclo.VALIDAR: revienta})
+                    acciones={ciclo.MINAR: revienta})
     o.params = ciclo.Parametros.from_dict({"encendido": True})
     v = o.una_vuelta()
     assert "no tiene dataset" in v.error
@@ -145,14 +148,13 @@ def test_el_registro_dice_que_hizo_y_por_que():
     o, _ = _orq([_e("a", estados.NUEVA)], horas=99, en_practica=99)
     o.una_vuelta()
     fila = o.estado()["registro"][0]
-    assert fila["accion"] == ciclo.VALIDAR
+    assert fila["accion"] == ciclo.MINAR
     assert fila["motivo"]
-    assert fila["ids"] == ["a"]
 
 
 def test_el_estado_trae_lo_proximo_que_va_a_hacer():
     o, _ = _orq([_e("a", estados.NUEVA)], horas=99, en_practica=99)
-    assert o.estado()["proxima"]["accion"] == ciclo.VALIDAR
+    assert o.estado()["proxima"]["accion"] == ciclo.MINAR
 
 
 def test_el_registro_se_muestra_del_mas_nuevo_al_mas_viejo():
@@ -275,7 +277,7 @@ def test_pero_el_bucle_automatico_SI_respeta_el_interruptor(tmp_path):
                     acciones={})
     o.params = cic.Parametros()          # apagado
     assert o.una_vuelta().accion == cic.NADA
-    assert o.una_vuelta(a_mano=True).accion == cic.VALIDAR
+    assert o.una_vuelta(a_mano=True).accion == cic.MINAR
 
 
 def test_la_api_tampoco_deja_promover_a_produccion(tmp_path):

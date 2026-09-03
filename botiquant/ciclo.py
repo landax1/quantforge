@@ -236,12 +236,22 @@ def que_toca(p: Parametros, *, estrategias: list[dict[str, Any]],
                 motivo += f"; {inoperables} que el bot no puede encender"
             return Tarea(PROMOVER, motivo, listas[:hueco], **marca)
 
-    # 3) validar lo que se encontró y nadie probó
+    # 3) PROBAR ES DEL USUARIO, NO DEL CICLO.
+    #
+    # Acá el ciclo agarraba las recién minadas y las mandaba a probar solo, de
+    # a cinco por vuelta. Cada prueba es un walk-forward completo —cuatro
+    # tramos, reoptimizando en cada uno— y con el minado dejando decenas de
+    # estrategias nuevas la cola no se vaciaba nunca: el servidor quedaba
+    # ocupado de forma permanente y la aplicación se arrastraba. Medido el 3
+    # de septiembre de 2026: abrir la ficha de una estrategia tardaba más de
+    # 45 segundos con el ciclo validando, y un segundo con el ciclo apagado.
+    #
+    # Además del costo, el criterio: probar es la decisión de una persona
+    # sobre qué le interesa, y hacerlo por ella llenaba la pantalla de
+    # veredictos que nadie pidió. El ciclo sigue minando y sigue promoviendo
+    # lo que YA aguantó; lo que no probó nadie se queda esperando en Probar.
     sin_probar = [e["id"] for e in estrategias
                   if estados.normalizar(e.get("estado")) == estados.NUEVA]
-    if sin_probar:
-        return Tarea(VALIDAR, f"{len(sin_probar)} sin probar",
-                     sin_probar[:p.validar_por_vuelta], **marca)
 
     # 4) y recién ahí, buscar más
     if horas_desde_el_ultimo_minado >= p.minar_cada_horas:
@@ -250,5 +260,8 @@ def que_toca(p: Parametros, *, estrategias: list[dict[str, Any]],
                      f"último minado", **marca)
 
     faltan = p.minar_cada_horas - horas_desde_el_ultimo_minado
-    return Tarea(NADA, f"nada que hacer; el próximo minado en {faltan:.0f} horas",
-                 **marca)
+    motivo = f"nada que hacer; el próximo minado en {faltan:.0f} horas"
+    # Y si hay cosas esperando, se dice de quién es el próximo paso.
+    if sin_probar:
+        motivo += f"; {len(sin_probar)} esperan a que las mandes a probar"
+    return Tarea(NADA, motivo, **marca)

@@ -98,11 +98,31 @@ def test_despues_promueve_lo_que_ya_esta_probado():
     assert t.ids == ["lista"]
 
 
-def test_despues_valida_lo_que_nadie_probo():
+def test_el_ciclo_no_manda_a_probar_por_su_cuenta():
+    """Probar es la decisión de una persona, y además cuesta caro.
+
+    El ciclo agarraba las recién minadas y las validaba solo, de a cinco por
+    vuelta. Cada validación es un walk-forward completo —cuatro tramos,
+    reoptimizando en cada uno— y con el minado dejando decenas de estrategias
+    nuevas la cola no se vaciaba nunca: el servidor quedaba ocupado de forma
+    permanente. Medido el 3 de septiembre de 2026: abrir la ficha de una
+    estrategia tardaba más de 45 segundos con el ciclo validando, y un
+    segundo con el ciclo apagado.
+
+    Ahora una estrategia sin probar se queda esperando a que alguien la mande.
+    """
     t = que_toca(_p(), estrategias=[_e("cruda", estados.NUEVA)],
                  horas_desde_el_ultimo_minado=999, en_practica=99)
-    assert t.accion == VALIDAR
-    assert t.ids == ["cruda"]
+    assert t.accion != VALIDAR, "el ciclo volvió a mandar a probar por su cuenta"
+
+
+def test_y_lo_dice_en_vez_de_callarse():
+    """Que no las pruebe no puede leerse como que no hay nada que hacer."""
+    t = que_toca(_p(minar_cada_horas=12),
+                 estrategias=[_e("cruda", estados.NUEVA)],
+                 horas_desde_el_ultimo_minado=1, en_practica=99)
+    assert t.accion == NADA
+    assert "mandes a probar" in t.motivo, t.motivo
 
 
 def test_y_recien_al_final_busca_mas():
@@ -146,12 +166,15 @@ def test_no_promueve_lo_que_la_cantera_frena():
     assert t.accion != PROMOVER
 
 
-def test_valida_de_a_pocas():
-    """Cada validación es un backtest completo más mil simulaciones."""
+def test_treinta_sin_probar_no_le_dan_trabajo_al_ciclo():
+    """El caso que trababa la aplicación: el minado deja decenas nuevas y el
+    ciclo las tomaba todas de a cinco, vuelta tras vuelta, sin vaciar nunca
+    la cola."""
     crudas = [_e(f"c{i}", estados.NUEVA) for i in range(30)]
-    t = que_toca(_p(validar_por_vuelta=5), estrategias=crudas,
+    t = que_toca(_p(), estrategias=crudas,
                  horas_desde_el_ultimo_minado=1, en_practica=99)
-    assert len(t.ids) == 5
+    assert t.accion == NADA
+    assert not t.ids
 
 
 def test_no_retira_al_primer_naranja():
