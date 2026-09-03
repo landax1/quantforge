@@ -134,7 +134,10 @@ const STR = {
   // pegado a la palabra "Minado" y solo, se leia como "91 minados"
   "nav.bank_count": ["{n} strategies in the Databank",
     "{n} estrategias en el Databank"],
-  "nav.bank": ["Databank", "Databank"],
+  /* La solapa de arriba se llama "Encontradas" en castellano y este rótulo
+     decía "Databank" en los dos idiomas: la misma cosa con dos nombres, y uno
+     de ellos en inglés en una pantalla en castellano (3 de septiembre). */
+  "nav.bank": ["Databank", "Encontradas"],
   "nav.montecarlo": ["Monte Carlo", "Monte Carlo"],
   "nav.walkforward": ["Walk-forward", "Walk-forward"],
   "nav.portfolio": ["Portfolio", "Portafolio"],

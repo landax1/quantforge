@@ -760,6 +760,14 @@ function animarCifras(root) {
     const fin = parseFloat(el.dataset.cifra);
     const fmt = FORMATOS_CIFRA[el.dataset.formato] || (v => String(v));
     if (!isFinite(fin) || reducido) { el.textContent = fmt(fin); return; }
+    /* EL NÚMERO BUENO PRIMERO, LA ANIMACIÓN DESPUÉS. `requestAnimationFrame`
+       no corre en una pestaña oculta ni en una ventana en segundo plano, así
+       que la cifra se quedaba en el "0" del marcador para siempre: "Saldo 0 ·
+       Resultado neto 0 · Posiciones abiertas 0" con la frase de abajo diciendo
+       los valores reales, y "Arriesga ≈ 0.00 USDT" en la tarjeta de cada
+       robot. Escribiéndolo antes, lo peor que puede pasar es que no se anime
+       (3 de septiembre de 2026). */
+    el.textContent = fmt(fin);
     const t0 = performance.now(), dur = 420;
     const paso = (ahora) => {
       const k = Math.min(1, (ahora - t0) / dur);
@@ -1378,7 +1386,15 @@ function saveCfg() {
   try {
     if (S.sel.dataset_id) {
       const porMercado = JSON.parse(localStorage.getItem("qf.cfg_mercado") || "{}");
-      porMercado[S.sel.dataset_id] = { cfg: S.cfg, timeframe: S.sel.timeframe, receta: S.recetaPuesta || null };
+      /* NO PISAR LA RECETA CON NADA. Al recargar, el lector de campos guarda
+         antes de que se restituya qué receta estaba puesta, y escribía
+         `receta: null` encima de "dormir tranquilo": la marca se perdía en la
+         primera recarga y nadie sabía por qué la búsqueda pedía lo que pedía
+         (3 de septiembre de 2026). Sin receta en memoria, se conserva la que
+         este mercado ya tenía. */
+      const previa = (porMercado[S.sel.dataset_id] || {}).receta || null;
+      porMercado[S.sel.dataset_id] = { cfg: S.cfg, timeframe: S.sel.timeframe,
+                                       receta: S.recetaPuesta || previa };
       localStorage.setItem("qf.cfg_mercado", JSON.stringify(porMercado));
     }
   } catch (e) { /* modo privado */ }
@@ -6524,6 +6540,20 @@ const vistaBuscar = async (main) => {
   const opt = (val, cur, label) => `<option value="${val}" ${val === cur ? "selected" : ""}>${label || val}</option>`;
 
   const curDs = S.datasets.find(d => d.id === S.sel.dataset_id);
+
+  /* QUÉ RECETA ESTÁ PUESTA, DESPUÉS DE RECARGAR. Los valores de la receta se
+     guardan y vuelven —siguen gobernando la búsqueda— pero la marca de cuál
+     era sólo se restituía al CAMBIAR de mercado en el desplegable. Recargar
+     dejaba el plan con los números de "dormir tranquilo" y ninguna tarjeta
+     encendida: la pantalla no decía por qué buscaba lo que buscaba
+     (3 de septiembre de 2026). */
+  if (S.recetaPuesta == null && S.sel.dataset_id) {
+    try {
+      const g = JSON.parse(localStorage.getItem("qf.cfg_mercado") || "{}")[S.sel.dataset_id];
+      if (g && g.receta) S.recetaPuesta = g.receta;
+    } catch (e) { /* modo privado */ }
+  }
+
   // la ventana de arranque se resuelve antes de dibujar los campos, o el
   // primer render mostraría el historial entero y cambiaría solo después
   aplicarVentanaPorDefecto(curDs);
