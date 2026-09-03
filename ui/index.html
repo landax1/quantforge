@@ -10,8 +10,10 @@
   // Antes de pintar nada: si esto corriera con el resto del JS se vería un
   // fogonazo oscuro antes de cambiar a claro en cada carga.
   try {
-    var t = localStorage.getItem("qf.theme");
-    if (t === "light") document.documentElement.setAttribute("data-theme", "light");
+    // SIEMPRE ARRANCA EN OSCURO (3 de septiembre de 2026): el claro es de la
+    // sesión, no una preferencia que se guarde. Se borra lo que haya quedado.
+    localStorage.removeItem("qf.theme");
+    document.documentElement.setAttribute("data-theme", "dark");
   } catch (e) { /* sin localStorage se queda en oscuro, que es el default */ }
 </script>
 </head>

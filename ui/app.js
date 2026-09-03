@@ -9959,7 +9959,8 @@ function applyTheme(theme, redraw) {
   // propiedades de color se animan a la vez y alguna queda a mitad de camino
   root.classList.add("theme-switching");
   root.setAttribute("data-theme", light ? "light" : "dark");
-  try { localStorage.setItem("qf.theme", light ? "light" : "dark"); } catch (e) { /* noop */ }
+  // el claro dura la sesión: al abrir, siempre oscuro (3 de septiembre de 2026)
+  try { localStorage.removeItem("qf.theme"); } catch (e) { /* noop */ }
   const btn = $("#theme-btn");
   if (btn) btn.title = light ? t("nav.theme_dark") : t("nav.theme_light");
   if (redraw) navigate(S.page);
@@ -9981,7 +9982,7 @@ function initTheme() {
   try { saved = localStorage.getItem("qf.theme"); } catch (e) { /* noop */ }
   // Oscuro por defecto: es el mundo visual que define Botiquant Bordo, y una
   // herramienta que se mira durante horas seguidas cansa menos así.
-  applyTheme(saved === "light" ? "light" : "dark", false);
+  applyTheme("dark", false);   // siempre oscuro al abrir; `saved` ya no manda
   const btn = $("#theme-btn");
   if (btn) btn.onclick = () => {
     const now = document.documentElement.getAttribute("data-theme");
