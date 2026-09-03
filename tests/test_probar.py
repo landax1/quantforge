@@ -123,3 +123,51 @@ def test_no_se_prueba_lo_que_no_esta_guardado(guardada):
 def test_sin_estrategia_no_corre(guardada):
     c, _sid = guardada
     assert c.post("/api/probar", json={}).status_code == 400
+
+
+def test_todo_lo_que_corre_una_guardada_le_aplica_el_funding(guardada, monkeypatch):
+    """Probar, el portafolio y Monte Carlo miden con los mismos costos.
+
+    Un perpetuo cobra financiamiento cada ocho horas y eso le come el resultado
+    a la posición. La serie la pone el servidor a partir del dataset, y hasta el
+    3 de septiembre de 2026 sólo la ponía el ciclo automático: la misma
+    estrategia, sobre las mismas 544 operaciones, daba +8,7% anual al probarla
+    a mano y +7,9% al validarla el ciclo. Dos números para lo mismo y ninguna
+    manera de saber cuál era el bueno.
+
+    No se mide el efecto —el instrumento de prueba es sintético y no tiene
+    tasa—, se mide que TODOS los caminos vayan a buscarla.
+    """
+    from botiquant.data.store import DataStore
+
+    c, sid = guardada
+    consultas: list[str] = []
+    original = DataStore.funding
+
+    def espiar(self, ds_id):
+        consultas.append(ds_id)
+        return original(self, ds_id)
+
+    monkeypatch.setattr(DataStore, "funding", espiar)
+
+    consultas.clear()
+    j = _esperar(c, c.post("/api/probar", json={"strategy_id": sid}).json()["job_id"])
+    assert j["status"] == "done", j.get("error")
+    assert consultas, "Probar midió sin ir a buscar el funding"
+
+    consultas.clear()
+    # el portafolio pide dos: la misma dos veces alcanza para ver si va a
+    # buscar el funding, que es lo único que se mide acá
+    r = c.post("/api/portfolio", json={
+        "estrategias": [{"origen": "guardada", "id": sid},
+                        {"origen": "guardada", "id": sid}]})
+    assert r.status_code == 200, r.text[:300]
+    assert consultas, "el portafolio midió sin ir a buscar el funding"
+
+    consultas.clear()
+    # Monte Carlo puede rechazar por falta de operaciones en la ventana
+    # medida, pero para llegar a saberlo ya corrió el backtest: lo que importa
+    # es que ese backtest haya ido a buscar la tasa.
+    c.post("/api/montecarlo", json={
+        "estrategia": {"origen": "guardada", "id": sid}, "simulations": 50})
+    assert consultas, "Monte Carlo midió sin ir a buscar el funding"

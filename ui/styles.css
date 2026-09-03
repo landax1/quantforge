@@ -794,7 +794,6 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
   display: grid; grid-template-columns: minmax(330px, 372px) minmax(0, 1fr);
   gap: 20px; align-items: start;
 }
-@media (max-width: 1180px) { .workbench { grid-template-columns: 1fr; } }
 
 .setup {
   position: sticky; top: 0;
@@ -812,7 +811,21 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
 /* En angosto el panel deja de ser pegajoso —las dos columnas se apilan y un
    panel fijo taparía los resultados— pero conserva el límite de altura: sin él
    crece entero y el botón de arrancar se va igual de lejos. */
-@media (max-width: 1180px) { .setup { position: static; } }
+@media (max-width: 1180px) {
+  .workbench { grid-template-columns: 1fr; }
+  /* Y el panel deja de ser una columna. Conservaba el tope de alto de la
+     columna —calc(100vh - hueco)— ya puesto en el flujo normal: a 1024 px
+     quedaban 205 px de ventana para 4.319 px de contenido, o sea un buzón.
+     Ahora crece y la página lo scrollea, que es lo natural cuando el panel
+     está arriba de los resultados y no al costado. */
+  .setup { position: static; max-height: none; overflow: visible; }
+  /* Y el botón de arrancar no se va con él: queda pegado abajo del panel,
+     que es la razón por la que existía el tope de alto. */
+  .setup #m-run, .setup .run-acciones {
+    position: sticky; bottom: 12px; z-index: 5;
+    box-shadow: 0 6px 20px var(--sombra-color);
+  }
+}
 
 /* Este panel es pegajoso Y tiene scroll propio adentro de una página que
    también scrollea. Esa combinación trae dos problemas distintos:
@@ -1100,6 +1113,9 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
   content: ""; flex: 1; height: 1px; background: var(--border-soft);
 }
 .fld-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+/* Apilado, o el segundo campo se sale de la tarjeta: a 390 px de ventana el
+   par resolvía a 300px + 86px dentro de 333 disponibles. */
+@media (max-width: 700px) { .fld-pair { grid-template-columns: 1fr; } }
 
 /* ------------------------------------------------- avanzado desplegable --
    Opción que la mayoría no toca, dentro de la sección a la que pertenece.
@@ -2303,6 +2319,24 @@ th.orden.mixta::after {
 .est-bad  { color: var(--neg);  background: color-mix(in srgb, var(--neg) 12%, transparent); }
 .est-none { color: var(--text-dim); background: var(--card-2); font-weight: 500; }
 
+/* Las acciones no se van de viaje: en pantallas angostas la última columna
+   queda fija contra el borde derecho, con una sombra que dice que hay tabla
+   por debajo. Antes "Encender" arrancaba 420 px fuera de la tarjeta. */
+@media (max-width: 900px) {
+  table.guardadas th:last-child, table.guardadas td:last-child {
+    position: sticky; right: 0; background: var(--card);
+    box-shadow: -10px 0 14px -10px var(--sombra-color);
+    /* Angosta y apilada: pegada al borde pero sin tapar la tabla que fija.
+       Con los botones uno al lado del otro medía 357 px de 375. */
+    max-width: 128px; width: 128px;
+  }
+  table.guardadas td:last-child .btn { display: block; width: 100%; margin: 2px 0; }
+  table.guardadas thead th:last-child { background: var(--card-2); }
+  table.guardadas tr.elegida td:last-child {
+    background: color-mix(in srgb, var(--accent) 7%, var(--card));
+  }
+}
+
 /* --- la tabla de guardadas: bajó de nueve columnas a seis */
 table.guardadas th.tick, table.guardadas td.tick { width: 34px; padding-right: 0; }
 table.guardadas tr.elegida { background: color-mix(in srgb, var(--accent) 7%, transparent); }
@@ -2371,6 +2405,15 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 /* 7 · la historia en una frase */
 .cuenta-linea .historia { margin: 8px 0 0; font-size: 13px; color: var(--text); }
 /* 8 · los primeros tres pasos, en la barra lateral */
+/* En el encabezado horizontal los pasos van en un renglón: apilados medían
+   455 px de alto en una ventana de 812 y dejaban la tabla sin sitio. */
+@media (max-width: 900px) {
+  .primeros-pasos { grid-auto-flow: column; grid-auto-columns: max-content;
+    overflow-x: auto; scrollbar-width: none; align-items: center; gap: 16px;
+    margin: 8px 12px 0; padding: 8px 12px; }
+  .primeros-pasos > b { display: none; }
+  .primeros-pasos .pp { font-size: 12px; white-space: nowrap; }
+}
 .primeros-pasos { margin: 12px 16px 0; padding: 12px 16px; border-radius: var(--r); background: var(--card); border: 1px solid var(--border-soft); display: grid; gap: 6px; }
 .primeros-pasos > b { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); font-weight: 600; margin-bottom: 2px; }
 .primeros-pasos .pp { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
@@ -2409,9 +2452,12 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 
 /* En pantallas chicas la barra se desplaza sola en vez de cortar los
    ajustes: un usuario de prueba perdió Mercados, Cuenta y Aprender. */
-@media (max-width: 820px) {
+@media (min-width: 901px) and (max-width: 820px) { /* nunca coincide: ver abajo */ }
+/* Sólo mientras la barra sigue siendo una columna al costado. Abajo de 900 px
+   pasa a ser un renglón horizontal y ahí el tope de alto sobra: `flex-wrap`
+   partía el menú en cuatro filas y se comía media pantalla (3 de septiembre). */
+@media (max-width: 1180px) and (min-width: 901px) {
   .sidebar { overflow-y: auto; max-height: 100vh; }
-  #nav { flex-wrap: wrap; }
 }
 
 /* ---- el menú: tres pasos numerados, y los ajustes abajo ---- */

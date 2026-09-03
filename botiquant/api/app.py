@@ -431,6 +431,25 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 ajustes.funding = None
         return ajustes
 
+    def _settings_de(e: dict[str, Any]) -> BacktestSettings:
+        """Los costos de una estrategia guardada, con el funding de su mercado.
+
+        Un perpetuo cobra financiamiento cada ocho horas y eso se le descuenta
+        a la posición: sin la serie, la misma estrategia daba +8.7% anual al
+        probarla a mano y +7.9% al validarla el ciclo, sobre las mismas 544
+        operaciones. Nadie podía saber cuál de los dos números era el suyo
+        (encontrado el 3 de septiembre de 2026).
+        """
+        ajustes = BacktestSettings.from_dict(
+            {k: v for k, v in (e.get("settings") or {}).items() if v is not None})
+        ds_id = e.get("dataset_id")
+        if ds_id:
+            try:
+                ajustes.funding = store.funding(ds_id)
+            except (OSError, ValueError, KeyError):
+                ajustes.funding = None
+        return ajustes
+
     def _risk(payload: dict[str, Any]) -> RiskConfig:
         risk = RiskConfig.from_dict(payload.get("risk") or {})
         problem = risk.coherence_error()
@@ -1230,8 +1249,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             if not e["dataset_id"]:
                 raise HTTPException(400, "No sabemos con qué instrumento se encontró.")
             spec = StrategySpec.from_dict(e["spec"])
-            settings = BacktestSettings.from_dict(
-                {k: v for k, v in e["settings"].items() if v is not None})
+            settings = _settings_de(e)
             # El período: el que se pida, y si no, TODO el histórico del
             # instrumento. A propósito no se limita al tramo medido — el sentido
             # del walk-forward es tener tramos consecutivos, y cuanto más
@@ -1289,8 +1307,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             df = _load_df({"dataset_id": e["dataset_id"], "timeframe": e["timeframe"],
                            **({"date_from": medido["from"], "date_to": medido["to"]}
                               if medido.get("from") else {})})
-            res = run_backtest(df, StrategySpec.from_dict(e["spec"]),
-                               BacktestSettings.from_dict(ajustes))
+            res = run_backtest(df, StrategySpec.from_dict(e["spec"]), _settings_de(e))
             pnls = [t["pnl"] for t in res.to_dict().get("trades", [])]
             if ajustes.get("initial_capital"):
                 initial = float(ajustes["initial_capital"])
@@ -1404,9 +1421,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             try:
                 df = _load_df({"dataset_id": e["dataset_id"], "timeframe": e["timeframe"],
                                "date_from": desde, "date_to": hasta})
-                res = run_backtest(df, StrategySpec.from_dict(e["spec"]),
-                                   BacktestSettings.from_dict(
-                                       {k: v for k, v in e["settings"].items() if v is not None}))
+                res = run_backtest(df, StrategySpec.from_dict(e["spec"]), _settings_de(e))
             except HTTPException as exc:
                 fila["error"] = str(exc.detail)
                 salida.append(fila)
@@ -1463,8 +1478,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 df = _load_df({"dataset_id": e["dataset_id"], "timeframe": e["timeframe"],
                                **({"date_from": medido["from"], "date_to": medido["to"]}
                                   if medido.get("from") else {})})
-                res = run_backtest(df, StrategySpec.from_dict(e["spec"]),
-                                   BacktestSettings.from_dict(ajustes))
+                res = run_backtest(df, StrategySpec.from_dict(e["spec"]), _settings_de(e))
                 pnls = [t["pnl"] for t in res.to_dict().get("trades", [])]
                 mc = monte_carlo(pnls,
                                  initial_capital=float(ajustes.get("initial_capital") or 10_000.0),
@@ -1608,7 +1622,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
         spec = StrategySpec.from_dict(e["spec"])
         ajustes = {k: v for k, v in e["settings"].items() if v is not None}
-        settings = BacktestSettings.from_dict(ajustes)
+        settings = _settings_de(e)
         medido = e["medido"] or {}
         df = _load_df({"dataset_id": e["dataset_id"], "timeframe": e["timeframe"],
                        **({"date_from": medido["from"], "date_to": medido["to"]}
@@ -1702,8 +1716,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             df = _load_df({"dataset_id": e["dataset_id"], "timeframe": e["timeframe"],
                            **({"date_from": medido["from"], "date_to": medido["to"]}
                               if medido.get("from") else {})})
-            res = run_backtest(df, StrategySpec.from_dict(e["spec"]),
-                               BacktestSettings.from_dict(ajustes))
+            res = run_backtest(df, StrategySpec.from_dict(e["spec"]), _settings_de(e))
             d = res.to_dict()
             # Dos corridas distintas llaman S-001 a su primera estrategia. Sin
             # desambiguar, pandas colapsaría las dos columnas en una y el
@@ -3478,6 +3491,12 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             porcion = 1.0 if crudo is None else float(crudo)
         except (TypeError, ValueError):
             raise HTTPException(400, "La porción tiene que ser un número.")
+
+        # De qué estrategia salió: sin esto la lista no podía saber cuáles
+        # están de verdad en el aire y contaba como "Operando" a las que se
+        # habían apagado (3 de septiembre de 2026).
+        if sid:
+            doc["estrategia_id"] = sid
 
         try:
             bot = Bot(doc=doc, adaptador=adaptador, modo=modo, porcion=porcion,

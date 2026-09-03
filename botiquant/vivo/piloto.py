@@ -143,6 +143,9 @@ class Piloto:
         return {
             "encendido": v.encendido,
             "nombre": b.doc.get("nombre", ""),
+            # La estrategia de la que salió, para que la lista sepa cuáles
+            # están realmente corriendo y cuáles se apagaron.
+            "estrategia_id": b.doc.get("estrategia_id", ""),
             "simbolo": b.simbolo,
             "timeframe": b.timeframe,
             "modo": b.modo,

@@ -2313,6 +2313,12 @@ function resultadoPF(r) {
       <div class="stat"><span>${esc(t("pf.correlation"))}</span>
         <b class="pf-${j.cls}">${prom == null ? "—" : fmtNum(prom, 2)}</b></div>
     </div>
+    ${/* DE DÓNDE SALEN ESTAS CIFRAS. La misma estrategia mostraba tres
+          números distintos —en la lista, acá y en el enlace— y no había
+          manera de saber por qué. El conjunto se mide sobre los días en
+          que TODAS tienen datos, así que es más corto que cada una. */ ""}
+    ${r.ventana?.from ? `<p class="help-note nota-ventana">${esc(t("pf.ventana", {
+        desde: r.ventana.from, hasta: r.ventana.to }))}</p>` : ""}
     ${mudas.length ? `<div class="banner warn mt"><span class="b-ic">${icono("alerta")}</span>
       <div>${t("pf.no_overlap", { lista: mudas.map(esc).join(", "),
         desde: esc(r.ventana?.from || ""), hasta: esc(r.ventana?.to || "") })}</div></div>` : ""}
@@ -2863,6 +2869,12 @@ function estadoRobot(v) {
   return { cls: "mirando", txt: t("rob.mirando") };
 }
 
+/* Un porcentaje que se puede sumar: entero si lo es, con un decimal si no. */
+function pctExacto(x) {
+  const r = Math.round(x * 10) / 10;
+  return Number.isInteger(r) ? String(r) : fmtNum(r, 1);
+}
+
 function tarjetaVuelo(v) {
   const detenido = v.detenido || v.error;
   const est = estadoRobot(v);
@@ -2877,7 +2889,10 @@ function tarjetaVuelo(v) {
         pct: fmtNum(v.riesgo_pct, 1),
         usdt: fmtNum((S.cuentaSaldo || 0) * (v.porcion || 1) * (v.riesgo_pct / 100), 2),
         tope: v.tope_diario > 0 ? fmtNum(v.tope_diario, 2) + " USDT" : t("bot.sin_tope") }))}</p>` : ""}
-    <p class="help-note">${esc(t("bot.maneja", { pct: Math.round((v.porcion || 1) * 100) }))}${
+    ${/* Con un decimal cuando lo necesita: ocho robots al 10,6% redondeados a
+          11 sumaban 88% contra el 85% del pie, y no había forma de saber cuál
+          de los dos mentía (3 de septiembre). */ ""}
+    <p class="help-note">${esc(t("bot.maneja", { pct: pctExacto((v.porcion || 1) * 100) }))}${
       v.esperado_mes ? " · " + esc(t("bot.esperado_mes", { n: v.esperado_mes })) : ""}${
       v.encendido && v.timeframe ? " · " + esc(t("bot.proxima", { h: proximaVela(v.timeframe) })) : ""}</p>
 
@@ -3486,17 +3501,20 @@ const vistaBot = async (main, hayClave) => {
          riesgo decía "≈ 0.00 USDT". Se vuelven a dibujar con el saldo ya
          sabido, una sola vez. */
       S.cuentaSaldo = +d.saldo || 0;
-      const zonaR = $("#bot-zona-vuelos", main);
-      if (zonaR && (bot.vuelos || []).length) {
-        const fresco = await api.get("/api/bot");
-        zonaR.innerHTML = zonaVuelos(fresco); atarVuelos(main); atarReencender(main);
-      }
       const r = d.resultado || {};
       const signo = n => (n > 0 ? "pos" : n < 0 ? "neg" : "");
       $(".help-note", caja).innerHTML = `<span class="cuenta-dato">${esc(t("op.saldo"))} <b data-cifra="${+d.saldo || 0}" data-formato="usdt">0</b></span>
         <span class="cuenta-dato">${esc(t("op.neto"))} <b class="${signo(r.neto)}" data-cifra="${+r.neto || 0}" data-formato="usdt_signo">0</b></span>
         <span class="cuenta-dato">${esc(t("op.abiertas"))} <b data-cifra="${(d.posiciones || []).length}" data-formato="int">0</b></span>`;
       animarCifras(caja);
+      /* Y RECIÉN AHORA los robots. Este pedido va al exchange y tarda; hacerlo
+         antes dejaba saldo, resultado y posiciones en cero durante siete
+         segundos, con la frase de abajo ya diciendo los valores de verdad. */
+      const zonaR = $("#bot-zona-vuelos", main);
+      if (zonaR && (bot.vuelos || []).length) {
+        const fresco = await api.get("/api/bot");
+        zonaR.innerHTML = zonaVuelos(fresco); atarVuelos(main); atarReencender(main);
+      }
       /* LA HISTORIA EN UNA FRASE. Un tablero quieto no dice qué pasó; una
          frase con los mismos números sí. El mejor símbolo sale de las
          operaciones cerradas, si hay. */
@@ -4268,7 +4286,16 @@ let CUENTA_OK = null;
 async function refreshRobots() {
   try {
     const e = await api.get("/api/bot");
-    ROBOTS_LLENOS = (e.vuelos || []).filter(v => v.encendido).length >= (e.maximo || 8);
+    const prendidos = (e.vuelos || []).filter(v => v.encendido);
+    ROBOTS_LLENOS = prendidos.length >= (e.maximo || 8);
+    /* QUIÉNES ESTÁN DE VERDAD EN EL AIRE. El menú contaba robots (8) y la
+       lista contaba estrategias promovidas (9): la que se apagó seguía
+       diciendo "Operando" y los dos números no cerraban (3 de septiembre). */
+    const ids = prendidos.map(v => v.estrategia_id).filter(Boolean);
+    /* Un robot encendido antes de que existiera este campo no dice de qué
+       estrategia salió. Si NINGUNO lo dice, no se sabe nada y se cree lo que
+       dice la estrategia: demotarlas todas sería peor que el desajuste. */
+    ROBOTS_VIVOS = prendidos.length && !ids.length ? null : new Set(ids);
     const rc = $("#robots-count"); if (rc) rc.textContent = e.cuantos || "";
   } catch (err) { /* sin bots no hay número */ }
 }
@@ -4433,7 +4460,10 @@ const ETAPAS = ["por_probar", "aprobadas", "operando", "descartadas"];
 function etapaDe(s) {
   if (estaRetirada(s)) return "descartadas";
   const e = s.estado || "";
-  if (e === "practica" || e === "produccion") return "operando";
+  // Promovida Y con el robot prendido. Apagada vuelve a Las que aguantaron,
+  // que es donde se la puede volver a encender.
+  if ((e === "practica" || e === "produccion")
+      && (ROBOTS_VIVOS === null || ROBOTS_VIVOS.has(s.id))) return "operando";
   const v = estadoDe(s);
   if (v === "sin_probar") return "por_probar";
   if (v === "no_paso") return "descartadas";
@@ -4465,6 +4495,10 @@ let FILTRO_ETAPA = "vigentes";
 let PREELEGIDA = null;
 /* Si ya están todos los robots puestos, Aprobadas no ofrece encender. */
 let ROBOTS_LLENOS = false;
+/* Las estrategias con un robot encendido. `null` mientras no se sabe: hasta
+   que llegue la respuesta se cree lo que dice la estrategia, o la lista
+   parpadearía entera al cargar. */
+let ROBOTS_VIVOS = null;
 
 /* LO PROBADO SE QUEDA EN PROBAR HASTA QUE SE LIMPIA. Antes desaparecía al
    segundo de terminar y el usuario no veía por qué pasó o no pasó. Ahora

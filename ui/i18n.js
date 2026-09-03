@@ -2241,6 +2241,9 @@ const STR = {
   "pf.build": ["Combine selected", "Combinar las seleccionadas"],
   "pf.combined": ["Combined", "Combinada"],
   "pf.correlation": ["How alike they are", "Qué tan parecidas son"],
+  "pf.ventana": [
+    "Measured over the days when all of them have data: {desde} → {hasta}. Each strategy on its own covers more, so its number there is not this one.",
+    "Medido sobre los días en que todas tienen datos: {desde} → {hasta}. Cada estrategia por separado abarca más, así que su cifra allá no es esta."],
   "pf.correlation_help": [
     "1.0 means the two curves move together exactly — holding both buys you nothing. Below 0.3 is a real diversification.",
     "1,0 significa que las dos curvas se mueven exactamente igual: tener las dos no aporta nada. Por debajo de 0,3 es una diversificación de verdad."],

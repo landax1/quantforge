@@ -33,8 +33,14 @@ APP = (RAIZ / "ui" / "app.js").read_text(encoding="utf-8")
 
 
 def test_el_panel_se_limita_con_el_hueco_medido():
-    """Nada de números fijos: el hueco lo mide la aplicación."""
-    m = re.search(r"\.setup\s*\{[^}]*?max-height:\s*([^;]+);", CSS, re.S)
+    """Nada de números fijos: el hueco lo mide la aplicación.
+
+    Se mira la regla base —la de la columna al costado—, no la de pantallas
+    angostas: ahí el panel pasa al flujo normal y el tope se levanta a
+    propósito (ver la prueba de más abajo).
+    """
+    base = CSS.split("@media (max-width: 1180px)")[0]
+    m = re.search(r"\.setup\s*\{[^}]*?max-height:\s*([^;]+);", base, re.S)
     assert m, "el panel de configuración tiene que tener un límite de altura"
     regla = m.group(1)
     assert "--setup-hueco" in regla, (
@@ -60,15 +66,17 @@ def test_se_recalcula_al_cambiar_el_tamano():
         "el hueco tiene que recalcularse al cambiar el tamaño de la ventana")
 
 
-def test_en_angosto_el_panel_conserva_su_limite():
-    """El panel deja de ser pegajoso en angosto, pero no ilimitado.
+def test_en_angosto_el_boton_queda_pegado_abajo():
+    """En angosto el panel crece, pero el botón de arrancar no se va con él.
 
-    Antes la regla decía `position: static; max-height: none`, y sin límite el
-    panel crecía entero: el botón se iba igual de lejos que en el caso que
-    originó todo esto.
+    Durante un tiempo el panel conservó el tope de alto de la columna también
+    cuando pasaba al flujo normal. Medido el 3 de septiembre de 2026: a 1.024
+    px de ancho eso dejaba 205 px de ventana para 4.319 px de panel, o sea un
+    buzón con scroll propio. Levantar el tope sin más devolvía el problema
+    original —el botón al final de un panel larguísimo—, así que el botón se
+    queda pegado al borde de abajo y siempre está a un clic.
     """
-    m = re.search(r"@media \(max-width: 1180px\) \{ \.setup \{([^}]*)\}", CSS)
-    assert m, "tiene que seguir existiendo la regla de pantallas angostas"
-    assert "max-height: none" not in m.group(1), (
-        "sin límite de altura en angosto, el panel crece entero y el botón de "
-        "arrancar vuelve a quedar fuera de la ventana")
+    bloque = CSS.split("@media (max-width: 1180px) {", 1)[1].split(chr(10) + "}", 1)[0]
+    assert "#m-run" in bloque and "position: sticky" in bloque, (
+        "en pantallas angostas el botón de arrancar tiene que quedar pegado "
+        "abajo: sin eso queda al final de un panel de cuatro mil píxeles")
