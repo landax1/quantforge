@@ -115,6 +115,66 @@ def test_la_pagina_dice_con_que_costos_se_midio(c):
     assert "capital inicial" in pagina
 
 
+def test_una_comision_de_cero_se_dice(c):
+    """En cripto la comisión es EL costo, y el cero desaparecía.
+
+    La página imprimía sólo los costos distintos de cero, así que una
+    estrategia de BTC perpetuo medida con comisión 0% se compartía sin que
+    nada lo dijera: el que la recibía leía un rendimiento que no existe.
+    Encontrado el 3 de septiembre de 2026.
+    """
+    doc = _doc()
+    doc["costos"]["commission_pct"] = 0.0
+    d = c.post("/api/compartir", json=doc).json()
+    pagina = c.get(f"/s/{d['codigo']}").text
+    assert "comisión 0.000%" in pagina
+    assert "comisión es el costo principal" in pagina
+
+
+def test_la_pagina_dice_sobre_que_periodo_se_midio(c):
+    """El documento traía las fechas y la plantilla no las usaba: el
+    "+12,5% anual" no estaba fechado por ningún lado."""
+    d = c.post("/api/compartir", json=_doc()).json()
+    pagina = c.get(f"/s/{d['codigo']}").text
+    assert "Medida sobre 2024-01-01" in pagina
+
+
+def test_el_veredicto_no_pierde_su_mitad_prudente(c):
+    """La aplicación dice "aguantó a medias, no le confíes plata a ciegas" y
+    la página se quedaba sólo con "ganó en 4 de 4 tramos"."""
+    doc = _doc()
+    doc["validacion"]["estado"] = "aceptable"
+    d = c.post("/api/compartir", json=doc).json()
+    pagina = c.get(f"/s/{d['codigo']}").text
+    assert "no confiarle plata a ciegas" in pagina
+
+    aprobada = c.post("/api/compartir", json=_doc()).json()
+    pagina2 = c.get(f"/s/{aprobada['codigo']}").text
+    assert "no la vuelve una apuesta segura" in pagina2
+
+
+def test_viaja_la_caida_que_puede_pasar_y_no_solo_la_que_paso(c):
+    """La página mostraba la caída del backtest (7,8%) mientras la
+    aplicación mostraba al lado la peor caída plausible (16,6%). El número
+    que viajaba era el menor de los dos."""
+    doc = _doc()
+    doc["validacion"]["detalle"]["mc"] = {"dd_malo_pct": 16.6}
+    d = c.post("/api/compartir", json=doc).json()
+    pagina = c.get(f"/s/{d['codigo']}").text
+    assert "16.6%" in pagina and "racha mala plausible" in pagina
+
+
+def test_el_subtitulo_no_deja_separadores_colgando_ni_ingles(c):
+    """Terminaba en "· both ·" cuando no viajaban los bloques: un término
+    sin traducir y un separador sin nada detrás."""
+    doc = _doc("mirar")
+    d = c.post("/api/compartir", json=doc).json()
+    pagina = c.get(f"/s/{d['codigo']}").text
+    assert "compra y venta" in pagina
+    assert "· both" not in pagina
+    assert "· </p>" not in pagina
+
+
 def _doc_pf():
     return {
         "nivel": "mirar", "tipo": "portafolio", "autor": "nico",

@@ -541,9 +541,16 @@ function documentoCompartible(row, ctx, res, nivel, autor) {
     metricas: m,
     curva: muestra(res && res.equity, 240),
     fechas: muestra(res && res.timestamps, 240).map(x => String(x).slice(0, 10)),
+    /* Con el PERÍODO y la CAÍDA PLAUSIBLE. Sin el primero, el "+7,9% anual"
+       de la página no estaba fechado; sin la segunda, viajaba la caída que
+       efectivamente pasó (7,8%) y no la que puede pasar (16,6%), que es la
+       que la aplicación muestra al lado (3 de septiembre de 2026). */
     validacion: v && v.estado ? { estado: v.estado, tramos: v.tramos, tramos_ganadores: v.tramos_ganadores,
                                   eficiencia: v.eficiencia, retorno_fuera_pct: v.retorno_fuera_pct,
-                                  detalle: v.detalle ? { tramos: v.detalle.tramos } : null } : null,
+                                  periodo: v.periodo || null,
+                                  detalle: v.detalle
+                                    ? { tramos: v.detalle.tramos, mc: v.detalle.mc || v.mc || null }
+                                    : (v.mc ? { mc: v.mc } : null) } : null,
     mundo: S.mundo, spec: row.spec,
     utc_offset: ds && ds.utc_offset != null ? ds.utc_offset : (S.cfg.brokerUtc || 0),
   };

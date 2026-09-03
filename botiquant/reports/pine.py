@@ -317,14 +317,9 @@ var float atrEntrada = na
 var float trailDist  = na
 var float bestPx     = na
 
-// LA REVERSION. El guardia era `position_size == 0`, o sea que estando
-// comprado una senal de venta NO hacia nada: la posicion se quedaba abierta
-// hasta el stop o el objetivo. El backtest de Botiquant cierra en esa misma
-// vela y abre del otro lado. Medido sobre 1.000 velas reales de BTC-USDT, esa
-// sola diferencia daba 15 operaciones contra 13 y +174 contra +398 de neto.
-//
-// Con `<= 0` alcanza: strategy.entry da vuelta la posicion por si solo, y el
-// guardia sigue impidiendo piramidar cuando ya se esta del lado correcto.
+// Una senal contraria da vuelta la posicion en la misma vela, igual que en
+// el backtest de Botiquant, y no se piramida cuando ya se esta del lado
+// correcto.
 if goLong and strategy.position_size <= 0 and not na(atrRisk)
     strategy.entry("L", strategy.long, qty=qty{msg_l})
     atrEntrada := atrRisk

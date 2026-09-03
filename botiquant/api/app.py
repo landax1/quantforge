@@ -3828,6 +3828,18 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 return "—"
         cagr = m.get("cagr_pct"); dd = m.get("max_drawdown_pct"); pf = m.get("profit_factor"); ops = m.get("trades")
         est = v.get("estado") or ""
+        # LA MITAD PRUDENTE DEL VEREDICTO. La aplicación dice "aguantó, pero
+        # afuera rindió bastante menos: vale correrla en demo, no confiarle
+        # plata a ciegas" y la página se quedaba sólo con la mitad buena.
+        reparo = ""
+        if est == "aceptable":
+            reparo = ("<p style='margin:8px 0 0;color:#f0b64a'>Aguantó a medias: afuera "
+                      "rindió bastante menos que adentro. Vale correrla en una cuenta "
+                      "demo, no confiarle plata a ciegas.</p>")
+        elif est == "aprobada":
+            reparo = ("<p style='margin:8px 0 0;color:var(--dim)'>Que haya aguantado no la "
+                      "vuelve una apuesta segura: es lo mínimo que se le pide, no una "
+                      "promesa de lo que va a pasar.</p>")
         veredicto = {"aprobada": ("Aprobada", "#5ad38f"), "aceptable": ("Aguantó a medias", "#f0b64a"),
                      "no_paso": ("No pasó", "#f27a70")}.get(est, ("Sin probar", "#7d8b93"))
         curva = d.get("curva") or []
@@ -3849,25 +3861,60 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         reglas = "".join(f"<li>{e(r)}</li>" for r in (d.get("reglas") or []))
         usar = d.get("nivel") == "usar"
         titulo = f"{d.get('nombre') or 'Estrategia'} · {d.get('instrumento') or ''}".strip(" ·")
+        # El subtítulo terminaba en "· both ·" cuando no viajaban los bloques:
+        # un término en inglés y un separador colgando.
+        _dir = {"long": "sólo compra", "short": "sólo venta",
+                "both": "compra y venta"}.get(str(d.get("direccion") or ""), "")
+        subtitulo = " · ".join(str(x) for x in (d.get("instrumento"), d.get("timeframe"),
+                                                _dir, d.get("bloques")) if x)
         descr = f"{'+' if (cagr or 0) >= 0 else ''}{num(cagr, 1)}% anual · caída máxima {num(dd, 1)}% · {veredicto[0]}"
         botones = ""
         if usar:
             botones = (f"<a class='btn pri' href='/api/s/{e(codigo)}/pine' download>Usar en TradingView</a>"
                        f"<a class='btn' href='/api/s/{e(codigo)}/mql5' download>Usar en MetaTrader 5</a>")
-        botones += "<a class='btn' href='/'>Abrir en BotiQuant</a>"
+        botones += "<a class='btn' href='/#descargar'>Abrir en BotiQuant</a>"
         # LOS COSTOS, DICHOS: la página cerraba con "con los costos indicados"
         # y no indicaba ninguno (2 de septiembre).
+        # LOS COSTOS SE DICEN TODOS, el cero incluido. Una estrategia de BTC
+        # perpetuo se midió con comisión 0% y la página no lo decía: sólo se
+        # imprimían los costos distintos de cero, así que el más importante en
+        # cripto desaparecía justo cuando valía la pena avisar (3 de
+        # septiembre de 2026).
         c = d.get("costos") or {}
-        partes = []
-        if c.get("commission_pct"):
-            partes.append(f"comisión {num(c['commission_pct'], 3)}%")
+        partes = [f"comisión {num(c.get('commission_pct') or 0, 3)}%"]
         if c.get("spread"):
             partes.append(f"spread {num(c['spread'], 2)}")
         if c.get("slippage"):
             partes.append(f"deslizamiento {num(c['slippage'], 3)}")
         if c.get("initial_capital"):
             partes.append(f"capital inicial {num(c['initial_capital'], 0)}")
-        costos_txt = ("Costos: " + " · ".join(partes) + ". ") if partes else ""
+        costos_txt = "Costos: " + " · ".join(partes) + ". "
+        if not (c.get("commission_pct") or 0):
+            costos_txt += ("Con comisión cero: en un exchange de cripto la comisión "
+                           "es el costo principal, así que el resultado real sería menor. ")
+
+        # EL PERÍODO, DICHO. El documento guardaba las fechas y la plantilla no
+        # las usaba: el "+7,9% anual" no estaba fechado por ningún lado.
+        fechas = [x for x in (d.get("fechas") or []) if x]
+        periodo_txt = ""
+        if len(fechas) >= 2:
+            periodo_txt = f"Medida sobre {e(fechas[0])} → {e(fechas[-1])}. "
+        elif ((d.get("validacion") or {}).get("periodo") or {}).get("from"):
+            pr = d["validacion"]["periodo"]
+            periodo_txt = f"Probada sobre {e(pr['from'])} → {e(pr.get('to') or '')}. "
+
+        # LA CAÍDA PLAUSIBLE, al lado de la que pasó. La página mostraba 7,8%
+        # (lo que efectivamente cayó) mientras la aplicación decía 16,6% (lo
+        # que puede caer rebarajando las operaciones). Dos números para el
+        # mismo riesgo, y el que viajaba era el menor.
+        dd_malo = ((v.get("detalle") or {}).get("mc") or {}).get("dd_malo_pct")
+        if dd_malo is None:
+            dd_malo = (d.get("mc") or {}).get("dd_malo_pct")
+        dd_malo_txt = ""
+        if isinstance(dd_malo, (int, float)) and dd_malo:
+            dd_malo_txt = (f"<p style='margin:8px 0 0;color:var(--dim);font-size:13px'>"
+                           f"Cayó {num(dd, 1)}% en los datos que se midieron. Rebarajando sus "
+                           f"operaciones, una racha mala plausible llega a {num(dd_malo, 1)}%.</p>")
         return f"""<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width'>
 <meta name='robots' content='noindex'>
 <title>{e(titulo)} · BotiQuant</title>
@@ -3892,18 +3939,19 @@ h1{{font-size:28px;margin:0 0 4px;letter-spacing:-.02em}}.sub{{color:var(--dim);
 </style></head><body><main>
 <div class='marca'><i></i>Compartida desde BotiQuant{(' por ' + e(d['autor'])) if d.get('autor') else ''}</div>
 <h1>{e(d.get('nombre') or 'Estrategia')}</h1>
-<p class='sub'>{e(d.get('instrumento') or '')} · {e(d.get('timeframe') or '')} · {e(d.get('direccion') or '')} · {e(d.get('bloques') or '')}</p>
+<p class='sub'>{e(subtitulo)}</p>
 <div class='kpis'><div class='kpi'><span>Anual</span><b>{'+' if (cagr or 0) >= 0 else ''}{num(cagr, 1)}%</b></div>
 <div class='kpi'><span>Caída máxima</span><b>{num(dd, 1)}%</b></div><div class='kpi'><span>Profit factor</span><b>{num(pf, 2)}</b></div>
 <div class='kpi'><span>Operaciones</span><b>{num(ops, 0)}</b></div></div>
 {_bloque_portafolio(d, e) if d.get("tipo") == "portafolio" else ""}
 <div class='ver'{" hidden" if d.get("tipo") == "portafolio" else ""}><b class='w' style='color:{veredicto[1]}'>{veredicto[0]}</b>
 {('<p style="margin:4px 0 0;color:var(--dim)">Ganó en ' + str(v.get('tramos_ganadores')) + ' de ' + str(v.get('tramos')) + ' tramos que nunca había visto · ' + ('+' if (v.get('retorno_fuera_pct') or 0) >= 0 else '') + num(v.get('retorno_fuera_pct'), 1) + '% fuera de muestra</p>') if est else '<p style="margin:4px 0 0;color:var(--dim)">Todavía no se puso a prueba sobre datos que no vio.</p>'}
+{reparo}{dd_malo_txt}
 {('<div class="tramos">' + tramos + '</div>') if tramos else ''}</div>
-{('<div class="graf">' + grafico + '</div>') if grafico else ''}
+{('<div class="graf"><b style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em">Forma de la curva</b>' + grafico + '<p style="margin:2px 0 0;color:var(--dim);font-size:12px">Sin escala: muestra la forma, no el tamaño. Las cifras están arriba.</p></div>') if grafico else ''}
 {('<div class="reglas"><b>Reglas</b><ul>' + reglas + '</ul>' + ('<p style="margin:8px 0 0;color:var(--dim);font-size:13px">' + e(d.get('salidas') or '') + '</p>' if d.get('salidas') else '') + '</div>') if reglas else ''}
 <div class='btns'>{botones}</div>
-<p class='pie'>{costos_txt}Medida sobre datos históricos con esos costos. No es una recomendación de inversión: probala en una cuenta demo antes de ponerle plata.</p>
+<p class='pie'>{periodo_txt}{costos_txt}Medida sobre datos históricos con esos costos. No es una recomendación de inversión: probala en una cuenta demo antes de ponerle plata.</p>
 </main></body></html>"""
 
     @app.get("/api/descarga")

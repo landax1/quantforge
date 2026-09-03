@@ -263,7 +263,14 @@ def export_mql5(spec: StrategySpec, *, ea_name: str = "BQ_Strategy",
         _lineas.append(f'      Alert("[QF] Esta estrategia se midio en velas de {timeframe_hint}; el grafico esta en ", '
                        f'EnumToString((ENUM_TIMEFRAMES)_Period), ". Cambia la temporalidad o los resultados no van a parecerse.");')
     if _token:
-        _lineas.append(f'   if(StringFind(_Symbol, "{_token}") < 0 && StringFind(_Symbol, "{_token.replace("SP", "US")}") < 0)')
+        # SP500 en el broker suele ser US500, así que se aceptan las dos
+        # formas. Pero para BTCUSD el reemplazo no cambia nada y la condición
+        # quedaba comparando dos veces lo mismo (3 de septiembre de 2026).
+        _alt = _token.replace("SP", "US")
+        _cond = f'StringFind(_Symbol, "{_token}") < 0'
+        if _alt != _token:
+            _cond += f' && StringFind(_Symbol, "{_alt}") < 0'
+        _lineas.append(f"   if({_cond})")
         _lineas.append(f'      Alert("[QF] Esta estrategia se midio sobre {symbol_hint}; el grafico es ", _Symbol, '
                        f'". Si no es el mismo mercado, no la uses aca.");')
     aviso_mercado = chr(10).join(_lineas)
