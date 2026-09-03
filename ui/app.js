@@ -4222,6 +4222,7 @@ let CUENTA_OK = null;
 async function refreshRobots() {
   try {
     const e = await api.get("/api/bot");
+    ROBOTS_LLENOS = (e.vuelos || []).filter(v => v.encendido).length >= (e.maximo || 8);
     const rc = $("#robots-count"); if (rc) rc.textContent = e.cuantos || "";
   } catch (err) { /* sin bots no hay número */ }
 }
@@ -4416,6 +4417,8 @@ let FILTRO_ETAPA = "vigentes";
 
 /* La estrategia que Probar manda a encender: Operar la preelige. */
 let PREELEGIDA = null;
+/* Si ya están todos los robots puestos, Aprobadas no ofrece encender. */
+let ROBOTS_LLENOS = false;
 
 /* LO PROBADO SE QUEDA EN PROBAR HASTA QUE SE LIMPIA. Antes desaparecía al
    segundo de terminar y el usuario no veía por qué pasó o no pasó. Ahora
@@ -4490,6 +4493,34 @@ function enCola(id) {
   return (COLA_PRUEBAS.ids || []).includes(id) || COLA_PENDIENTE.some(x => x.id === id);
 }
 
+/* Dónde quedó la que se acaba de probar, con un atajo. Se busca en la
+   lista ya refrescada; si todavía no llegó, no se dice nada. */
+async function avisarVeredicto(id) {
+  await refreshSavedCount();
+  const s = (S.saved || []).find(x => x.id === id);
+  if (!s || !(s.validacion || {}).estado) return;
+  const et = etapaDe(s);
+  if (S.page === "saved" && S.vista === et) return;      // ya lo está viendo
+  toastAccion(t("wf.quedo", { nombre: s.name, donde: t(et === "aprobadas" ? "nav.aprobadas" : "saved.descartadas_t") }),
+              t("wf.ir_a_ver"), () => navigate("saved", et));
+}
+
+/* Un aviso con un botón. El toast común se va solo y no lleva a ningún lado;
+   éste ofrece el paso siguiente sin obligar a nada. */
+function toastAccion(mensaje, rotulo, alApretar) {
+  const host = $("#toast-host");
+  if (!host) return;
+  const el = document.createElement("div");
+  el.className = "toast ok toast-accion";
+  el.innerHTML = `<span>${esc(mensaje)}</span>`;
+  const b = document.createElement("button");
+  b.className = "linkbtn"; b.textContent = rotulo;
+  b.onclick = () => { el.remove(); alApretar(); };
+  el.appendChild(b);
+  host.appendChild(el);
+  setTimeout(() => el.remove(), 12000);
+}
+
 function accionEtapa(s) {
   const et = etapaDe(s);
   const cripto = mundoDeDataset((s.meta || {}).dataset_name || "") !== "metatrader";
@@ -4502,7 +4533,10 @@ function accionEtapa(s) {
        deja UNA orden puesta en el exchange, así que Operar las filtra. Ofrecer
        "Encender" acá y no encontrarlas allá era una promesa rota. */
     const operable = cripto && !(((s.spec || {}).risk || {}).trail_atr > 0);
-    return `${operable ? `<button class="btn small" data-encender="${esc(s.id)}">${icono("seguir", "ico-sm")} ${esc(t("saved.acc_encender"))}</button>` : ""}
+    /* SIN LUGAR NO SE OFRECE: el botón estaba habilitado con los ocho robots
+       puestos y el motivo aparecía recién después del clic. */
+    const sinLugar = ROBOTS_LLENOS;
+    return `${operable ? `<button class="btn small" ${sinLugar ? `disabled title="${esc(t("bot.sin_lugar_sub"))}"` : ""} data-encender="${esc(s.id)}">${icono("seguir", "ico-sm")} ${esc(t("saved.acc_encender"))}</button>` : ""}
       <button class="btn ghost small" data-probar="${esc(s.id)}">${esc(t("wf.retest"))}</button>
       ${cripto && !operable ? `<span class="muted" title="${esc(t("bot.trailing_no"))}">${esc(t("bot.trailing_corto"))}</span>` : ""}`;
   }
@@ -5031,6 +5065,7 @@ async function probarVarias(lista, main) {
       cuenta[v.estado in cuenta ? v.estado : "error"] += 1;
       RECIEN_PROBADAS.add(s.id);
       primerPaso("probaste");
+      avisarVeredicto(s.id);
       if (S.page === "saved" && S.vista !== "aprobadas") await navigate("saved", S.vista);
     } catch (e) {
       cuenta.error += 1;
@@ -5045,6 +5080,8 @@ async function probarVarias(lista, main) {
     }
   }
   COLA_PRUEBAS = null;
+  /* EL VEREDICTO SE AVISA AUNQUE NO ESTÉS MIRANDO: la usuaria de prueba
+     cambió de pantalla y no supo nunca que su estrategia había aprobado. */
   toast(t("sel.resumen", { a: cuenta.aprobada, m: cuenta.aceptable, f: cuenta.no_paso })
         + (cuenta.error ? ` · ${t("sel.errores", { n: cuenta.error })}` : ""), "ok");
   SEL_PF.clear();
@@ -5089,6 +5126,8 @@ async function correrPrueba(s, boton) {
     toast(t("wf.done", { nombre: s.name }), "ok");
     RECIEN_PROBADAS.add(s.id);
     primerPaso("probaste");
+    // y el aviso dice dónde quedó, con un atajo para ir a verla
+    avisarVeredicto(s.id);
     /* LA FILA SE VA: lo probado deja Probar y aparece en su bandeja nueva.
        Se la ve salir antes de repintar, para que el movimiento cuente la
        regla de las bandejas. */
@@ -7989,7 +8028,22 @@ function renderMining(snap, finished) {
 
     bankBox.innerHTML = bankHtml;
     bankBox.dataset.h = bankHtml;
-    const todasAlBanco = $("#guardar-todas", bankBox);
+    /* LA ACCIÓN NO SE PIERDE DE VISTA. El botón quedaba a 1.400 px del tope y
+     el panel lo redibujaba: la usuaria de prueba tardó minuto y medio en
+     encontrar lo que acababa de buscar. Cuando la búsqueda terminó y hay
+     algo, la acción también vive en una barra fija abajo. */
+  const barraFin = $("#barra-fin");
+  if (barraFin) {
+    const hay = finished && snap.corrida_id && bank.length;
+    barraFin.hidden = !hay;
+    if (hay && !barraFin.dataset.n) {
+      barraFin.dataset.n = String(bank.length);
+      barraFin.innerHTML = `<span>${esc(t("run.listo", { n: bank.length }))}</span>
+        <button class="btn" id="fin-a-probar">${icono("marcador")} ${esc(t("bank.guardar_todas", { n: bank.length }))}</button>`;
+      $("#fin-a-probar", barraFin).onclick = () => { const b = $("#guardar-todas", bankBox); if (b) b.click(); };
+    }
+  }
+  const todasAlBanco = $("#guardar-todas", bankBox);
     if (todasAlBanco) todasAlBanco.onclick = async () => {
       todasAlBanco.disabled = true;
       try {
@@ -7999,6 +8053,7 @@ function renderMining(snap, finished) {
         toast(t("bank.guardadas_n", { n: (r.guardadas || []).length }), "ok");
         await refreshSavedCount();
         encolarPruebas((r.guardadas || []).map(g => g.id));
+        const bf = $("#barra-fin"); if (bf) { bf.hidden = true; delete bf.dataset.n; }
         todasAlBanco.replaceWith(Object.assign(document.createElement("span"),
           { className: "insp-guardada recien", innerHTML: `${icono("tilde", "ico-sm")} ${esc(t("bank.guardadas_n", { n: (r.guardadas || []).length }))}` }));
       } catch (e) {
