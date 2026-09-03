@@ -2438,12 +2438,12 @@ function resultadoPF(r) {
     <h2>${esc(t("pf.combined"))}
       <span class="hint">${n} ${esc(t("ui.strategies"))} · ${esc(t("pf.equal_weight"))}</span></h2>
     <div class="statgrid mt">
-      <div class="stat"><span>${esc(t("m.cagr"))}</span>
+      <div class="stat"><span>${rotuloMetrica("m.cagr")}</span>
         <b class="${m.cagr_pct >= 0 ? "pos" : "neg"}">${fmtPct(m.cagr_pct)}</b></div>
-      <div class="stat"><span>${esc(t("m.dd"))}</span>
+      <div class="stat"><span>${rotuloMetrica("m.dd")}</span>
         <b class="${nivelDD(m.max_drawdown_pct, riesgoActual())}">${
           fmtNum(m.max_drawdown_pct, 1)}<u>%</u></b></div>
-      <div class="stat"><span>${esc(t("m.sharpe"))}</span><b>${fmtNum(m.sharpe)}</b></div>
+      <div class="stat"><span>${rotuloMetrica("m.sharpe")}</span><b>${fmtNum(m.sharpe)}</b></div>
       <div class="stat"><span>${esc(t("pf.correlation"))}</span>
         <b class="pf-${j.cls}">${prom == null ? "—" : fmtNum(prom, 2)}</b></div>
     </div>
@@ -2986,6 +2986,20 @@ function traducirMotivo(m) {
     return p;
   });
   return partes.join("; ");
+}
+
+/* UNA CIFRA CON SU REFERENCIA. La ficha de robustez ya ponía un "?" al lado
+   de cada número con la frase que dice qué es normal —"1.0 es que sobrevivió
+   entero; 0.5 es lo normal y sano"— y era la única pantalla que lo hacía. El
+   resto mostraba CAGR, caída, profit factor y Sharpe desnudos: una usuaria de
+   prueba que no sabe de trading preguntó "¿+7,59% anual es mucho?" y la
+   aplicación no lo decía en ninguna parte (3 de septiembre de 2026). */
+function rotuloMetrica(clave) {
+  const REF = { "m.cagr": "ref.cagr", "m.dd": "ref.dd", "m.pf": "ref.pf",
+                "m.trades": "ref.trades", "m.sharpe": "ref.sharpe",
+                "m.winrate": "ref.winrate" };
+  const ref = REF[clave];
+  return esc(t(clave)) + (ref ? ` <em class="ref" title="${esc(t(ref))}">?</em>` : "");
 }
 
 function rotuloAccion(a) {
@@ -8169,15 +8183,15 @@ function renderMining(snap, finished) {
       <div class="champ-cta">${esc(t("run.open_full"))} →</div>
     </div>
     <div class="champ-metrics">
-      <div><span>${esc(t("m.cagr"))}</span><b class="${champ.metrics.cagr_pct >= 0 ? "pos" : "neg"}">${fmtPct(champ.metrics.cagr_pct)}</b></div>
+      <div><span>${rotuloMetrica("m.cagr")}</span><b class="${champ.metrics.cagr_pct >= 0 ? "pos" : "neg"}">${fmtPct(champ.metrics.cagr_pct)}</b></div>
       <div><span>${esc(t("m.net"))} ${champ.metrics.years ? `${fmtNum(champ.metrics.years, 1)} ${esc(t("m.years").toLowerCase())}` : ""}</span><b class="${champ.metrics.net_profit_pct >= 0 ? "pos" : "neg"}">${fmtPct(champ.metrics.net_profit_pct)}</b></div>
-      <div><span>${esc(t("m.pf"))}</span><b>${fmtNum(champ.metrics.profit_factor)}</b></div>
-      <div><span>${esc(t("m.sharpe"))}</span><b>${fmtNum(champ.metrics.sharpe)}</b></div>
-      <div><span>${esc(t("m.dd"))}</span><b class="${
+      <div><span>${rotuloMetrica("m.pf")}</span><b>${fmtNum(champ.metrics.profit_factor)}</b></div>
+      <div><span>${rotuloMetrica("m.sharpe")}</span><b>${fmtNum(champ.metrics.sharpe)}</b></div>
+      <div><span>${rotuloMetrica("m.dd")}</span><b class="${
         nivelDD(champ.metrics.max_drawdown_pct, riesgoActual())}">${
         fmtNum(champ.metrics.max_drawdown_pct, 1)}%</b></div>
       <div><span>${esc(t("m.exposure"))}</span><b>${fmtNum(champ.metrics.exposure_pct ?? 0, 1)}%</b></div>
-      <div><span>${esc(t("m.trades"))}</span><b>${champ.metrics.trades}</b></div>
+      <div><span>${rotuloMetrica("m.trades")}</span><b>${champ.metrics.trades}</b></div>
     </div>
   </div>` : "";
 
@@ -8593,10 +8607,10 @@ function cablearMuestras(box, row, ctx, mostrarResultado) {
     const tabla = $("#ms-comparar", host);
     if (!tabla) return;
     const FILAS = [
-      ["cagr_pct", t("m.cagr"), "pct"],
-      ["max_drawdown_pct", t("m.dd"), "dd"],
-      ["profit_factor", t("m.pf"), "n"],
-      ["trades", t("m.trades"), "int"],
+      ["cagr_pct", rotuloMetrica("m.cagr"), "pct"],
+      ["max_drawdown_pct", rotuloMetrica("m.dd"), "dd"],
+      ["profit_factor", rotuloMetrica("m.pf"), "n"],
+      ["trades", rotuloMetrica("m.trades"), "int"],
     ];
     const riesgo = riesgoDeCtx(ctx && ctx.guardar) ?? riesgoActual();
     const celda = (id, k, kind) => {
@@ -8616,7 +8630,7 @@ function cablearMuestras(box, row, ctx, mostrarResultado) {
           `<td class="num">${esc(String(v.desde).slice(0, 10))} → ${esc(String(v.hasta).slice(0, 10))}</td>`).join("")}</tr>
       </thead>
       <tbody>${FILAS.map(([k, lab, kind]) => `<tr>
-        <th scope="row">${esc(lab)}</th>
+        <th scope="row">${lab}</th>
         ${VISTAS.map(v => celda(v.id, k, kind)).join("")}
       </tr>`).join("")}</tbody></table>
       ${[...medido.values()].some(d => d.err && esCorto(d.err))
@@ -8958,18 +8972,21 @@ async function openInspector(row, ctx) {
    para eso era media pantalla gastada en dibujar bordes. */
 const INSPECT_CABEZA = ["cagr_pct", "max_drawdown_pct", "profit_factor", "trades"];
 
+/* Las seis de siempre llevan su "?" con la referencia de qué es normal: eran
+   las que una usuaria de prueba miró sin saber si un +7,59% anual era mucho o
+   poco (3 de septiembre de 2026). */
 const INSPECT_METRICS = () => [
-  ["cagr_pct", t("m.cagr"), "pct"],
+  ["cagr_pct", rotuloMetrica("m.cagr"), "pct"],
   ["net_profit_pct", t("m.net"), "pct"],
   ["exposure_pct", t("m.exposure"), "raw"],
   ["cagr_exposed_pct", t("m.cagr_exposed"), "raw"],
   ["months_positive_pct", t("m.months_positive"), "raw"],
-  ["profit_factor", t("m.pf"), "n"],
-  ["sharpe", t("m.sharpe"), "n"],
+  ["profit_factor", rotuloMetrica("m.pf"), "n"],
+  ["sharpe", rotuloMetrica("m.sharpe"), "n"],
   ["recovery_factor", t("m.retdd"), "n"],
-  ["max_drawdown_pct", t("m.dd"), "dd"],
-  ["win_rate_pct", t("m.winrate"), "raw"],
-  ["trades", t("m.trades"), "int"],
+  ["max_drawdown_pct", rotuloMetrica("m.dd"), "dd"],
+  ["win_rate_pct", rotuloMetrica("m.winrate"), "raw"],
+  ["trades", rotuloMetrica("m.trades"), "int"],
   ["trades_per_month", t("m.trades_month"), "n"],
   ["avg_trade", t("m.avg_trade"), "money"],
   ["_win_loss", t("m.win_loss"), "win_loss"],

@@ -157,6 +157,30 @@ const STR = {
   "m.cagr": ["Annual return (CAGR)", "Retorno anual (CAGR)"],
   "m.net": ["Total return", "Retorno total"],
   "m.pf": ["Profit factor", "Profit factor"],
+  /* QUÉ ES NORMAL. Una usuaria de prueba que no sabe de trading recorrió la
+     aplicación el 3 de septiembre de 2026 y dijo lo obvio: los números
+     aparecen desnudos y nadie le dice con qué compararlos. "¿+7,59% anual es
+     mucho?" no tiene respuesta en ningún lado. La ficha de robustez ya lo
+     hacía bien —"1.0 es que sobrevivió entero; 0.5 es lo normal y sano"— y
+     acá se hace lo mismo con las cifras de siempre. */
+  "ref.cagr": [
+    "How much the account grows per year, on average, over the measured stretch. Buying and holding the S&P 500 has averaged about 10% a year: below that, the strategy is not paying for its own complexity. Above 40% on a short stretch is usually luck, not edge.",
+    "Cuánto crece la cuenta por año, en promedio, sobre el tramo medido. Comprar y aguantar el S&P 500 promedió alrededor del 10% anual: por debajo de eso, la estrategia no paga la complicación de tenerla. Arriba del 40% en un tramo corto suele ser suerte, no ventaja."],
+  "ref.dd": [
+    "The worst peak-to-bottom fall the account went through. It is the number that decides whether you can stay in: 10% is uncomfortable, 20% is where most people quit, above 30% almost nobody holds on. It has to be smaller than what you are willing to watch happen.",
+    "La peor caída de pico a fondo que atravesó la cuenta. Es el número que decide si uno se la banca: 10% incomoda, 20% es donde la mayoría abandona, arriba de 30% casi nadie aguanta. Tiene que ser más chica que lo que estés dispuesto a ver pasar."],
+  "ref.pf": [
+    "How much it won for every unit it lost. Below 1 it lost money; 1.2 is thin but real; 1.5 is good; above 2.5 on few trades is usually a fluke that will not repeat.",
+    "Cuánto ganó por cada unidad que perdió. Abajo de 1 perdió plata; 1,2 es flaco pero real; 1,5 está bien; arriba de 2,5 con pocas operaciones suele ser una casualidad que no se repite."],
+  "ref.trades": [
+    "How many round trips it made. Under 30 the numbers mean almost nothing — a couple of lucky trades move everything. From 100 up the average starts to be worth something.",
+    "Cuántas operaciones completas hizo. Abajo de 30 los números no significan casi nada: dos operaciones con suerte mueven todo. De 100 para arriba el promedio empieza a valer."],
+  "ref.sharpe": [
+    "Return divided by how bumpy the ride was. Below 0.5 the swings eat the gain; around 1 is solid; above 2 measured on a short stretch is almost always overfitting.",
+    "El rendimiento dividido por lo movido que fue el camino. Abajo de 0,5 los vaivenes se comen la ganancia; alrededor de 1 es sólido; arriba de 2 medido en un tramo corto es casi siempre sobreajuste."],
+  "ref.winrate": [
+    "Share of trades closed in profit. A high one is not better on its own: a strategy that wins 30% of the time and lets the winners run beats one that wins 70% and cuts them short. Read it together with the profit factor.",
+    "Qué proporción de operaciones cerró en ganancia. Que sea alta no la hace mejor: una estrategia que acierta el 30% y deja correr las ganadoras le gana a una que acierta el 70% y las corta enseguida. Se lee junto con el profit factor."],
   "m.dd": ["Max drawdown", "Drawdown máximo"],
   "m.winrate": ["Win rate", "Win rate"],
   "m.sharpe": ["Sharpe", "Sharpe"],
