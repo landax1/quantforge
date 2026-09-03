@@ -8542,6 +8542,12 @@ function panelPrueba(ctx) {
     ${dibujosPrueba(v)}
     ${explicacionHTML("prueba", PASOS_PRUEBA())}
 
+    ${/* QUÉ MIDE ESTA PRUEBA, dicho al lado del número. Tres estrategias con
+          parámetros distintos daban tramos idénticos y el mismo +21,43%: es
+          lo que corresponde —la prueba reoptimiza en cada tramo—, pero la
+          ficha lo mostraba como el resultado de ESA estrategia, pegado a un
+          retorno anual que sí es de sus parámetros (3 de septiembre). */ ""}
+    <p class="help-note nota-que-mide">${esc(t("wf.que_mide"))}</p>
     <p class="v-pie">${t("wf.tested_on", {
       desde: esc(v.periodo?.from || "—"), hasta: esc(v.periodo?.to || "—"),
       cuando: esc(String(v.probada || "").slice(0, 10)) })}</p>

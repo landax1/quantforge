@@ -8,6 +8,7 @@ outside the data it was fitted on.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Callable
 
 import numpy as np
@@ -66,9 +67,14 @@ def walk_forward(
         tuned = apply_values(spec, opt.get("best_values", {}))
 
         is_res = run_backtest(train_df, tuned, settings)
-        fold_settings = BacktestSettings(initial_capital=capital,
-                                         commission_pct=settings.commission_pct,
-                                         slippage_pct=settings.slippage_pct)
+        # LOS MISMOS COSTOS QUE ADENTRO. El tramo de fuera se corría con un
+        # objeto nuevo que sólo copiaba las dos comisiones porcentuales: se
+        # perdían el spread, el deslizamiento en unidades de precio y el
+        # funding del perpetuo. O sea que la prueba medía el tramo de fuera
+        # más barato que el de dentro, y la eficiencia salía inflada por
+        # construcción (encontrado el 3 de septiembre de 2026). Lo único que
+        # cambia entre tramos es el capital, que se compone.
+        fold_settings = replace(settings, initial_capital=capital)
         oos_res = run_backtest(test_df, tuned, fold_settings)
 
         # stitch OOS equity (compounding capital across folds)

@@ -2100,6 +2100,9 @@ const STR = {
   "wf.tested_on": [
     "Tested over {desde} → {hasta}, on {cuando}.",
     "Probada sobre {desde} → {hasta}, el {cuando}."],
+  "wf.que_mide": [
+    "In each stretch the test re-tunes the numbers on the older data and grades them on the newer. So what it measures is whether this KIND of rule survives out of sample, not these exact numbers: two strategies built on the same rule can get the same verdict. The annual return above is from these numbers.",
+    "En cada tramo la prueba vuelve a ajustar los números sobre los datos viejos y los califica sobre los nuevos. Lo que mide, entonces, es si esta CLASE de regla sobrevive afuera, no estos números exactos: dos estrategias armadas sobre la misma regla pueden sacar el mismo veredicto. El retorno anual de arriba sí es de estos números."],
   "wf.ruin_warn": [
     "In <b>{pct}%</b> of the reshuffles the account lost a third of its capital before recovering. That is a real account somebody closes.",
     "En el <b>{pct}%</b> de los repartos la cuenta perdió un tercio del capital antes de recuperarse. Eso es una cuenta real que alguien cierra."],

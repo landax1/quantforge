@@ -7,6 +7,7 @@ import pytest
 
 from botiquant.analysis.montecarlo import monte_carlo
 from botiquant.analysis.walkforward import walk_forward
+from botiquant.core.models import BacktestSettings
 from botiquant.backtesting.engine import run_backtest
 from botiquant.generator.generator import Genome, build_spec, generate_strategies
 from botiquant.generator.templates import TEMPLATES, drivers, filters
@@ -93,6 +94,44 @@ def test_walk_forward_folds(df, ema_spec):
     assert out["summary"]["verdict"] in ("robust", "acceptable", "overfitted")
     for fold in out["folds"]:
         assert fold["test_start"] > fold["train_start"]
+
+
+def test_el_tramo_de_fuera_paga_los_mismos_costos(df, ema_spec, monkeypatch):
+    """Adentro y afuera se mide con la misma vara.
+
+    El tramo de fuera se corría con un `BacktestSettings` nuevo que sólo
+    copiaba las dos comisiones porcentuales: perdía el spread, el
+    deslizamiento en unidades de precio y el funding del perpetuo. La prueba
+    medía entonces el tramo de fuera MÁS BARATO que el de dentro, y la
+    eficiencia —que es el cociente entre los dos— salía inflada por
+    construcción. Encontrado el 3 de septiembre de 2026.
+    """
+    import botiquant.analysis.walkforward as mod
+
+    vistos = []
+    original = mod.run_backtest
+
+    def espiar(datos, spec, ajustes=None, *a, **k):
+        vistos.append(ajustes)
+        return original(datos, spec, ajustes, *a, **k)
+
+    monkeypatch.setattr(mod, "run_backtest", espiar)
+    pedidos = BacktestSettings(initial_capital=10_000.0, spread=0.5,
+                               slippage=0.25, commission_pct=0.04)
+    walk_forward(df, ema_spec, folds=3, optimize_budget=5, min_trades=2,
+                 settings=pedidos)
+
+    # el optimizador corre muchas veces; nos importan las corridas del propio
+    # walk-forward, que son las que llevan un capital ya compuesto
+    assert vistos, "no se corrió ningún backtest"
+    for ajustes in vistos:
+        if ajustes is None:
+            continue
+        assert ajustes.spread == pedidos.spread, (
+            "un tramo se midió sin el spread: la eficiencia sale inflada")
+        assert ajustes.slippage == pedidos.slippage, (
+            "un tramo se midió sin el deslizamiento")
+        assert ajustes.commission_pct == pedidos.commission_pct
 
 
 def test_portfolio_math(df, ema_spec):
