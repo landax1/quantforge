@@ -2381,6 +2381,11 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
   .inst-card, .robots .robot, .camino-et, .receta, tr.clickable, .wel-mundo { transition: none; }
 }
 
+/* la tarjeta del robot: el riesgo, con peso */
+.bot-riesgo { color: var(--text) !important; }
+/* del .mq5 al probador */
+.mt5-pasos { margin: 8px 0 0; padding-left: 20px; font-size: 13px; color: var(--text-2); display: grid; gap: 6px; }
+
 /* ---- compartir con un enlace ---- */
 .sheet-chica { width: min(560px, 100%); }
 .comp-cuerpo { padding: 0 24px 8px; }

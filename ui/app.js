@@ -1941,6 +1941,8 @@ function pintarChrome() {
      prometer algo que la pantalla no hace. */
   const op = $("#nav-operar [data-i18n]");
   if (op) op.textContent = t("nav.operar");
+  // la licencia se pinta una sola vez y quedaba en el idioma anterior
+  refreshLicencia();
   /* EN CFDs NO HAY TERCER PASO: se exporta el robot desde Probar. Operar y
      la cuenta del exchange desaparecen del menú en esa sección. */
   pintarCuenta();
@@ -2788,6 +2790,10 @@ function tarjetaVuelo(v) {
       <span class="robot-estado ${est.cls}">${esc(est.txt)}</span>
     </div>
     <div class="robot-modo">${esc(rotuloModo(v.modo))}</div>
+    ${v.riesgo_pct != null ? `<p class="help-note bot-riesgo">${esc(t("bot.riesgo", {
+        pct: fmtNum(v.riesgo_pct, 1),
+        usdt: fmtNum((S.cuentaSaldo || 0) * (v.porcion || 1) * (v.riesgo_pct / 100), 2),
+        tope: v.tope_diario > 0 ? fmtNum(v.tope_diario, 2) + " USDT" : t("bot.sin_tope") }))}</p>` : ""}
     <p class="help-note">${esc(t("bot.maneja", { pct: Math.round((v.porcion || 1) * 100) }))}${
       v.esperado_mes ? " · " + esc(t("bot.esperado_mes", { n: v.esperado_mes })) : ""}${
       v.encendido && v.timeframe ? " · " + esc(t("bot.proxima", { h: proximaVela(v.timeframe) })) : ""}</p>
@@ -3411,6 +3417,9 @@ const vistaBot = async (main, hayClave) => {
     if (!caja) return;
     try {
       const d = await api.get("/api/cuenta/rendimiento");
+      S.cuentaSaldo = +d.saldo || 0;
+      const zonaR = $("#bot-zona-vuelos", main);
+      if (zonaR && bot.vuelos && bot.vuelos.length) { zonaR.innerHTML = zonaVuelos(bot); atarVuelos(main); atarReencender(main); }
       const r = d.resultado || {};
       const signo = n => (n > 0 ? "pos" : n < 0 ? "neg" : "");
       $(".help-note", caja).innerHTML = `<span class="cuenta-dato">${esc(t("op.saldo"))} <b data-cifra="${+d.saldo || 0}" data-formato="usdt">0</b></span>
@@ -4760,7 +4769,7 @@ PAGES.saved = async (main) => {
       <p>${t("saved.que_es")}</p>
       ${explicacionHTML("prueba-pagina", PASOS_PRUEBA())}
     </details>` : ""}` + vacia +
-    `${PRUEBAS && sinProbar && BANDEJA === "por_probar" ? `<div class="pista mb pista-accion">${icono("idea", "ico-sm")}
+    `${PRUEBAS && sinProbar && BANDEJA === "por_probar" && !COLA_PRUEBAS ? `<div class="pista mb pista-accion">${icono("idea", "ico-sm")}
        <div>${esc(t("saved.pending", { n: sinProbar }))}</div>
        <button class="btn small" id="probar-faltan">${esc(t("saved.probar_faltan", { n: sinProbar }))}</button></div>` : ""}
     ${/* QUE EL PORTAFOLIO SE SEPA QUE EXISTE, sin ponerse en el camino.
@@ -7170,7 +7179,7 @@ const vistaBuscar = async (main) => {
     renderMining({ seed: "—", tested: 0, passed: 0, rejected: 0, kept: 0,
                    target: S.cfg.maxCandidates, target_keep: S.cfg.goal,
                    elapsed_s: 0, databank: [], best_history: [], diagnosis: {} }, false);
-    setProgress("m-prog", { progress: 0, message: "Preparando velas e indicadores…" });
+    setProgress("m-prog", { progress: 0, message: t("run.preparando") });
     const cfg = S.cfg;
     try {
       const result = await runJob("/api/mine", {
@@ -7327,7 +7336,10 @@ function textoPlanIdle() {
           : ses.length > 1
             ? `<p class="idle-ses">${icono("info","ico-sm")} ${esc(t("idle.session_many", { n: ses.length }))}</p>`
             : ""}
-        ${on.length ? "" : `<p class="idle-warn">${t("idle.no_filters")}</p>`}
+        ${/* Sólo si NO hay ningún criterio tildado. Durante la preparación
+              la pantalla se dibuja antes de que la receta termine de
+              aplicarse y el aviso salía en falso. */ ""}
+        ${on.length || S.mining ? "" : `<p class="idle-warn">${t("idle.no_filters")}</p>`}
 `;
 }
 
@@ -7746,9 +7758,12 @@ function renderMining(snap, finished) {
   if (!live || !snap) return;
   const bank = ordenarBank(snap.databank || []);
   pintarCorrida(snap, finished);
-  // el campeón es el mejor por QF Score, no el primero de la vista: reordenar
-  // la tabla no cambia cuál estrategia recomienda el minero
-  const champ = (snap.databank || [])[0];
+  /* EL CAMPEÓN ES EL DE MEJOR SCORE, y se elige mirando: la lista viene
+     ordenada por el fitness de la búsqueda, así que "Mejor hasta ahora"
+     mostraba una de 31 con otras de 72 en la tabla (visto el 2 de
+     septiembre). Reordenar la tabla sigue sin cambiarlo. */
+  const champ = [...(snap.databank || [])].sort(
+    (a, b) => (b.score ?? -Infinity) - (a.score ?? -Infinity))[0];
 
   const s = S.bankSort || {};
   const th = (key, label, ayuda) => {
@@ -8164,6 +8179,13 @@ function avisoExportacion(ctx) {
       <li>${t("mt5.feed")}</li>
       <li>${t("mt5.test_first")}</li>
     </ul>
+    <h3 class="mt">${icono("seguir", "ico-sm")} ${esc(t("mt5.pasos_t"))}</h3>
+    <ol class="mt5-pasos">
+      <li>${esc(t("mt5.paso1"))}</li>
+      <li>${esc(t("mt5.paso2"))}</li>
+      <li>${esc(t("mt5.paso3"))}</li>
+      <li>${esc(t("mt5.paso4"))}</li>
+    </ol>
   </section>`;
 }
 

@@ -584,6 +584,7 @@ const STR = {
   "run.per_sec": ["accepted/s", "acept./s"],
   "run.best": ["Best score", "Mejor score"],
   "run.best_so_far": ["Best so far", "Mejor hasta ahora"],
+  "run.preparando": ["Preparing candles and indicators…", "Preparando velas e indicadores…"],
   "run.open_full": ["Open the full analysis", "Ver análisis completo"],
   "run.history": ["How the best score improved", "Evolución del mejor score"],
   "run.history_hint": ["how the search got better over time", "cómo fue mejorando la búsqueda"],
@@ -1061,6 +1062,13 @@ const STR = {
   "mt5.feed": [
     "Your broker's price history is not the same data this was mined on, so the bot <b>will not repeat these trades one by one</b>. What carries over is the behaviour: how often it trades, how often it is right, and how much it gives back on the way.",
     "El histórico de precios de tu bróker no es el mismo dato con el que se minó, así que el bot <b>no va a repetir estas operaciones una por una</b>. Lo que se conserva es el comportamiento: cada cuánto opera, con qué proporción de aciertos, y cuánto devuelve en el camino."],
+  /* DEL .MQ5 AL PROBADOR: el siguiente paso que faltaba después de "ya
+     aparece en el Navegador". */
+  "mt5.pasos_t": ["From the .mq5 to the Strategy Tester", "Del .mq5 al Probador"],
+  "mt5.paso1": ["In MetaEditor press F7 to compile: it has to say 0 errors.", "En MetaEditor apretá F7 para compilar: tiene que decir 0 errores."],
+  "mt5.paso2": ["In MetaTrader open View → Strategy Tester, choose the robot, your broker's symbol for this market, the same timeframe, and \"Every tick based on real ticks\".", "En MetaTrader abrí Ver → Probador de estrategias, elegí el robot, el símbolo de tu bróker para este mercado, la misma temporalidad y \"Cada tick basado en ticks reales\"."],
+  "mt5.paso3": ["Compare the tester's trades, profit factor and drawdown with this card over the same dates. If they differ a lot, do not turn it on.", "Compará operaciones, profit factor y caída del probador con esta ficha en las mismas fechas. Si difieren mucho, no lo enciendas."],
+  "mt5.paso4": ["Then drag it onto the chart of a demo account. The robot warns if the symbol or the timeframe are not the ones it was measured on.", "Después arrastralo al gráfico de una cuenta demo. El robot avisa si el símbolo o la temporalidad no son los que se midieron."],
   "mt5.test_first": [
     "Run it in MetaTrader's Strategy Tester over the same period before putting money on it. That is the number your broker will actually give you.",
     "Correlo en el Strategy Tester de MetaTrader sobre el mismo período antes de ponerle plata. Ese es el número que te va a dar tu bróker de verdad."],
@@ -1536,6 +1544,10 @@ const STR = {
     "Encendió {n} y uno falló: {err}. Los que ya arrancaron siguen encendidos."],
   "bot.esperado_mes": ["≈{n} trades/mo per its backtest", "≈{n} ops/mes según su backtest"],
   "bot.proxima": ["next candle ~{h}", "próxima vela ~{h}"],
+  /* LO QUE HACE FALTA PARA DEJARLO CORRIENDO TRANQUILO, en una línea. */
+  "bot.riesgo": ["Risks {pct}% of its share per trade ≈ {usdt} USDT · stop on the exchange · daily cap: {tope}",
+                 "Arriesga {pct}% de su porción por operación ≈ {usdt} USDT · stop en el exchange · tope diario: {tope}"],
+  "bot.sin_tope": ["none", "sin tope"],
 
   /* ---- la franja de agentes en Operar: qué está haciendo cada uno ---- */
   "ag.titulo": ["Autopilot", "Piloto automático"],
