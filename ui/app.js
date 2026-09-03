@@ -2323,6 +2323,17 @@ function resultadoPF(r) {
         <b>${esc(peor.a)}</b> ${esc(t("ui.and"))} <b>${esc(peor.b)}</b> — ${fmtNum(peor.c, 2)}</p>` : ""}
     </div>
     <div class="chart-box tall mt" id="pf-eq"></div>
+    ${/* EL VEREDICTO, NO LA REGLA: decía "combinar conviene cuando la caída
+          baja más de lo que baja el rendimiento" y dejaba la cuenta al
+          lector. Ahora se hace la cuenta y se dice si conviene. */ ""}
+    ${mejorParte ? `<p class="pf-veredicto ${
+      (m.max_drawdown_pct ?? 0) < (mejorParte.metrics.max_drawdown_pct ?? 0) ? "bien" : "medio"}">${
+      esc(t((m.max_drawdown_pct ?? 0) < (mejorParte.metrics.max_drawdown_pct ?? 0) ? "pf.conviene" : "pf.no_conviene", {
+        nombre: mejorParte.name,
+        parte: fmtNum(mejorParte.metrics.cagr_pct ?? 0, 1),
+        dd: fmtNum(mejorParte.metrics.max_drawdown_pct ?? 0, 1),
+        junto: fmtNum(m.cagr_pct, 1),
+        ddjunto: fmtNum(m.max_drawdown_pct, 1) }))}</p>` : ""}
     ${mejorParte ? `<p class="help-note">${esc(t("pf.vs_best", {
       nombre: mejorParte.name,
       parte: fmtNum(mejorParte.metrics.cagr_pct ?? 0, 1),

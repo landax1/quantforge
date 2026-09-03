@@ -2256,6 +2256,12 @@ const STR = {
   "pf.no_overlap": [
     "<b>{lista}</b> did not trade between {desde} and {hasta}, which is the only window all of these share. Its numbers are not part of the combination — combine strategies found over similar periods, or this comparison says nothing.",
     "<b>{lista}</b> no operó entre {desde} y {hasta}, que es la única ventana que comparten todas. Sus números no entran en la combinación — combiná estrategias encontradas sobre períodos parecidos, o esta comparación no dice nada."],
+  "pf.conviene": [
+    "Worth combining: the fall goes from {dd}% with {nombre} alone to {ddjunto}% together, and the return goes from {parte}% to {junto}%.",
+    "Conviene combinarlas: la caída baja de {dd}% con {nombre} sola a {ddjunto}% juntas, y el rendimiento va de {parte}% a {junto}%."],
+  "pf.no_conviene": [
+    "Not worth combining here: the fall goes from {dd}% with {nombre} alone to {ddjunto}% together, and the return goes from {parte}% to {junto}%.",
+    "Acá no conviene combinarlas: la caída pasa de {dd}% con {nombre} sola a {ddjunto}% juntas, y el rendimiento va de {parte}% a {junto}%."],
   "pf.vs_best": [
     "The best single one, {nombre}, returned {parte}% a year with a {dd}% drawdown. Together they return {junto}% with a {ddjunto}% drawdown — combining is worth it when the drawdown falls by more than the return does.",
     "La mejor sola, {nombre}, rindió {parte}% anual con una caída del {dd}%. Juntas rinden {junto}% con una caída del {ddjunto}% — combinar conviene cuando la caída baja más de lo que baja el rendimiento."],
