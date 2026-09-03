@@ -4801,7 +4801,11 @@ PAGES.saved = async (main) => {
       <td><span class="strat-name">${esc(s.name)}</span>${sesionTag(s.spec?.time_filter
             ? { session: sesionDeFiltro(s.spec.time_filter) } : {})}
           ${ctx.saved_at ? `<div class="strat-nota">${esc(t("saved.mined_on", {
-              fecha: new Date(ctx.saved_at).toLocaleDateString(localeNum()) }))}</div>` : ""}
+              /* Con el mes escrito: sin opciones, en inglés salía "9/3/2026" al lado
+                 de fechas ISO en otras pantallas, y 9/3 es marzo o septiembre según
+                 de dónde seas (3 de septiembre de 2026). */
+              fecha: new Date(ctx.saved_at).toLocaleDateString(localeNum(),
+                { day: "numeric", month: "short", year: "numeric" }) }))}</div>` : ""}
           ${s.notes ? `<div class="strat-nota">${esc(s.notes)}</div>` : ""}
           <div class="strat-blocks">${esc(ctx.blocks || "")}</div></td>
       <td>${esc((ctx.dataset_name || "—").replace(/ M1.*/, ""))}

@@ -444,7 +444,7 @@ const STR = {
   "note.split": [
     "Of that stretch, the search sees the first <b>{mina}%</b> and the final <b>{valida}%</b> is reserved for checking.",
     "De ese tramo, la búsqueda ve el <b>{mina}%</b> inicial y el <b>{valida}%</b> final queda reservado para validar."],
-  "note.round_trip": ["Round trip: <b>{abs}</b> of price", "Ida y vuelta: <b>{abs}</b> de precio"],
+  "note.round_trip": ["Round trip costs <b>{abs}</b> in price units", "Ida y vuelta: <b>{abs}</b> de precio"],
   "note.match_broker": ["It must match your broker.", "Debe coincidir con tu broker."],
   "note.impossible_cost": ["Impossible cost: {pct}% per trade.", "Costo imposible: {pct}% por operación."],
   "note.impossible_cost_sub": [
@@ -452,7 +452,7 @@ const STR = {
     "Parece el spread de otro instrumento — con esto ninguna estrategia puede ganar."],
   "note.use_defaults": ["Use {mercado}'s", "Usar los de {mercado}"],
   "note.typical_ok": [
-    "That is {mercado}'s typical spread: {spread}. Change it if your broker charges another.",
+    "That is the typical spread on {mercado}: {spread}. Change it if your broker charges a different one.",
     "Es el spread típico de <b>{mercado}</b>: {spread}. Cambialo si tu broker te cobra otro."],
   "mine.sub_empty": ["Search for strategies over real data.", "Buscá estrategias sobre datos reales."],
   "mine.no_data": ["Nothing to search on yet", "No hay con qué minar todavía"],
@@ -1214,7 +1214,7 @@ const STR = {
     "Cada candidata lleva la suya, de 1:{desde} a 1:{hasta} ({n} valores). Ensancha "
     + "lo que la búsqueda puede encontrar: medido, el abanico de win rate casi se "
     + "duplica."],
-  "rr.varias": ["1:{desde} to 1:{hasta} (searched)",
+  "rr.varias": ["anywhere from 1:{desde} to 1:{hasta}",
                 "de 1:{desde} a 1:{hasta} (se busca)"],
   "idle.and_meet": ["and, on top of that: {lista}.", "y además: {lista}."],
   /* CADA FILTRO EN CASTELLANO: la métrica exacta queda al pasar el mouse. */
@@ -1579,7 +1579,7 @@ const STR = {
   "conj.fallo": [
     "Started {n} and then one failed: {err}. The ones already running stay on.",
     "Encendió {n} y uno falló: {err}. Los que ya arrancaron siguen encendidos."],
-  "bot.esperado_mes": ["≈{n} trades/mo per its backtest", "≈{n} ops/mes según su backtest"],
+  "bot.esperado_mes": ["≈{n} trades a month, going by its backtest", "≈{n} ops/mes según su backtest"],
   "bot.proxima": ["next candle ~{h}", "próxima vela ~{h}"],
   /* LO QUE HACE FALTA PARA DEJARLO CORRIENDO TRANQUILO, en una línea. */
   "bot.riesgo": ["Risks {pct}% of its share per trade ≈ {usdt} USDT · stop on the exchange · daily cap: {tope}",
@@ -1692,7 +1692,7 @@ const STR = {
   "ag.mirando": ["watching {sim} · next candle ~{h}", "mirando {sim} · próxima vela ~{h}"],
   "ag.detenido": ["stopped", "detenido"],
   "ag.apagada": ["promoted, no bot running", "promovida, sin bot corriendo"],
-  "ag.apagadas_sub": ["They died with the app and nothing restarts them by itself: turn them back on when you have looked.",
+  "ag.apagadas_sub": ["They stopped when the app closed, and nothing restarts them on its own. Turn them back on once you have had a look.",
                      "Murieron con la app y nada las reenciende sola: reencendelas cuando hayas mirado."],
   "ag.reencender": ["Turn {n} back on", "Reencender {n}"],
   "ag.reencendidas": ["Turned back on.", "Reencendidas."],
@@ -1844,7 +1844,7 @@ const STR = {
                         "¿Apagar el bot y cerrar la posición abierta a mercado?"],
   "nav.tips": ["Learn", "Aprender"],
   "tips.sub": [
-    "What we learned measuring, not what gets repeated around.",
+    "What we learned by measuring, not what everyone repeats.",
     "Lo que aprendimos midiendo, no lo que se repite por ahí."],
   "tips.foot": [
     "Every figure here was measured on the instruments the app ships with. Your own numbers will differ; the direction will not.",
