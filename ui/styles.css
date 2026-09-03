@@ -805,6 +805,11 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
      alcanzaba ni scrolleando, porque el panel es pegajoso y se detiene.
      El respaldo es para el primer pintado, antes de que se mida. */
   max-height: calc(100vh - var(--setup-hueco, 200px));
+  /* Y OCUPA TODO ESE ALTO, no sólo lo que pide su contenido: con las
+     secciones plegadas el panel quedaba corto y debajo sobraba media
+     pantalla vacía (3 de septiembre de 2026). El botón de arrancar queda
+     al pie del panel. */
+  min-height: calc(100vh - var(--setup-hueco, 200px));
   background: var(--card); border: 1px solid var(--border);
   border-radius: var(--r-lg); box-shadow: var(--sh-1); overflow: hidden;
 }
@@ -813,6 +818,7 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
    crece entero y el botón de arrancar se va igual de lejos. */
 @media (max-width: 1180px) {
   .workbench { grid-template-columns: 1fr; }
+  .setup { min-height: 0; }
   /* Y el panel deja de ser una columna. Conservaba el tope de alto de la
      columna —calc(100vh - hueco)— ya puesto en el flujo normal: a 1024 px
      quedaban 205 px de ventana para 4.319 px de contenido, o sea un buzón.
@@ -843,7 +849,9 @@ button.btn.big { height: var(--h-ctl-lg); padding: 0 20px; font-size: 13px; }
       frontera: nada de acá adentro pinta fuera de esta caja. */
 .setup-scroll {
   overflow-y: auto; flex: 1; padding: 6px;
-  overscroll-behavior: contain;
+  /* SIN "overscroll-behavior: contain": cortaba el encadenamiento del scroll
+     también cuando el panel no tenía nada que desplazar, así que la rueda
+     sobre el panel no movía la página (3 de septiembre de 2026). */
   contain: paint;
 }
 
