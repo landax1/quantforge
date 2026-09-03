@@ -2064,7 +2064,10 @@ async function navigate(page, vista) {
      había borrado todo y el mapa salía vacío: la ficha aparecía en su caja
      nueva sin que se la viera llegar (3 de septiembre de 2026). */
   FLUJO_PREVIO = posicionesDelFlujo();
-  main.innerHTML = "";
+  /* NO EN BLANCO. Probar con cien filas tarda varios segundos en dibujarse y
+     mientras tanto no había nada: el usuario mandaba dos estrategias,
+     entraba, y "no aparecían" (3 de septiembre de 2026). */
+  main.innerHTML = `<div class="cargando-pantalla"><i class="esq esq-linea"></i> ${esc(t("tab.cargando"))}</div>`;
   try {
     await PAGES[page](main);
     /* LA PANTALLA NUEVA ENTRA, no aparece: 200 ms desde 8 px abajo. Se
@@ -2979,6 +2982,13 @@ function traducirMotivo(m) {
   if (/todavía no hay velas cerradas/i.test(x)) return t("mot.sin_velas");
   if (/^sin capital disponible/i.test(x)) return t("mot.sin_capital");
   if (/apagado por el exchange/i.test(x)) return t("mot.apagado_exchange");
+  /* EL ERROR DE BINANCE, EN CRIOLLO. "-1022 Signature for this request is
+     not valid" quiere decir que el secreto no firma con esa clave: se pegó
+     mal, quedó un espacio, o la hora de Windows está corrida. Dicho así
+     nadie sabe qué tocar (el usuario, 3 de septiembre de 2026). */
+  if (/-1022|Signature for this request is not valid/i.test(x)) return t("mot.firma_invalida");
+  if (/-2015|Invalid API-key|permissions/i.test(x)) return t("mot.clave_invalida");
+  if (/-1021|Timestamp for this request/i.test(x)) return t("mot.hora_corrida");
   const ad = x.match(/adoptó la posición abierta en \S+ \((larga|corta), ([\d.]+)\)/i);
   if (ad) return t("mot.adopto", { lado: t(ad[1] === "corta" ? "mot.corto" : "mot.largo"), cant: ad[2] });
   const det = x.match(/^detenido: (.*)$/i);
@@ -3034,6 +3044,7 @@ function rotuloAccion(a) {
   if (a === "abrir_corto") return t("bot.acc_corto");
   if (a === "cerrar") return t("bot.acc_cerrar");
   if (a === "panico") return t("bot.acc_panico");
+  if (/apagado por el exchange/i.test(a || "")) return t("mot.apagado_exchange");
   if (a === "nada") return t("bot.acc_nada");
   return a || "—";
 }
@@ -4815,6 +4826,23 @@ function toastAccion(mensaje, rotulo, alApretar) {
   setTimeout(() => el.remove(), 12000);
 }
 
+/* QUÉ DICE LA CELDA DE ESTADO MIENTRAS CORRE LA COLA. Diez filas decían
+   "en cola" y ninguna decía en qué iba la que se estaba probando: la barra
+   de progreso colgaba del botón "Probar", y ese botón desaparece justo al
+   entrar en cola ("no se ve cómo está testeando", 3 de septiembre de 2026).
+   La que se prueba lleva su barra —tramo, porcentaje—; las que esperan, su
+   lugar en la fila. */
+function estadoEnCola(s) {
+  if (!COLA_PRUEBAS || !enCola(s.id)) return chipEtapa(s);
+  if (s.id === COLA_PRUEBAS.actual) {
+    return `<div class="prueba-progreso" data-progreso="${esc(s.id)}"><span class="pp-txt">${esc(t("wf.testing"))}<i class="puntos" aria-hidden="true"></i></span>
+      <div class="pp-bar"><i></i></div><span class="pp-det"></span></div>`;
+  }
+  const ids = COLA_PRUEBAS.ids || [];
+  const pos = ids.indexOf(s.id) - ids.indexOf(COLA_PRUEBAS.actual);
+  return `<span class="est est-none">${esc(pos > 0 ? t("sel.en_cola_pos", { n: pos }) : t("sel.en_cola_chip"))}</span>`;
+}
+
 function accionEtapa(s) {
   const et = etapaDe(s);
   const cripto = mundoDeDataset((s.meta || {}).dataset_name || "") !== "metatrader";
@@ -4978,7 +5006,11 @@ PAGES.saved = async (main) => {
   const fila = (s) => {
     const ctx = s.meta || {}, m = ctx.metrics || {};
     const llega = (RECIEN_GUARDADAS.delete(s.id) || RECIEN_PROBADAS.has(s.id)) ? " llegando" : "";
-    return `<tr class="clickable ${SEL_PF.has(s.id) ? "elegida" : ""}${llega}" data-sid="${esc(s.id)}">
+    /* EL TONO DE LA FILA ES SU VEREDICTO: la clase la lee la hoja de estilos
+       y pinta el borde izquierdo y la pastilla, no el fondo entero, que con
+       cien filas sería una pared de color (3 de septiembre de 2026). */
+    const tono = COLA_PRUEBAS && s.id === COLA_PRUEBAS.actual ? " probando" : ` ver-${estadoDe(s)}`;
+    return `<tr class="clickable ${SEL_PF.has(s.id) ? "elegida" : ""}${llega}${tono}" data-sid="${esc(s.id)}">
       ${PORTAFOLIO ? `<td class="tick"><input type="checkbox" data-pf="${esc(s.id)}"
             ${SEL_PF.has(s.id) ? "checked" : ""}
             aria-label="${esc(t("pf.pick_one", { nombre: s.name }))}"></td>` : ""}
@@ -5000,7 +5032,7 @@ PAGES.saved = async (main) => {
       <td class="num ${nivelDD(m.max_drawdown_pct, riesgoDeCtx(ctx))}">${
         m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
       ${PRUEBAS ? `<td class="celda-estado ${RECIEN_PROBADAS.delete(s.id) ? "chip-cambia" : ""}">${
-        enCola(s.id) ? `<span class="est est-none">${esc(t("sel.en_cola_chip"))}</span>` : chipEtapa(s)}</td>
+        estadoEnCola(s)}</td>
       <td class="celda-prueba">${pruebaResumen(s)}</td>` : ""}
       <td class="num" style="white-space:nowrap">
         ${/* LA ACCIÓN DICE EL PASO SIGUIENTE, según la etapa: probar las
@@ -5473,13 +5505,22 @@ async function probarVarias(lista, main) {
     if (chip) { chip.classList.add("probando"); chip.classList.remove("cola"); chip.title = t("flujo.chip_probando"); }
     $(".flujo")?.classList.add("corriendo");
     if (!s.name) { const f = (S.saved || []).find(x => x.id === s.id); if (f) Object.assign(s, f); }
-    const boton = $(`[data-probar="${s.id}"]`, document);
-    let avance = () => {};
-    if (boton) {
-      boton.disabled = true;
-      boton.innerHTML = `${i + 1}/${lista.length}`;
-      avance = barraPrueba(boton.closest("tr")?.querySelector(".celda-estado") || null, boton);
-    }
+    /* La barra va en la celda de ESTA estrategia, esté o no el botón: el
+       botón "Probar" se va al entrar en cola y con él se iba el progreso. Y
+       la ficha del flujo muestra el porcentaje al lado del nombre. */
+    const celda = $(`tr[data-sid="${s.id}"] .celda-estado`, document);
+    const pintaCelda = celda ? barraPrueba(celda, null) : () => {};
+    const avance = (j) => {
+      pintaCelda(j);
+      const ch = $(`.flujo-chip[data-sid="${s.id}"]`);
+      if (ch) ch.textContent = `${s.name || ""} · ${Math.max(1, Math.round((j.progress || 0) * 100))}%`;
+    };
+    // las que esperan muestran su lugar en la fila, también sin redibujar
+    $$("tr[data-sid] .celda-estado .est-none", document).forEach(el => {
+      const sid = el.closest("tr")?.dataset.sid;
+      const pos = (COLA_PRUEBAS.ids || []).indexOf(sid) - i;
+      if (sid && enCola(sid) && pos > 0) el.textContent = t("sel.en_cola_pos", { n: pos });
+    });
     try {
       /* EL SERVIDOR PRUEBA DE A UNA. Si está ocupado —minando, o el Piloto
          probando lo suyo— contesta 429; antes eso se contaba como error en
@@ -5500,6 +5541,7 @@ async function probarVarias(lista, main) {
       RECIEN_PROBADAS.add(s.id);
       primerPaso("probaste");
       avisarVeredicto(s.id);
+      COLA_PRUEBAS.actual = null;      // terminó: al redibujar no lleva barra
       if (S.page === "saved" && S.vista !== "aprobadas") await navigate("saved", S.vista);
     } catch (e) {
       cuenta.error += 1;
@@ -5536,7 +5578,7 @@ function barraPrueba(anfitrion, boton) {
   barra.innerHTML = `<span class="pp-txt">${esc(t("wf.testing"))}<i class="puntos" aria-hidden="true"></i></span>
     <div class="pp-bar"><i></i></div><span class="pp-det"></span>`;
   if (anfitrion) { anfitrion.innerHTML = ""; anfitrion.appendChild(barra); }
-  else boton.insertAdjacentElement("afterend", barra);
+  else if (boton) boton.insertAdjacentElement("afterend", barra);
   return (j) => {
     const pct = Math.max(2, Math.round((j.progress || 0) * 100));
     $(".pp-bar i", barra).style.transform = `scaleX(${pct / 100})`;
@@ -9135,7 +9177,12 @@ const INSPECT_METRICS = () => [
   ["trades", rotuloMetrica("m.trades"), "int"],
   ["trades_per_month", t("m.trades_month"), "n"],
   ["avg_trade", t("m.avg_trade"), "money"],
-  ["_win_loss", t("m.win_loss"), "win_loss"],
+  /* TRES FILAS Y NO UNA. "Ganancia / pérdida media: $12 · -$9 · 1,3 : 1" en
+     una sola celda se leía raro y la pérdida promedio no se encontraba
+     (el usuario, 3 de septiembre de 2026). Cada cosa en su fila. */
+  ["avg_win", t("m.avg_win"), "money"],
+  ["avg_loss", t("m.avg_loss"), "loss"],
+  ["_payoff", t("m.payoff"), "payoff"],
   ["expectancy_r", t("m.expectancy"), "n"],
   ["final_equity", t("m.final_equity"), "money"],
 ];
@@ -9149,7 +9196,7 @@ const INSPECT_GRUPOS = () => [
   ["insp.g_rinde", ["net_profit_pct", "cagr_exposed_pct", "exposure_pct",
                     "months_positive_pct", "final_equity"]],
   ["insp.g_duele", ["sharpe", "recovery_factor"]],
-  ["insp.g_opera", ["trades_per_month", "win_rate_pct", "avg_trade", "_win_loss",
+  ["insp.g_opera", ["trades_per_month", "win_rate_pct", "avg_trade", "avg_win", "avg_loss", "_payoff",
                     "expectancy_r"]],
 ];
 
@@ -9179,15 +9226,11 @@ function renderInspector(box, row, res, ctx) {
     // la cifra cruda y su formato, para que las grandes cuenten al aparecer
     const formato = { pct: "pct", dd: "dd", n: "n", int: "int" }[kind];
     if (formato && isFinite(+v)) return { label, txt, cls, cifra: +v, formato };
-    else if (kind === "win_loss") {
-      /* Las dos mitades juntas, y la relación entre ellas, que es lo que
-         uno quiere saber: cuánto gana cada acierto contra cuánto cuesta cada
-         error. */
+    else if (kind === "payoff") {
+      // cuánto gana cada acierto por cada 1 que cuesta cada error
       const g = +m.avg_win || 0, p = Math.abs(+m.avg_loss || 0);
-      const razon = p > 1e-9 ? `${fmtNum(g / p, 1)} : 1` : "";
-      txt = `<span class="pos">${fmtMoney(g)}</span> · <span class="neg">-${fmtMoney(p)}</span>${
-        razon ? ` · <span class="muted">${razon}</span>` : ""}`;
-      cls = "par";
+      txt = p > 1e-9 ? `${fmtNum(g / p, 2)} : 1` : "—";
+      cls = g / (p || 1) >= 1 ? "pos" : "";
     }
     return { label, txt, cls };
   };

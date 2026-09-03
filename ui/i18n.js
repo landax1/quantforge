@@ -284,6 +284,7 @@ const STR = {
   "m.avg_loss": ["Average loss", "Pérdida promedio"],
   "m.final_equity": ["Final equity", "Capital final"],
   "m.win_loss": ["Average win / loss", "Ganancia / pérdida media"],
+  "m.payoff": ["Win per 1 lost", "Gana por cada 1 que pierde"],
   "insp.g_rinde": ["How much does it make?", "¿Cuánto rinde?"],
   "insp.g_duele": ["How much does it hurt?", "¿Cuánto duele?"],
   "insp.g_opera": ["How does it trade?", "¿Cómo opera?"],
@@ -1853,6 +1854,15 @@ const STR = {
   "ciclo.nada": ["nothing to do", "nada que hacer"],
   "mot.detenido": ["stopped: {resto}", "detenido: {resto}"],
   "mot.apagado_exchange": ["stopped by the exchange", "apagado por el exchange"],
+  "mot.firma_invalida": [
+    "Binance rejects the signature (-1022): the secret does not match this key. Remove the key and paste key and secret again, fresh from Binance. If you just did, check that Windows sets the time automatically.",
+    "Binance rechaza la firma (-1022): el secreto no corresponde a esta clave. Quitá la clave y volvé a pegar clave y secreto recién copiados de Binance. Si ya lo hiciste, revisá que Windows ponga la hora automáticamente."],
+  "mot.clave_invalida": [
+    "Binance does not accept this key (-2015): it does not exist, it is not a demo key, or it lacks Futures permission.",
+    "Binance no acepta esta clave (-2015): no existe, no es de la cuenta demo, o no tiene permiso de Futuros."],
+  "mot.hora_corrida": [
+    "Binance says this computer's clock is off (-1021). Turn on automatic time in Windows and try again.",
+    "Binance dice que la hora de esta computadora está corrida (-1021). Activá la hora automática en Windows y volvé a probar."],
   "mot.largo": ["long", "larga"],
   "mot.corto": ["short", "corta"],
   "bot.acc_largo": ["opened long", "abrió largo"],
@@ -2208,6 +2218,7 @@ const STR = {
   "sel.errores": ["{n} could not be tested", "{n} no se pudieron probar"],
   "sel.esperando": ["Waiting for the server to free up…", "Esperando que el servidor se libere…"],
   "sel.en_cola_chip": ["in the queue", "en cola"],
+  "sel.en_cola_pos": ["queued · {n} ahead", "en cola · {n} antes"],
   "saved.pending": [
     "Not tested yet: {n}.",
     "{n} de éstas todavía no se probaron."],

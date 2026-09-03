@@ -2515,6 +2515,8 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 @keyframes fluye { from { opacity: .35; } 50% { opacity: 1; } to { opacity: .35; } }
 .flujo-chip.viajando { z-index: 5; box-shadow: 0 6px 18px var(--sombra-color); }
 .flujo-mas { font-size: 12px; color: var(--text-dim); align-self: center; }
+/* la pantalla mientras se dibuja, en vez de un hueco */
+.cargando-pantalla { display: flex; align-items: center; gap: 12px; padding: 48px 24px; color: var(--text-dim); font-size: 14px; }
 @media (prefers-reduced-motion: reduce) { .flujo-chip.probando, .flujo.corriendo .flujo-flecha { animation: none; } }
 .flujo-caja.on { border-color: var(--accent); }
 .flujo-caja.ok.on { border-color: var(--pos); } .flujo-caja.mal.on { border-color: var(--neg); }
@@ -3588,9 +3590,11 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
   padding: 12px 16px; border: 1px solid var(--border-soft); border-top: 1px solid var(--border-soft);
   border-radius: var(--r); background: var(--card-2);
 }
-.robots .robot.en-pos { border-color: color-mix(in srgb, var(--pos) 45%, transparent); }
-.robots .robot.parado { border-color: color-mix(in srgb, var(--neg) 35%, transparent); }
-.robots .robot.apagada { border-color: var(--warn-line); }
+/* El borde sale del tono de la tarjeta (ver "color en las tarjetas", al final):
+   estas tres reglas fijaban el color por estado y le ganaban a la capa nueva. */
+.robots .robot.en-pos, .robots .robot.parado, .robots .robot.apagada {
+  border-color: color-mix(in srgb, var(--h) 35%, var(--border-soft));
+}
 .robot-estado {
   flex: none; font-size: 12px; font-weight: 600; padding: 4px 12px; border-radius: 999px;
   display: inline-flex; align-items: center; gap: 6px;
@@ -3840,3 +3844,65 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 @media (max-width: 420px) {
   #nav .nav-count { display: none; }
 }
+
+/* ================================================= color en las tarjetas =====
+   Lo que gustó de Mercados no son los logos: es que cada tarjeta tiene un tono
+   propio sobre el fondo oscuro. Esto lleva eso al resto sin ningún símbolo.
+
+   La regla, en tres dosis: cada tarjeta tiene un tono `--h` y lo usa tres
+   veces —un lavado del 9 % sobre la tarjeta, el borde al 35 %, y UN solo
+   elemento al 100 % (la pastilla, el número o la barra)—. Nunca dos elementos
+   fuertes en la misma tarjeta: ahí es donde una interfaz pasa de viva a
+   chillona. Aprobado por el usuario el 3 de septiembre de 2026. */
+:root {
+  --azul: #5BA8F5; --violeta: #8B7CF6; --menta: #6FD39B; --naranja: #F0954A; --rosa: #E86FA0;
+}
+
+/* --- las recetas: son el producto y eran cinco grises iguales --- */
+.receta { --h: var(--accent); }
+.receta[data-receta="tranquilo"] { --h: var(--azul); }
+.receta[data-receta="largo"]     { --h: var(--violeta); }
+.receta[data-receta="aciertos"]  { --h: var(--menta); }
+.receta[data-receta="agresiva"]  { --h: var(--naranja); }
+.receta[data-receta="scalping"]  { --h: var(--rosa); }
+.receta[data-receta="fondeo"]    { --h: var(--accent); }
+.receta {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--h) 9%, var(--card)), var(--card) 70%);
+  border-color: color-mix(in srgb, var(--h) 35%, var(--border));
+}
+.receta .r-ico { color: var(--h); }
+.receta:hover { border-color: color-mix(in srgb, var(--h) 60%, var(--border)); }
+.receta.on { border-color: var(--h); background: color-mix(in srgb, var(--h) 16%, var(--card)); }
+
+/* --- las filas de Probar: el tono es el veredicto, en el borde y la pastilla --- */
+table.guardadas tr.ver-aprobada  { --h: var(--pos); }
+table.guardadas tr.ver-aceptable { --h: var(--warn); }
+table.guardadas tr.ver-no_paso   { --h: var(--neg); }
+table.guardadas tr.probando      { --h: var(--accent); }
+table.guardadas tr.ver-aprobada > td:first-child, table.guardadas tr.ver-aceptable > td:first-child,
+table.guardadas tr.ver-no_paso > td:first-child, table.guardadas tr.probando > td:first-child {
+  box-shadow: inset 3px 0 0 var(--h);
+}
+table.guardadas tr.probando { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+/* la fila elegida sigue mandando: su tilde va encima del tono */
+table.guardadas tr.elegida > td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+
+/* --- las cajas del flujo: lavado, y las fichas heredan el tono --- */
+.flujo-caja { --h: var(--accent); }
+.flujo-caja.ok { --h: var(--pos); }
+.flujo-caja.mal { --h: var(--neg); }
+.flujo-caja.on { background: linear-gradient(135deg, color-mix(in srgb, var(--h) 9%, var(--card)), var(--card) 70%); }
+.flujo-caja .flujo-n { color: var(--h); }
+.flujo-caja .flujo-chip { background: color-mix(in srgb, var(--h) 8%, transparent); }
+
+/* --- los robots: el tono es el estado, que es lo primero que uno quiere saber --- */
+.robots .bot-vuelo { --h: var(--pos); }
+.robots .bot-vuelo.en-pos { --h: var(--warn); }
+.robots .bot-vuelo.parado { --h: var(--neg); }
+.robots .bot-vuelo.apagada { --h: var(--dim); }
+.robots .bot-vuelo, .robots .bot-vuelo + .bot-vuelo {
+  background: linear-gradient(135deg, color-mix(in srgb, var(--h) 9%, var(--card-2)), var(--card-2) 70%);
+  border-color: color-mix(in srgb, var(--h) 35%, var(--border-soft));
+  border-top-color: color-mix(in srgb, var(--h) 35%, var(--border-soft));
+}
+.robots .bot-vuelo .robot-estado { color: var(--h); }
