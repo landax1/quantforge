@@ -54,7 +54,10 @@ const STR = {
   /* PROBAR COMO FLUJO: lo que trajimos, y a dónde fue cada una. Lo probado
      se queda a la vista, con su porqué, hasta que se limpia. */
   "flujo.trajimos": ["Brought from Search", "Trajimos de Buscar"],
-  "flujo.trajimos_sub": ["{n} being tested", "{n} en prueba"],
+  /* NO "EN PRUEBA": desde que probar es un botón, la caja decía "10 being
+     tested" con diez estrategias quietas esperando (el usuario, 3 de
+     septiembre: "cuando vas a testing no se empezaron a testear"). */
+  "flujo.trajimos_sub": ["{n} waiting for you to test them", "{n} esperan que las pruebes"],
   "flujo.aprobadas": ["They held", "Las que aguantaron"],
   "flujo.aprobadas_sub": ["{n} held on data they never saw", "{n} aguantaron datos que no vieron"],
   "flujo.no_pasaron": ["Did not hold", "No pasaron"],
@@ -1012,8 +1015,8 @@ const STR = {
   /* PROBAR: la bajada dice qué se hace acá y qué es la prueba, en una
      frase. Las palabras del motor (walk-forward, Monte Carlo) no aparecen. */
   "saved.sub_probar": [
-    "The ones you kept, put to the test on data they never saw. Each one gets a word: passed, partly held or did not hold.",
-    "Las que guardaste, puestas a prueba sobre datos que nunca vieron. Cada una recibe una palabra: aprobada, a medias o no pasó."],
+    "The ones you kept. Nothing runs on its own: pick some and press Test, or test the ones that are missing. Each one comes back with a word: passed, partly held or did not hold.",
+    "Las que te quedaste. Nada corre solo: elegí algunas y apretá Probar, o probá las que faltan. Cada una vuelve con una palabra: aprobada, aguantó a medias o no pasó."],
   "saved.que_es_t": ["What the test does", "Qué hace la prueba"],
   "saved.que_es": [
     "Two questions, and both are answered by numbers the strategy never had a chance to fit. <b>Does it still work where it never looked?</b> The history is cut into four stretches; in each one the strategy re-tunes itself on the first part and is judged on the last part, blind. <b>How rough can the ride get?</b> Its trades are dealt in a different order 1,000 times to see how deep the hole could have been. Passing means it made money in most stretches and kept most of its edge outside.",

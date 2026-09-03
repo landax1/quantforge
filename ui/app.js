@@ -3015,7 +3015,13 @@ function rotuloMetrica(clave) {
                 "m.trades": "ref.trades", "m.sharpe": "ref.sharpe",
                 "m.winrate": "ref.winrate" };
   const ref = REF[clave];
-  return esc(t(clave)) + (ref ? ` <em class="ref" title="${esc(t(ref))}">?</em>` : "");
+  /* SIN BADGE. El "?" al lado de la cifra se leía como "este valor está en
+     duda" y en "Max drawdown" saltaba de línea (el usuario lo preguntó el 3
+     de septiembre). La etiqueta entera lleva la explicación al pasar el
+     mouse y un subrayado punteado, que es la señal de siempre de "esto tiene
+     definición". */
+  if (!ref) return esc(t(clave));
+  return `<span class="ref" title="${esc(t(ref))}">${esc(t(clave))}</span>`;
 }
 
 function rotuloAccion(a) {

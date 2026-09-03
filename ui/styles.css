@@ -2595,15 +2595,17 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 /* El "?" al lado de una cifra. Nació en la ficha de robustez y ahora también
    acompaña al CAGR, la caída, el profit factor y el Sharpe en el resto de la
    aplicación, que era donde los números salían desnudos. */
-.v-datos .metric span em, em.ref {
+.v-datos .metric span em {
   display: inline-grid; place-items: center; margin-left: 4px;
   width: 14px; height: 14px; border-radius: 50%;
   background: var(--card); color: var(--text-dim);
   font-size: 10px; font-style: normal; font-weight: 700; cursor: help;
   vertical-align: middle;
 }
-/* Sobre una tarjeta el fondo tiene que despegarse del fondo de la tarjeta. */
-.stat em.ref, th em.ref { background: var(--bg-soft); }
+/* La etiqueta que tiene definición: subrayado punteado, explicación al pasar
+   el mouse. Sin badge, que se leía como un valor en duda. */
+span.ref { text-decoration: underline dotted; text-underline-offset: 3px;
+  text-decoration-color: var(--text-dim); cursor: help; }
 .v-pie { margin: 16px 0 0; color: var(--text-dim); font-size: 12px; }
 .veredicto .banner { margin-top: 16px; }
 
