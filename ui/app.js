@@ -4826,6 +4826,93 @@ function toastAccion(mensaje, rotulo, alApretar) {
   setTimeout(() => el.remove(), 12000);
 }
 
+/* ===================================== PROBAR EN TRES CAJAS ================
+   La lista de la izquierda es lo que espera que lo prueben, con la fila del
+   Databank: score en anillo, nombre grande, bloques y mercado debajo, cifras
+   tabuladas. La que se está probando se enciende y su avance corre por el
+   borde de abajo. Al terminar, la fila se muda a una de las dos repisas de la
+   derecha. Nada está adentro de una caja: una línea por estrategia, un color
+   fuerte por zona. */
+function nombreConMercado(s) { return s.name || ""; }
+
+function anilloScore(score) {
+  const v = Math.max(0, Math.min(100, +score || 0));
+  const largo = Math.round(107 * v / 100);
+  return `<div class="fp-anillo"><svg viewBox="0 0 40 40" aria-hidden="true">
+    <circle cx="20" cy="20" r="17" fill="none" stroke="var(--border-soft)" stroke-width="3"/>
+    <circle cx="20" cy="20" r="17" fill="none" stroke="var(--accent)" stroke-width="3"
+      stroke-dasharray="${largo} 107" stroke-linecap="round" transform="rotate(-90 20 20)"/></svg>${Math.round(v)}</div>`;
+}
+
+function filaProbar(s) {
+  const m = (s.meta || {}), mt = m.metrics || {};
+  const probando = COLA_PRUEBAS && s.id === COLA_PRUEBAS.actual;
+  const accion = enCola(s.id)
+    ? `<div class="celda-estado">${estadoEnCola(s)}</div>`
+    : `<button class="btn small" data-probar="${esc(s.id)}">${esc(t("fp.probar"))}</button>`;
+  return `<div class="fp-fila ${SEL_PF.has(s.id) ? "elegida" : ""} ${probando ? "probando" : ""}" data-sid="${esc(s.id)}" data-caja="in">
+    ${PORTAFOLIO ? `<span class="tick"><input type="checkbox" data-pf="${esc(s.id)}" ${SEL_PF.has(s.id) ? "checked" : ""}></span>` : "<span></span>"}
+    ${anilloScore(m.score)}
+    <div class="fp-nombre"><b>${esc(nombreConMercado(s))}</b><span>${esc([m.blocks || m.genes_label || "", [m.dataset_name, m.timeframe].filter(Boolean).join(" ")].filter(Boolean).join(" · "))}</span></div>
+    <div class="fp-num ${(mt.cagr_pct || 0) >= 0 ? "pos" : "neg"}">${fmtPct(mt.cagr_pct)}<small>${esc(t("fp.anual"))}</small></div>
+    <div class="fp-num">${fmtNum(mt.max_drawdown_pct, 1)}%<small>${esc(t("fp.caida"))}</small></div>
+    <div class="fp-accion">${accion}</div>
+  </div>`;
+}
+
+function itemRepisa(s, caja) {
+  const v = s.validacion || {};
+  const medio = estadoDe(s) === "aceptable";
+  const sub = t("fp.tramos", { g: v.tramos_ganadores ?? "?", n: v.tramos ?? "?" }) + " · "
+    + (caja === "ok" ? t(medio ? "est.aceptable" : "est.aprobada") : t("est.no_paso"));
+  const afuera = v.retorno_fuera_pct != null
+    ? `<b class="${v.retorno_fuera_pct >= 0 ? "pos" : "neg"}">${fmtPct(v.retorno_fuera_pct)}</b> ${esc(t("fp.afuera"))}` : "";
+  // a la derecha, el dato que importa de esa repisa: cuánto rindió afuera,
+  // o el atajo a su porqué. Encender vive una sola vez, al pie de la repisa.
+  const accion = caja === "ok"
+    ? `<span class="fp-v">${afuera}</span>`
+    : `<span class="fp-v muted">${esc(t("fp.por_que"))}</span>`;
+  return `<div class="fp-item ${medio ? "medio" : ""}" data-sid="${esc(s.id)}" data-caja="${caja}">
+    <i></i><div><b>${esc(nombreConMercado(s))}</b><span>${esc(sub)}</span></div>${accion}</div>`;
+}
+
+function escenaProbar(esperan, porEtapa, recienProbadas) {
+  const porFecha = (a, b) => String((b.validacion || {}).probada || "").localeCompare(String((a.validacion || {}).probada || ""));
+  const ya = limpiadas();
+  const ok = [...porEtapa.aprobadas].sort(porFecha);
+  const mal = [...porEtapa.descartadas].filter(x => !ya.has(x.id)).sort(porFecha);
+  const elegidas = esperan.filter(x => SEL_PF.has(x.id) && !enCola(x.id)).length;
+  const corriendo = !!COLA_PRUEBAS;
+  return `<div class="fp-escena">
+    <section class="fp-lista">
+      <div class="fp-cab">
+        <h2>${esc(t("fp.encontradas"))} <em>${esperan.length}</em></h2>
+        <div class="fp-acc">
+          ${elegidas && !corriendo ? `<button class="btn ghost" id="fp-probar-elegidas">${esc(t("fp.probar_elegidas", { n: elegidas }))}</button>` : ""}
+          ${esperan.some(x => !enCola(x.id)) && !corriendo ? `<button class="btn" id="fp-probar-todas">${esc(t("fp.probar_todas"))}</button>` : ""}
+          ${corriendo ? `<span class="help-note">${esc(t("saved.probando_faltan", { n: COLA_PRUEBAS.total }))}</span>` : ""}
+        </div>
+      </div>
+      ${esperan.length ? esperan.map(filaProbar).join("")
+        : `<div class="fp-vacia">${esc(t("fp.vacia"))} <button class="linkbtn" id="fp-buscar">${esc(t("fp.buscar_mas"))}</button></div>`}
+    </section>
+    <div class="fp-repisas">
+      <section class="fp-repisa ok">
+        <div class="fp-cab"><h2>${esc(t("flujo.aprobadas"))} <em>${ok.length}</em></h2><small>${esc(t("fp.sub_ok"))}</small></div>
+        ${ok.slice(0, 5).map(x => itemRepisa(x, "ok")).join("") || `<div class="fp-vacia">${esc(t("fp.vacia_ok"))}</div>`}
+        <div class="fp-pie"><button class="linkbtn" data-bandeja="aprobadas">${esc(t("fp.ver_todas", { n: ok.length }))}</button>
+          ${S.mundo === "metatrader" ? "" : `<button class="btn small" id="fp-operar">${esc(t("fp.encender"))}</button>`}</div>
+      </section>
+      <section class="fp-repisa no">
+        <div class="fp-cab"><h2>${esc(t("flujo.no_pasaron"))} <em>${mal.length}</em></h2><small>${esc(t("fp.sub_no"))}</small></div>
+        ${mal.slice(0, 3).map(x => itemRepisa(x, "mal")).join("") || `<div class="fp-vacia">${esc(t("fp.vacia_no"))}</div>`}
+        <div class="fp-pie"><button class="linkbtn" data-bandeja="descartadas">${esc(t("fp.ver_todas", { n: porEtapa.descartadas.length }))}</button>
+          ${mal.length ? `<button class="btn small ghost" id="fp-limpiar" data-ids="${esc(mal.map(x => x.id).join(","))}">${esc(t("fp.limpiar"))}</button>` : ""}</div>
+      </section>
+    </div>
+  </div>`;
+}
+
 /* QUÉ DICE LA CELDA DE ESTADO MIENTRAS CORRE LA COLA. Diez filas decían
    "en cola" y ninguna decía en qué iba la que se estaba probando: la barra
    de progreso colgaba del botón "Probar", y ese botón desaparece justo al
@@ -5083,7 +5170,11 @@ PAGES.saved = async (main) => {
   const yaLimpias = limpiadas();
   const recienProbadas = items.filter(x => !estaRetirada(x) && etapaDe(x) !== "operando"
     && ["aprobadas", "descartadas"].includes(etapaDe(x)) && !yaLimpias.has(x.id));
-  const enProbar = [...porEtapa.por_probar, ...recienProbadas];
+  /* PROBAR EN TRES CAJAS. La lista de la izquierda es lo que espera que lo
+     prueben; lo probado no se queda en la lista: se muda a una repisa de la
+     derecha —aguantaron o no pasaron—. Es el dibujo del usuario del 3 de
+     septiembre de 2026, con las filas del Databank. */
+  const enProbar = [...porEtapa.por_probar];
   cuentas.p = enProbar.length;
 
   /* EN METATRADER NADIE ESTÁ OPERANDO: ahí no se enciende ningún robot y la
@@ -5113,7 +5204,8 @@ PAGES.saved = async (main) => {
   const enlace = (v, txt) => `<button class="linkbtn ${BANDEJA === v ? "on" : ""}" data-bandeja="${v}">${esc(txt)}</button>`;
   /* EL FLUJO, EN PROBAR: una caja con lo que trajimos y dos con a dónde
      fue cada una, con las cuentas de esta tanda. */
-  const flujo = BANDEJA !== "por_probar" ? "" : (() => {
+  const flujo = "";
+  const _flujoViejo = BANDEJA !== "por_probar" ? "" : (() => {
     const ok = recienProbadas.filter(x => etapaDe(x) === "aprobadas").length;
     const mal = recienProbadas.filter(x => etapaDe(x) === "descartadas").length;
     /* DE QUÉ HABLA ESTE DIAGRAMA. Sus números son los de esta tanda —lo
@@ -5182,7 +5274,7 @@ PAGES.saved = async (main) => {
 
   const subtitulo = BANDEJA === "aprobadas" ? t("saved.sub_aprobadas")
     : BANDEJA === "descartadas" ? t("saved.sub_descartadas") : t("saved.sub_probar");
-  const vacia = !visibles.length ? `<div class="card"><div class="empty-state">
+  const vacia = !visibles.length && BANDEJA !== "por_probar" ? `<div class="card"><div class="empty-state">
       <div class="big">${icono(BANDEJA === "aprobadas" ? "estrella" : BANDEJA === "descartadas" ? "basura" : "tilde", "ico-xl")}</div>
       <b>${esc(t(BANDEJA === "aprobadas" ? "saved.vacio_aprobadas" : BANDEJA === "descartadas" ? "saved.vacio_descartadas" : "saved.vacio_probar"))}</b>
       ${BANDEJA === "descartadas" ? "" : `<p class="mt">${esc(t(BANDEJA === "aprobadas" ? "saved.vacio_aprobadas_sub" : "saved.vacio_probar_sub"))}</p>
@@ -5199,7 +5291,8 @@ PAGES.saved = async (main) => {
       <p>${t("saved.que_es")}</p>
       ${explicacionHTML("prueba-pagina", PASOS_PRUEBA())}
     </details>` : ""}` + vacia +
-    `${PRUEBAS && sinProbar && BANDEJA === "por_probar" && !COLA_PRUEBAS ? `<div class="pista mb pista-accion">${icono("idea", "ico-sm")}
+    `${/* el cartel de "probar las N que faltan" vivía acá; el encabezado del
+          escenario de Probar tiene ahora "Probar todas" */ ""}${false ? `<div class="pista mb pista-accion">${icono("idea", "ico-sm")}
        <div>${esc(t("saved.pending", { n: sinProbar }))}</div>
        <button class="btn small" id="probar-faltan">${esc(t("saved.probar_faltan", { n: sinProbar }))}</button></div>` : ""}
     ${/* QUE EL PORTAFOLIO SE SEPA QUE EXISTE, sin ponerse en el camino.
@@ -5217,7 +5310,8 @@ PAGES.saved = async (main) => {
              <div>${esc(t("saved.combinar", { n: visibles.length }))}</div>
            </div>`
         : ""}
-    <div class="card" ${visibles.length ? "" : "hidden"}>
+    ${BANDEJA === "por_probar" ? escenaProbar(visibles, porEtapa, recienProbadas) : ""}
+    <div class="card" ${visibles.length && BANDEJA !== "por_probar" ? "" : "hidden"}>
       <h2>${esc(TITULOS().saved)} <span class="hint">${esc(t("saved.hint"))}</span></h2>
       ${PORTAFOLIO && visibles.length ? `<div class="sel-rapida"><span>${esc(t("sel.rapida"))}</span>
         <button class="linkbtn" data-sel-est="todas">${esc(t("etapa.todas_corto"))}</button>
@@ -5250,6 +5344,17 @@ PAGES.saved = async (main) => {
     if (fila) fila.click(); else toast(t("flujo.chip_en_otra_bandeja"), "ok");
   });
   $$("[data-bandeja]", main).forEach(b => b.onclick = () => navigate("saved", b.dataset.bandeja));
+  // el escenario de Probar
+  const pe = $("#fp-probar-elegidas", main);
+  if (pe) pe.onclick = () => probarVarias(visibles.filter(x => SEL_PF.has(x.id) && !enCola(x.id)), main);
+  const pt = $("#fp-probar-todas", main);
+  if (pt) pt.onclick = () => probarVarias(visibles.filter(x => !enCola(x.id)), main);
+  const fo = $("#fp-operar", main);
+  if (fo) fo.onclick = () => navigate("operar", "bot");
+  const fb = $("#fp-buscar", main);
+  if (fb) fb.onclick = () => navigate("mining", "buscar");
+  const fl = $("#fp-limpiar", main);
+  if (fl) fl.onclick = () => { limpiar(fl.dataset.ids.split(",").filter(Boolean)); navigate("saved", "por_probar"); };
   const irOp = $("[data-ir-operar]", main); if (irOp) irOp.onclick = () => navigate("operar", "bot");
   const limpiarBtn = $("#flujo-limpiar", main);
   if (limpiarBtn) limpiarBtn.onclick = () => { limpiar(recienProbadas.map(x => x.id)); navigate("saved", "por_probar"); };
@@ -5334,7 +5439,7 @@ PAGES.saved = async (main) => {
     ev.stopPropagation();
     const sid = cb.dataset.pf;
     if (cb.checked) SEL_PF.add(sid); else SEL_PF.delete(sid);
-    cb.closest("tr").classList.toggle("elegida", cb.checked);
+    cb.closest("[data-sid]").classList.toggle("elegida", cb.checked);
     pintarBarra();
   });
   /* TODAS LAS VISIBLES DE UNA VEZ: con el filtro en "Por probar", tildar
@@ -5433,7 +5538,7 @@ PAGES.saved = async (main) => {
 let FLUJO_PREVIO = null;   // lo anota `navigate` justo antes de vaciar la pantalla
 function posicionesDelFlujo() {
   const m = new Map();
-  $$(".flujo-chip[data-sid]").forEach(ch => {
+  $$("[data-caja][data-sid]").forEach(ch => {
     const r = ch.getBoundingClientRect();
     m.set(ch.dataset.sid, { x: r.left, y: r.top, caja: ch.dataset.caja });
   });
@@ -5442,7 +5547,7 @@ function posicionesDelFlujo() {
 function animarFlujo(main, previas) {
   if (!previas || !previas.size) return;
   if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  $$(".flujo-chip[data-sid]", main).forEach(ch => {
+  $$("[data-caja][data-sid]", main).forEach(ch => {
     const antes = previas.get(ch.dataset.sid);
     if (!antes || antes.caja === ch.dataset.caja) return;
     const r = ch.getBoundingClientRect();
@@ -5491,6 +5596,18 @@ function encolarPruebas(ids) {
 async function probarVarias(lista, main) {
   if (!lista.length || COLA_PRUEBAS) { COLA_PENDIENTE.push(...lista); return; }
   COLA_PRUEBAS = { total: lista.length, hechas: 0, ids: lista.map(x => x.id) };
+  /* LAS FILAS SE ENTERAN EN EL ACTO. En el escenario de Probar cada fila
+     lleva su botón "Probar" hasta que se redibuja; al arrancar la cola, el
+     botón pasa a ser la celda de estado —"en cola · N antes"— para que la
+     barra y el lugar en la fila tengan dónde pintarse sin esperar un
+     veredicto. */
+  lista.forEach((x, k) => {
+    const acc = $(`.fp-fila[data-sid="${x.id}"] .fp-accion`, document);
+    if (acc && !acc.querySelector(".celda-estado")) {
+      acc.innerHTML = `<div class="celda-estado"><span class="est est-none">${
+        esc(k ? t("sel.en_cola_pos", { n: k }) : t("sel.en_cola_chip"))}</span></div>`;
+    }
+  });
   const cuenta = { aprobada: 0, aceptable: 0, no_paso: 0, error: 0 };
   toast(t("sel.en_cola", { n: lista.length }), "ok");
   for (let i = 0; i < lista.length; i++) {
@@ -5500,24 +5617,22 @@ async function probarVarias(lista, main) {
        cuando llega un veredicto, así que la primera de la cola pasaba todo
        su turno sin latir: con una sola en cola no se veía nunca. Se marca
        en el acto, sin redibujar. */
-    $$(".flujo-chip.probando").forEach(c => c.classList.remove("probando"));
-    const chip = $(`.flujo-chip[data-sid="${s.id}"]`);
-    if (chip) { chip.classList.add("probando"); chip.classList.remove("cola"); chip.title = t("flujo.chip_probando"); }
-    $(".flujo")?.classList.add("corriendo");
+    $$(".fp-fila.probando").forEach(c => c.classList.remove("probando"));
+    $(`.fp-fila[data-sid="${s.id}"]`)?.classList.add("probando");
     if (!s.name) { const f = (S.saved || []).find(x => x.id === s.id); if (f) Object.assign(s, f); }
     /* La barra va en la celda de ESTA estrategia, esté o no el botón: el
        botón "Probar" se va al entrar en cola y con él se iba el progreso. Y
        la ficha del flujo muestra el porcentaje al lado del nombre. */
-    const celda = $(`tr[data-sid="${s.id}"] .celda-estado`, document);
+    const celda = $(`[data-sid="${s.id}"] .celda-estado`, document);
     const pintaCelda = celda ? barraPrueba(celda, null) : () => {};
     const avance = (j) => {
       pintaCelda(j);
-      const ch = $(`.flujo-chip[data-sid="${s.id}"]`);
-      if (ch) ch.textContent = `${s.name || ""} · ${Math.max(1, Math.round((j.progress || 0) * 100))}%`;
+      const fila = $(`.fp-fila[data-sid="${s.id}"]`);
+      if (fila) fila.style.setProperty("--avance", `${Math.max(2, Math.round((j.progress || 0) * 100))}%`);
     };
     // las que esperan muestran su lugar en la fila, también sin redibujar
-    $$("tr[data-sid] .celda-estado .est-none", document).forEach(el => {
-      const sid = el.closest("tr")?.dataset.sid;
+    $$("[data-sid] .celda-estado .est-none", document).forEach(el => {
+      const sid = el.closest("[data-sid]")?.dataset.sid;
       const pos = (COLA_PRUEBAS.ids || []).indexOf(sid) - i;
       if (sid && enCola(sid) && pos > 0) el.textContent = t("sel.en_cola_pos", { n: pos });
     });
@@ -5545,6 +5660,13 @@ async function probarVarias(lista, main) {
       if (S.page === "saved" && S.vista !== "aprobadas") await navigate("saved", S.vista);
     } catch (e) {
       cuenta.error += 1;
+      /* EL MOTIVO QUEDA EN LA FILA. Una estrategia cuyo histórico se borró
+         devuelve 404 y la cola seguía de largo: la fila volvía a "Probar"
+         como si nada y nadie se enteraba (3 de septiembre de 2026). */
+      const celdaErr = $(`[data-sid="${s.id}"] .celda-estado`, document);
+      if (celdaErr) celdaErr.innerHTML = `<span class="est est-bad" title="${esc(e.message || "")}">${esc(t("wf.no_se_pudo"))}</span>`;
+      $(`.fp-fila[data-sid="${s.id}"]`)?.classList.remove("probando");
+      toast(t("wf.no_se_pudo_de", { nombre: s.name || "", motivo: e.message || t("wf.no_se_pudo") }), "err");
       if (pedirCuenta(e.status)) break;
     }
     COLA_PRUEBAS.hechas = i + 1;
@@ -5594,7 +5716,7 @@ async function correrPrueba(s, boton) {
   const original = boton.innerHTML;
   boton.disabled = true;
   boton.innerHTML = esc(t("wf.testing"));
-  const celda = boton.closest("tr")?.querySelector(".celda-estado") || null;
+  const celda = boton.closest("[data-sid]")?.querySelector(".celda-estado") || null;
   const chipOriginal = celda ? celda.innerHTML : "";
   const avance = barraPrueba(celda, boton);
   try {

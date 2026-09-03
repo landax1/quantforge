@@ -3845,6 +3845,57 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
   #nav .nav-count { display: none; }
 }
 
+/* ===================================== Probar en tres cajas ==================
+   La lista manda, las repisas acompañan. Ninguna fila está adentro de una
+   caja: una línea, un score en anillo, el nombre grande, cifras tabuladas.
+   La que se prueba se enciende y su avance corre por el borde de abajo. */
+.fp-escena { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr); gap: 32px; align-items: start; margin-top: 8px; }
+@media (max-width: 1000px) { .fp-escena { grid-template-columns: 1fr; } }
+.fp-cab { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 0 0 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.fp-cab h2 { font-size: 20px; margin: 0; display: flex; align-items: baseline; gap: 12px; }
+.fp-cab h2 em { font-style: normal; color: var(--accent); }
+.fp-cab small { color: var(--text-dim); font-size: 13px; }
+.fp-acc { display: flex; gap: 8px; align-items: center; }
+.fp-lista { min-width: 0; }
+.fp-fila { display: grid; grid-template-columns: 22px 40px minmax(140px, 1fr) 84px 84px auto; gap: 16px; align-items: center;
+  padding: 12px 4px; border-bottom: 1px solid var(--border-soft); position: relative; cursor: pointer; }
+.fp-fila:last-child { border-bottom: 0; }
+.fp-fila.elegida { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.fp-anillo { width: 40px; height: 40px; position: relative; display: grid; place-items: center; font-weight: 600; font-size: 13px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.fp-anillo svg { position: absolute; inset: 0; }
+.fp-nombre b { font-size: 16px; font-weight: 600; display: block; line-height: 1.2; white-space: nowrap; }
+.fp-nombre span { color: var(--text-dim); font-size: 13px; display: block; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fp-num { font-variant-numeric: tabular-nums; font-size: 14px; text-align: right; }
+.fp-num small { display: block; color: var(--text-dim); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; }
+.fp-accion { justify-self: end; }
+.fp-accion .celda-estado { min-width: 120px; }
+/* la que se está probando: se enciende, y el avance corre por el borde de abajo */
+.fp-fila.probando { --avance: 2%; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 10%, transparent), transparent 60%); border-radius: var(--r); margin: 0 -12px; padding-left: 16px; padding-right: 16px; border-bottom-color: transparent; }
+/* mientras se prueba, la barra ocupa el lugar de las cifras: lo que importa
+   en ese momento es el avance, no el rendimiento del minado */
+.fp-fila.probando .fp-num { display: none; }
+.fp-fila.probando .fp-accion { grid-column: 4 / 7; justify-self: stretch; }
+.fp-fila.probando .celda-estado { min-width: 0; }
+.fp-fila.probando::after { content: ""; position: absolute; left: 16px; right: 16px; bottom: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent) var(--avance), var(--border) var(--avance)); }
+.fp-vacia { padding: 20px 4px; color: var(--text-dim); font-size: 14px; }
+.fp-repisas { display: grid; gap: 32px; }
+.fp-repisa .fp-cab h2 { font-size: 18px; }
+.fp-repisa.ok .fp-cab h2 em { color: var(--pos); }
+.fp-repisa.no .fp-cab h2 em { color: var(--neg); }
+.fp-item { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 4px; border-bottom: 1px solid var(--border-soft); cursor: pointer; }
+.fp-item:last-of-type { border-bottom: 0; }
+.fp-item i { width: 10px; height: 10px; border-radius: 50%; background: var(--pos); display: block; }
+.fp-item.medio i { background: var(--warn); }
+.fp-repisa.no .fp-item i { background: var(--neg); }
+.fp-item > div > b { font-weight: 600; font-size: 14px; display: block; line-height: 1.2; }
+.fp-item > div > span { color: var(--text-dim); font-size: 13px; display: block; margin-top: 2px; }
+.fp-v { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.fp-v b { font-weight: 600; }
+.fp-pie { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; gap: 12px; }
+.fp-item.viajando, .fp-fila.viajando { z-index: 5; }
+@media (max-width: 1180px) { .fp-fila { grid-template-columns: 22px 40px minmax(0, 1fr) auto; } .fp-fila .fp-num { display: none; } .fp-fila.probando .fp-accion { grid-column: 4; } }
+
 /* ================================================= color en las tarjetas =====
    Lo que gustó de Mercados no son los logos: es que cada tarjeta tiene un tono
    propio sobre el fondo oscuro. Esto lleva eso al resto sin ningún símbolo.
