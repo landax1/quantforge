@@ -2127,7 +2127,7 @@ function pintarMundo() {
        pantalla, y sin movimiento parecía que no había pasado nada. */
     const main = $("#main");
     if (main) { main.classList.remove("cruza"); void main.offsetWidth; main.classList.add("cruza"); }
-    Promise.allSettled([refreshSavedCount(), refreshBancoCount()])
+    Promise.allSettled([refreshSavedCount(), refreshBancoCount(), refreshRobots()])
       .then(() => navigate(S.page));
   });
 }
@@ -2568,7 +2568,7 @@ PAGES.bienvenida = async (main) => {
        con instrumentos listos. Mandar a Datos era correcto cuando la
        aplicación abría vacía y ahora sería un rodeo. Los contadores del
        menú se piden de nuevo porque son de la sección recién elegida. */
-    Promise.allSettled([refreshSavedCount(), refreshBancoCount()])
+    Promise.allSettled([refreshSavedCount(), refreshBancoCount(), refreshRobots()])
       .then(() => navigate(S.datasets.length ? "mining" : "data"));
   });
 };
@@ -3699,7 +3699,11 @@ const vistaBot = async (main, hayClave) => {
       zona.innerHTML = zonaVuelos(e);
       atarVuelos(main);
       atarReencender(main);
-      const rc = $("#robots-count"); if (rc) rc.textContent = e.cuantos || "";
+      /* Y NO EN METATRADER. Los robots son de Binance: en el mundo de
+       MetaTrader 5 el menú prometía "Operar 8" en una pantalla donde no se
+       enciende nada, y esos ocho eran de la otra sección (3 de septiembre). */
+    const rc = $("#robots-count");
+    if (rc) rc.textContent = S.mundo === "metatrader" ? "" : (e.cuantos || "");
     } catch (err) { /* la próxima vuelta lo reintenta */ }
   }, 30000);
 };
@@ -4987,6 +4991,11 @@ PAGES.saved = async (main) => {
      operan, y con un clic se queda con las que le importan. "Todas" sigue
      existiendo, pero deja de ser la única vista. */
   const porEtapa = Object.fromEntries(ETAPAS.map(e => [e, items.filter(x => etapaDe(x) === e)]));
+  /* CADA CUENTA ES LA DE SUS FILAS. La solapa decía "Probar · 0" y la tabla
+     dibujaba 91: la cuenta salía de `porEtapa.por_probar` y la lista sumaba
+     además las recién probadas, que se quedan a la vista hasta que uno las
+     limpia. `cuentas.p` se completa más abajo, cuando ya se sabe cuáles son
+     (3 de septiembre de 2026). */
   const cuentas = { p: porEtapa.por_probar.length, a: porEtapa.aprobadas.length,
                     o: porEtapa.operando.length, d: porEtapa.descartadas.length };
   const aMedias = porEtapa.aprobadas.filter(x => estadoDe(x) === "aceptable").length;
@@ -5001,9 +5010,21 @@ PAGES.saved = async (main) => {
   const yaLimpias = limpiadas();
   const recienProbadas = items.filter(x => !estaRetirada(x) && etapaDe(x) !== "operando"
     && ["aprobadas", "descartadas"].includes(etapaDe(x)) && !yaLimpias.has(x.id));
-  const visibles = BANDEJA === "por_probar"
-    ? [...porEtapa.por_probar, ...recienProbadas]
-    : porEtapa[BANDEJA];
+  const enProbar = [...porEtapa.por_probar, ...recienProbadas];
+  cuentas.p = enProbar.length;
+
+  /* EN METATRADER NADIE ESTÁ OPERANDO: ahí no se enciende ningún robot y la
+     solapa no se dibuja, así que una estrategia que quedó en práctica no caía
+     en ninguna bandeja y no se podía alcanzar desde ningún lado —31 guardadas,
+     30 visibles—. Se muestran con las que aguantaron, que es de donde salieron
+     y donde tiene sentido volver a mirarlas. */
+  if (S.mundo === "metatrader" && porEtapa.operando.length) {
+    porEtapa.aprobadas = [...porEtapa.aprobadas, ...porEtapa.operando];
+    cuentas.a = porEtapa.aprobadas.length;
+    cuentas.o = 0;
+  }
+
+  const visibles = BANDEJA === "por_probar" ? enProbar : porEtapa[BANDEJA];
 
   /* LA SELECCIÓN ES DE ESTA BANDEJA. Sobrevivía al cambio de bandeja: se
      tildaban las 25 de Probar, se pasaba a Las que aguantaron —cuatro filas a
@@ -5022,7 +5043,12 @@ PAGES.saved = async (main) => {
   const flujo = BANDEJA !== "por_probar" ? "" : (() => {
     const ok = recienProbadas.filter(x => etapaDe(x) === "aprobadas").length;
     const mal = recienProbadas.filter(x => etapaDe(x) === "descartadas").length;
-    return `<div class="flujo">
+    /* DE QUÉ HABLA ESTE DIAGRAMA. Sus números son los de esta tanda —lo
+       recién probado y todavía sin limpiar— y las solapas de abajo son los
+       totales: "No pasaron 68" acá y "Descartadas 72" ahí abajo se leían
+       como dos respuestas a la misma pregunta (3 de septiembre de 2026). */
+    return `<p class="help-note">${esc(t("flujo.de_esta_tanda"))}</p>
+    <div class="flujo">
       <div class="flujo-caja ${porEtapa.por_probar.length ? "on" : ""}">
         <b>${esc(t("flujo.trajimos"))}</b><span class="flujo-n">${porEtapa.por_probar.length}</span>
         <span class="flujo-sub">${esc(t("flujo.trajimos_sub", { n: porEtapa.por_probar.length }))}</span></div>
@@ -9789,7 +9815,7 @@ function pedirCuenta(status) {
   $$("#nav button").forEach(b => b.onclick = () => navigate(b.dataset.page, b.dataset.vista || undefined));
   // los contadores ya se pidieron arriba, pero sin esperarlos: la bienvenida
   // necesita saber si hay algo hecho ANTES de decidir si aparece
-  await Promise.allSettled([refreshSavedCount(), refreshBancoCount()]);
+  await Promise.allSettled([refreshSavedCount(), refreshBancoCount(), refreshRobots()]);
   /* La dirección manda sobre el arranque por omisión, salvo que toque la
      bienvenida: alguien que abre por primera vez tiene que ver la bienvenida
      aunque haya quedado un fragmento viejo pegado. */

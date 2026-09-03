@@ -59,6 +59,9 @@ const STR = {
   "flujo.aprobadas_sub": ["{n} held on data they never saw", "{n} aguantaron datos que no vieron"],
   "flujo.no_pasaron": ["Did not hold", "No pasaron"],
   "flujo.no_pasaron_sub": ["{n} were describing the past", "{n} describían el pasado"],
+  "flujo.de_esta_tanda": [
+    "This is the batch you just tested. The totals for every strategy are in the trays below.",
+    "Esto es la tanda que acabás de probar. Los totales de todas las estrategias están en las solapas de abajo."],
   "flujo.limpiar": ["Clear the tested ones", "Limpiar las probadas"],
   "flujo.limpiar_sub": ["They stay in The ones that held and in Discarded; this only tidies up here.", "Quedan en Aprobadas y Descartadas; esto sólo ordena acá."],
   "flujo.resultados": ["Test results", "Resultados de la prueba"],
