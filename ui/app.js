@@ -4416,10 +4416,19 @@ async function encenderDirecto(s, boton) {
   }
 }
 
+/* ¿ESTÁ ESPERANDO SU PRUEBA? Salir de Probar y volver mostraba las filas
+   como "sin probar" con la cola corriendo, y volver a apretar las encolaba
+   de nuevo (2 de septiembre). */
+function enCola(id) {
+  if (!COLA_PRUEBAS) return false;
+  return (COLA_PRUEBAS.ids || []).includes(id) || COLA_PENDIENTE.some(x => x.id === id);
+}
+
 function accionEtapa(s) {
   const et = etapaDe(s);
   const cripto = mundoDeDataset((s.meta || {}).dataset_name || "") !== "metatrader";
   if (et === "por_probar") {
+    if (enCola(s.id)) return `<span class="help-note">${esc(t("sel.en_cola_chip"))}</span>`;
     return `<button class="btn small" data-probar="${esc(s.id)}">${esc(t("wf.test_it"))}</button>`;
   }
   if (et === "aprobadas") {
@@ -4591,7 +4600,8 @@ PAGES.saved = async (main) => {
         m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b></td>
       <td class="num ${nivelDD(m.max_drawdown_pct, riesgoDeCtx(ctx))}">${
         m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</td>
-      ${PRUEBAS ? `<td class="celda-estado ${RECIEN_PROBADAS.delete(s.id) ? "chip-cambia" : ""}">${chipEtapa(s)}</td>
+      ${PRUEBAS ? `<td class="celda-estado ${RECIEN_PROBADAS.delete(s.id) ? "chip-cambia" : ""}">${
+        enCola(s.id) ? `<span class="est est-none">${esc(t("sel.en_cola_chip"))}</span>` : chipEtapa(s)}</td>
       <td class="celda-prueba">${pruebaResumen(s)}</td>` : ""}
       <td class="num" style="white-space:nowrap">
         ${/* LA ACCIÓN DICE EL PASO SIGUIENTE, según la etapa: probar las
@@ -4610,7 +4620,7 @@ PAGES.saved = async (main) => {
   };
 
   // Sin las retiradas: "24 de estas sin probar" contaba las que ya no juegan.
-  const sinProbar = items.filter(x => !estaRetirada(x) && estadoDe(x) === "sin_probar").length;
+  const sinProbar = items.filter(x => !estaRetirada(x) && estadoDe(x) === "sin_probar" && !enCola(x.id)).length;
 
   /* LA CIFRA DE LA CABECERA ES LA MISMA QUE LA DEL MENÚ. El menú cuenta las
      que están en juego (sin las retiradas) y acá se decía "25 guardadas"
@@ -4923,7 +4933,7 @@ function encolarPruebas(ids) {
 
 async function probarVarias(lista, main) {
   if (!lista.length || COLA_PRUEBAS) { COLA_PENDIENTE.push(...lista); return; }
-  COLA_PRUEBAS = { total: lista.length, hechas: 0 };
+  COLA_PRUEBAS = { total: lista.length, hechas: 0, ids: lista.map(x => x.id) };
   const cuenta = { aprobada: 0, aceptable: 0, no_paso: 0, error: 0 };
   toast(t("sel.en_cola", { n: lista.length }), "ok");
   for (let i = 0; i < lista.length; i++) {
@@ -4962,7 +4972,11 @@ async function probarVarias(lista, main) {
     }
     COLA_PRUEBAS.hechas = i + 1;
     // lo que se agregó mientras corría, al final de esta misma cola
-    if (COLA_PENDIENTE.length) { lista.push(...COLA_PENDIENTE.splice(0)); COLA_PRUEBAS.total = lista.length; }
+    if (COLA_PENDIENTE.length) {
+      lista.push(...COLA_PENDIENTE.splice(0));
+      COLA_PRUEBAS.total = lista.length;
+      COLA_PRUEBAS.ids = lista.map(x => x.id);
+    }
   }
   COLA_PRUEBAS = null;
   toast(t("sel.resumen", { a: cuenta.aprobada, m: cuenta.aceptable, f: cuenta.no_paso })
@@ -7116,6 +7130,8 @@ const vistaBuscar = async (main) => {
          sola a los 30 segundos. El botón es #m-run: con otro id el reintento
          no ocurría nunca (encontrado el 2 de septiembre). */
       if (e && e.status === 429) {
+        // el texto del servidor viene en español y en una sola voz; el que
+        // se muestra es el de la pantalla, en el idioma elegido
         S.avisoOcupado = true;
         clearTimeout(REINTENTO_OCUPADO);
         REINTENTO_OCUPADO = setTimeout(() => {

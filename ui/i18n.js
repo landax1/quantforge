@@ -2103,6 +2103,7 @@ const STR = {
   "sel.resumen": ["{a} passed · {m} partly held · {f} did not hold", "{a} aprobadas · {m} a medias · {f} no pasaron"],
   "sel.errores": ["{n} could not be tested", "{n} no se pudieron probar"],
   "sel.esperando": ["Waiting for the server to free up…", "Esperando que el servidor se libere…"],
+  "sel.en_cola_chip": ["in the queue", "en cola"],
   "saved.pending": [
     "{n} of these have not been tested yet.",
     "{n} de éstas todavía no se probaron."],
