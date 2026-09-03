@@ -1245,6 +1245,17 @@ function ctxPill() {
 
 function saveCfg() {
   localStorage.setItem("qf.cfg", JSON.stringify(S.cfg));
+  /* Y UNA COPIA POR MERCADO. Alguien que ajusta a mano bloques, riesgo y
+     filtros para ETHUSDT y después mira otro mercado perdía diez minutos de
+     trabajo al volver (2 de septiembre). Cada mercado recuerda lo suyo y se
+     restituye al elegirlo; quien nunca lo tocó no nota nada. */
+  try {
+    if (S.sel.dataset_id) {
+      const porMercado = JSON.parse(localStorage.getItem("qf.cfg_mercado") || "{}");
+      porMercado[S.sel.dataset_id] = { cfg: S.cfg, timeframe: S.sel.timeframe, receta: S.recetaPuesta || null };
+      localStorage.setItem("qf.cfg_mercado", JSON.stringify(porMercado));
+    }
+  } catch (e) { /* modo privado */ }
   // El rango de fechas NO se guarda: al abrir la app siempre se arranca con
   // todo el historial. Persistirlo significaría abrir mañana y estar minando
   // un tramo recortado sin acordarse de haberlo elegido.
@@ -6672,6 +6683,16 @@ const vistaBuscar = async (main) => {
 
   const dsSel = $("#sel-dataset"), tfSel = $("#sel-timeframe");
   dsSel.onchange = () => {
+    /* LO QUE ESTE MERCADO TENÍA: su temporalidad, sus filtros y su receta.
+       Sin esto, cambiar de mercado y volver borraba el ajuste a mano. */
+    try {
+      const guardado = JSON.parse(localStorage.getItem("qf.cfg_mercado") || "{}")[dsSel.value];
+      if (guardado && guardado.cfg) {
+        S.cfg = { ...S.cfg, ...guardado.cfg };
+        if (guardado.timeframe) S.sel.timeframe = guardado.timeframe;
+        S.recetaPuesta = guardado.receta || null;
+      }
+    } catch (e) { /* modo privado */ }
     S.sel.dataset_id = dsSel.value;
     const ds = S.datasets.find(d => d.id === dsSel.value);
     // el período propio se conserva y sólo se le ajustan los bordes; el que
