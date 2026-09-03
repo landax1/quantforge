@@ -5013,12 +5013,17 @@ PAGES.saved = async (main) => {
     try {
       // lo escribe el servidor, que corre en esta misma máquina: la ventana
       // nativa cancela las descargas del navegador y el botón no hacía nada
-      const r = await api.post("/api/export/mql5/archivo", {
+      /* AL MISMO LUGAR QUE DESDE LA FICHA: la fila mandaba a Descargas y la
+         ficha al terminal elegido, así que el mismo robot terminaba en dos
+         carpetas distintas (2 de septiembre). */
+      const cuerpoFila = {
         spec: s.spec, name: `BQ_${s.name.replace(/[^\w]/g, "_")}`,
         dataset_id: (s.meta || {}).dataset_id,
         timeframe: (s.meta || {}).timeframe, metrics: (s.meta || {}).metrics,
         server_utc_offset: S.cfg.brokerUtc,
-      });
+      };
+      if (S.mt5.elegido) cuerpoFila.terminal = S.mt5.elegido;
+      const r = await api.post("/api/export/mql5/archivo", cuerpoFila);
       toast(t("exp.saved_in", { archivo: r.archivo, carpeta: r.carpeta }), "ok");
       if (S.mundo === "metatrader") primerPaso("encendiste");
     } catch (e) {
