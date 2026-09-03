@@ -570,9 +570,12 @@ function documentoCompartible(row, ctx, res, nivel, autor) {
     validacion: v && v.estado ? { estado: v.estado, tramos: v.tramos, tramos_ganadores: v.tramos_ganadores,
                                   eficiencia: v.eficiencia, retorno_fuera_pct: v.retorno_fuera_pct,
                                   periodo: v.periodo || null,
-                                  detalle: v.detalle
-                                    ? { tramos: v.detalle.tramos, mc: v.detalle.mc || v.mc || null }
-                                    : (v.mc ? { mc: v.mc } : null) } : null,
+                                  veredicto: v.veredicto || null,
+                                  /* LA CAÍDA PLAUSIBLE VIAJA SIEMPRE. `detalle.mc` son las
+                                     bandas del dibujo, sin `dd_malo_pct`: la página compartida
+                                     nunca la recibía (3 de septiembre de 2026). */
+                                  mc: v.mc ? { dd_malo_pct: v.mc.dd_malo_pct, ruina_pct: v.mc.ruina_pct } : null,
+                                  detalle: v.detalle ? { tramos: v.detalle.tramos } : null } : null,
     mundo: S.mundo, spec: row.spec,
     utc_offset: ds && ds.utc_offset != null ? ds.utc_offset : (S.cfg.brokerUtc || 0),
   };
@@ -4742,9 +4745,12 @@ function pruebaResumen(s) {
      la que efectivamente pasó, ésta es la peor plausible rebarajando las
      operaciones, y suele ser el doble. Las dos decían "dd" en la misma fila
      (3 de septiembre de 2026). */
-  if (v.mc && v.mc.dd_malo_pct != null) {
+  // las probadas antes de que existiera `mc` guardan la misma cifra en
+  // `dd_p95_pct`; la lista mostraba "—" para veinticinco de ellas
+  const ddMalo = (v.mc && v.mc.dd_malo_pct != null) ? v.mc.dd_malo_pct : v.dd_p95_pct;
+  if (ddMalo != null) {
     partes.push(`<span class="muted" title="${esc(t("wf.m_bad_run_help"))}">${
-      esc(t("wf.dd_malo_corto"))} ${fmtNum(v.mc.dd_malo_pct, 1)}%</span>`);
+      esc(t("wf.dd_malo_corto"))} ${fmtNum(ddMalo, 1)}%</span>`);
   }
   return `<span class="prueba-res">${partes.join(" · ")}</span>`;
 }
@@ -5023,6 +5029,7 @@ function fraseVeredicto(v) {
   if (!v || !v.estado) return "";
   const g = v.tramos_ganadores, n = v.tramos;
   const todos = n > 0 && g >= n;
+  if (v.veredicto === "ruina") return t("wf.frase_ruina", { g, n, dd: fmtNum((v.mc || {}).dd_malo_pct, 0) });
   if (v.estado === "aprobada") return t("wf.frase_aprobada", { g, n });
   if (v.estado === "aceptable") {
     return todos ? t("wf.frase_aceptable_ef", { n })

@@ -163,4 +163,9 @@ def _verdict(efficiency: float, consistency: float) -> str:
         return "robust"
     if efficiency >= 0.3 and consistency >= 0.5:
         return "acceptable"
+    # Ganar en tres de cuatro con eficiencia 0,29 salía "no pasó" mientras
+    # dos de cuatro con 0,30 salía "a medias": la consistencia alta compensa
+    # una eficiencia algo menor (3 de septiembre de 2026).
+    if efficiency >= 0.2 and consistency >= 0.75:
+        return "acceptable"
     return "overfitted"

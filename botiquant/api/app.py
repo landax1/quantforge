@@ -1634,6 +1634,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         return {
             "dd_tipico_pct": mc["max_drawdown_pct"]["median"],
             "dd_malo_pct": mc["max_drawdown_pct"]["p95"],
+            # Cómo se rebarajó: con rendimientos compuestos (lo correcto para
+            # riesgo por porcentaje) o con dinero (lotes fijos). Sin esto no
+            # había manera de saber si un veredicto era de antes o después
+            # del arreglo del 3 de septiembre de 2026.
+            "compuesto": bool(mc.get("compuesto", False)),
             "ruina_pct": mc["risk_of_ruin_pct"],
             "prob_perder_pct": mc["final_equity"]["prob_loss"],
             "peor_razonable": mc["final_equity"]["ci_90"][0],
@@ -2139,11 +2144,15 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                            _settings({"dataset_id": meta["dataset_id"],
                                       "settings": ajustes}))
         crudo = res.to_dict()
+        # Mismo Monte Carlo que Probar: rendimientos compuestos si la
+        # estrategia arriesga un porcentaje. Este camino se había quedado con
+        # el rebarajado en dinero (3 de septiembre de 2026).
         mc = monte_carlo(
             [t["pnl"] for t in crudo.get("trades", [])],
             initial_capital=float(ajustes.get("initial_capital") or 10_000.0),
             simulations=int(min(max(int(payload.get("simulations", 1000)), 100), 5000)),
-            seed=int(payload.get("seed", 42)))
+            seed=int(payload.get("seed", 42)),
+            compuesto=_compone(StrategySpec.from_dict(fila["spec"])))
 
         dd_hist = float(crudo["metrics"].get("max_drawdown_pct") or 0.0)
         dd_p95 = float(mc["max_drawdown_pct"]["p95"])
@@ -2183,9 +2192,14 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 settings=_settings({"dataset_id": meta["dataset_id"],
                                     "settings": ajustes}))
             resumen = wf["summary"]
+            estado_v = ESTADOS.get(resumen["verdict"], "no_paso")
+            veredicto_v = resumen["verdict"]
+            # y la misma puerta de ruina que Probar
+            if estado_v != "no_paso" and float(mc["max_drawdown_pct"]["p95"]) >= RUINA_DD_PCT:
+                estado_v, veredicto_v = "no_paso", "ruina"
             validacion.update({
-                "estado": ESTADOS.get(resumen["verdict"], "no_paso"),
-                "veredicto": resumen["verdict"],
+                "estado": estado_v,
+                "veredicto": veredicto_v,
                 "tramos": resumen["folds"],
                 "tramos_ganadores": resumen["profitable_folds"],
                 "eficiencia": resumen["wf_efficiency"],
@@ -3999,7 +4013,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         # afuera rindió bastante menos: vale correrla en demo, no confiarle
         # plata a ciegas" y la página se quedaba sólo con la mitad buena.
         reparo = ""
-        if est == "aceptable":
+        if v.get("veredicto") == "ruina":
+            reparo = ("<p style='margin:8px 0 0;color:#f27a70'>Ganó en sus tramos, pero rebarajando "
+                      "sus propias operaciones una racha mala plausible se come más de la mitad de "
+                      "la cuenta. No vale correrla así.</p>")
+        elif est == "aceptable":
             reparo = ("<p style='margin:8px 0 0;color:#f0b64a'>Aguantó a medias: afuera "
                       "rindió bastante menos que adentro. Vale correrla en una cuenta "
                       "demo, no confiarle plata a ciegas.</p>")

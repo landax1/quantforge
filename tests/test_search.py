@@ -191,3 +191,13 @@ def test_con_lotes_fijos_monte_carlo_sigue_rebarajando_dinero():
                     compuesto=False)
     assert r["compuesto"] is False
     assert r["max_drawdown_pct"]["worst"] <= 100
+
+
+def test_ganar_en_tres_de_cuatro_con_eficiencia_decente_no_es_peor_que_dos_de_cuatro():
+    """3/4 con 0,29 salía "no pasó" y 2/4 con 0,30 "a medias": al revés de
+    lo que dicen los números (3 de septiembre de 2026)."""
+    from botiquant.analysis.walkforward import _verdict
+
+    assert _verdict(0.29, 0.75) == "acceptable"
+    assert _verdict(0.30, 0.50) == "acceptable"
+    assert _verdict(0.19, 0.75) == "overfitted"

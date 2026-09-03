@@ -2142,6 +2142,9 @@ const STR = {
     "Whether the strategy still worked on data it had never seen.",
     "Si la estrategia siguió funcionando sobre datos que nunca había visto."],
 
+  "wf.frase_ruina": [
+    "It won in {g} of {n} stretches, but shuffling its own trades a plausible bad run eats {dd}% of the account. Not worth running as is.",
+    "Ganó en {g} de {n} tramos, pero rebarajando sus propias operaciones una racha mala plausible se come el {dd}% de la cuenta. No vale correrla así."],
   "wf.frase_aprobada": [
     "It made money in {g} of {n} stretches it had never seen, and kept most of what it was earning.",
     "Ganó en {g} de {n} tramos que nunca había visto, y conservó la mayor parte de lo que rendía."],
@@ -2175,7 +2178,7 @@ const STR = {
   "wf.d_mc": ["Same trades, shuffled 1,000 times", "Las mismas operaciones, barajadas 1000 veces"],
   "wf.d_mc_help": [
     "The total profit is identical every time; what changes is the path. The band shows how deep the hole could have been before it paid off.",
-    "La ganancia total es idéntica siempre; lo que cambia es el camino. La banda muestra qué tan hondo pudo ser el pozo antes de que pagara."],
+    "Las mismas operaciones, en otro orden y con repetición; lo que se mira es el camino. La banda muestra qué tan hondo pudo ser el pozo antes de que pagara."],
   "wf.test_it": ["Put it to the test", "Poner a prueba"],
   "wf.retest": ["Test again", "Volver a probar"],
   "wf.testing": ["Testing", "Probando"],
@@ -2200,7 +2203,7 @@ const STR = {
   "wf.dd_malo_corto": ["worst plausible", "peor plausible"],
   "wf.m_bad_run_help": [
     "From Monte Carlo: the same trades dealt in a different order a thousand times. The total profit comes out identical every time — what changes is the path, so this is how deep the hole could have been before it paid off.",
-    "De Monte Carlo: las mismas operaciones repartidas en otro orden mil veces. La ganancia total sale idéntica siempre — lo que cambia es el camino, así que esto es qué tan hondo pudo haber sido el pozo antes de que empezara a pagar."],
+    "De Monte Carlo: las mismas operaciones repartidas en otro orden mil veces. Las mismas operaciones en otro orden y con repetición — lo que se mira es el camino, así que esto es qué tan hondo pudo haber sido el pozo antes de que empezara a pagar."],
   "wf.tested_on": [
     "Tested over {desde} → {hasta}, on {cuando}.",
     "Probada sobre {desde} → {hasta}, el {cuando}."],
