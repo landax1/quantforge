@@ -454,7 +454,9 @@ const RECETAS = () => [
     cartera: { bots: 3, usarPct: 90 },
     cfg: {
       timeframe: "1h", direction: "both", maxFilters: 1,
-      maxCandidates: 2000,
+      // 1400 y no 2000: el techo de espera son doce minutos y a una hora
+      // cada candidata cuesta lo suyo (la prueba lo mide)
+      maxCandidates: 1400,
       rrBuscado: [1.5, 2.0, 2.5, 3.0],
       minTrades: 40,
       riskPct: 3,
@@ -470,9 +472,15 @@ const RECETAS = () => [
        tarjeta lo dice. Necesita velas de un minuto: los perpetuos de fábrica
        vienen en una hora, y de una hora no salen velas de quince. */
     id: "scalping", ico: "seguir", mundo: "exchange", permiteCorto: true,
+    /* DOS ROBOTS Y EL 30% DE LA CUENTA. Opera muchas veces por día y su
+       ventaja es fina: se le da poco capital a propósito, y dos como máximo
+       para no llenar la cuenta de operaciones correlacionadas. */
+    cartera: { bots: 2, usarPct: 50 },
     cfg: {
       timeframe: "15m", direction: "both", maxFilters: 1,
-      anios: 2, maxCandidates: 3000,
+      // 1800 y no 3000: a quince minutos cada candidata recorre muchas velas
+      // y el techo de espera son doce minutos (la prueba lo mide)
+      anios: 2, maxCandidates: 1600,
       rrBuscado: [0.75, 1.0],
       minTrades: 150,
       riskPct: 0.5,
