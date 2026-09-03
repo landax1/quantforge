@@ -7771,7 +7771,12 @@ function renderMining(snap, finished) {
         <div class="stat"><span>${esc(finished ? t("run.duration") : t("run.elapsed"))}</span><b>${fmtDur(snap.elapsed_s)}</b></div>
         ${!finished && goal ? `<div class="stat"><span>${esc(t("run.eta"))}</span><b>${
           snap.eta_s != null ? fmtDur(snap.eta_s) : "—"}</b></div>` : ""}
-        <div class="stat"><span>${esc(t("run.rate"))}</span><b>${rate ? rate.toFixed(2) : "—"}<u>${esc(t("run.per_sec"))}</u></b></div>
+        ${/* EL RITMO, EN PALABRAS: "0.03 acept./s" no le dice nada a nadie;
+              "1 cada 33 s" sí (2 de septiembre). */ ""}
+        <div class="stat"><span>${esc(t("run.rate"))}</span><b>${
+          rate ? (rate >= 1 ? `${rate.toFixed(1)}<u>${esc(t("run.por_seg"))}</u>`
+                            : `1<u>${esc(t("run.cada", { s: fmtDur(Math.round(1 / rate)) }))}</u>`)
+               : "—"}</b></div>
       </div>
       ${banner}`;
 

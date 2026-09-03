@@ -583,6 +583,8 @@ const STR = {
   "run.eta": ["Approx. left", "Falta aprox."],
   "run.rate": ["Pace", "Ritmo"],
   "run.per_sec": ["accepted/s", "acept./s"],
+  "run.por_seg": [" accepted/s", " acept./s"],
+  "run.cada": [" every {s}", " cada {s}"],
   "run.best": ["Best score", "Mejor score"],
   "run.best_so_far": ["Best so far", "Mejor hasta ahora"],
   "run.preparando": ["Preparing candles and indicators…", "Preparando velas e indicadores…"],
