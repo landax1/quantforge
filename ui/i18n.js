@@ -963,6 +963,7 @@ const STR = {
   "saved.acc_encender": ["Turn on", "Encender"],
   "saved.acc_ver_robot": ["See robot", "Ver robot"],
   "saved.acc_retirar": ["Retire", "Retirar"],
+  "saved.acc_exportar": ["To MetaTrader", "A MetaTrader"],
   "saved.retirar_motivo": ["Why retire \"{nombre}\"? One line, so it is not turned on again in six months.", "¿Por qué retirás \"{nombre}\"? Una línea, para no volver a encenderla en seis meses."],
   "saved.retirada": ["Retired with its reason.", "Retirada con su motivo."],
   "saved.sub": ["{n} saved. They survive any new search.",
@@ -2119,16 +2120,16 @@ const STR = {
   "wel.s1_sub": [
     "Pick a market and how many strategies you want. The search does not stop until it has them.",
     "Elegís un mercado y cuántas estrategias querés. La búsqueda no se detiene hasta tenerlas."],
-  "wel.s2": ["Keep", "Guardar"],
+  "wel.s2": ["Test", "Probar"],
   "wel.s2_sub": [
-    "Look at what it found and save the ones worth a second look. The rest you can throw away without thinking twice.",
-    "Mirás lo que encontró y guardás las que merezcan una segunda mirada. El resto se tira sin pensarlo."],
-  "wel.s3": ["Take it away", "Llevarla"],
+    "What you keep goes to Test and gets tried on data it never saw. It comes back with a word: passed, partly held or did not hold.",
+    "Lo que guardás va a Probar y se prueba sobre datos que nunca vio. Vuelve con una palabra: aprobada, a medias o no pasó."],
+  "wel.s3": ["Trade it", "Operarla"],
   /* Los DOS destinos, porque este texto se lee antes de elegir. Decir sólo
      MetaTrader deja a quien viene por cripto pensando que se equivocó. */
   "wel.s3_sub": [
-    "On CFDs it exports as a robot for MetaTrader 5; on crypto it connects straight to the exchange. Either way, run it on a demo account before putting real money on it.",
-    "En CFDs se exporta como robot para MetaTrader 5; en cripto se conecta directo al exchange. En los dos casos, correla en una cuenta demo antes de ponerle plata."],
+    "On MetaTrader 5 it exports as a robot for your terminal; on crypto a robot runs it here, on your Binance demo account. Either way, demo first.",
+    "En MetaTrader 5 se exporta como robot para tu terminal; en cripto un robot la corre acá, en tu cuenta demo de Binance. En los dos casos, primero demo."],
   /* La bienvenida ya no es "empezar" sino ELEGIR QUE SE OPERA: son dos
      productos distintos y el que elige mal mina sobre datos que no va a poder
      operar. `wel.start` queda para no romper una traducción a medio camino. */

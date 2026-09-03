@@ -3417,9 +3417,15 @@ const vistaBot = async (main, hayClave) => {
     if (!caja) return;
     try {
       const d = await api.get("/api/cuenta/rendimiento");
+      /* EL SALDO LLEGA DESPUÉS QUE LAS TARJETAS: sin repintar, la línea de
+         riesgo decía "≈ 0.00 USDT". Se vuelven a dibujar con el saldo ya
+         sabido, una sola vez. */
       S.cuentaSaldo = +d.saldo || 0;
       const zonaR = $("#bot-zona-vuelos", main);
-      if (zonaR && bot.vuelos && bot.vuelos.length) { zonaR.innerHTML = zonaVuelos(bot); atarVuelos(main); atarReencender(main); }
+      if (zonaR && (bot.vuelos || []).length) {
+        const fresco = await api.get("/api/bot");
+        zonaR.innerHTML = zonaVuelos(fresco); atarVuelos(main); atarReencender(main);
+      }
       const r = d.resultado || {};
       const signo = n => (n > 0 ? "pos" : n < 0 ? "neg" : "");
       $(".help-note", caja).innerHTML = `<span class="cuenta-dato">${esc(t("op.saldo"))} <b data-cifra="${+d.saldo || 0}" data-formato="usdt">0</b></span>
@@ -4683,7 +4689,10 @@ PAGES.saved = async (main) => {
               retirar las que no pasaron. Volver a probar queda como acción
               secundaria en todas las probadas. */
           PRUEBAS ? accionEtapa(s) : ""}
-        <button class="btn ghost small" data-export="${esc(s.id)}">${icono("bajar")} MQL5</button>
+        ${/* Exportar a MetaTrader sólo donde se opera con MetaTrader: en
+              cripto el camino es encender un robot, y el botón confundía. */
+          S.mundo === "metatrader"
+            ? `<button class="btn ghost small" data-export="${esc(s.id)}">${icono("bajar")} ${esc(t("saved.acc_exportar"))}</button>` : ""}
         <button class="btn ghost small" data-del-strat="${esc(s.id)}"
           title="${esc(t("ui.delete"))}">${icono("cerrar")}</button>
       </td>

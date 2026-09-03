@@ -612,7 +612,11 @@ def test_la_bienvenida_describe_la_aplicacion_que_existe():
     El tercer paso real es exportar a MetaTrader, que además es el único que
     termina en algo que opera con plata.
     """
-    assert '"wel.s3": ["Take it away"' in DICC, "el paso 3 volvió a prometer lo apagado"
+    # LOS TRES PASOS SE LLAMAN COMO EL MENÚ (2 de septiembre de 2026):
+    # Buscar · Probar · Operarla. Un usuario de prueba leyó "Keep / Take it
+    # away" en la entrada y "Test / Trade" en la barra, y no ató una cosa con
+    # la otra. El paso 3 sigue nombrando MetaTrader para quien viene por CFD.
+    assert '"wel.s3": ["Trade it"' in DICC, "el paso 3 dejó de llamarse como el menú"
     assert "MetaTrader" in DICC.split('"wel.s3_sub"')[1][:400]
     assert "numbered steps" not in DICC, "el pie vuelve a hablar de pasos numerados"
     assert "pasos numerados" not in DICC
