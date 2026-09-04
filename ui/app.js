@@ -4990,6 +4990,185 @@ function filaProbar(s) {
   </div>`;
 }
 
+/* ══════════════════════ EL RESUMEN DE LA VALIDACIÓN ══════════════════════
+   Cada estrategia guarda su veredicto desde el día que se validó —eficiencia,
+   consistencia, ventanas ganadas, drawdown p95— y hasta ahora esos números
+   sólo se leían de a uno, abriendo la ficha. Acá se leen juntos.
+
+   NADA SE RECALCULA: todo sale de `validacion` y de `meta`, que la pantalla ya
+   tiene en memoria. No hay un pedido más al servidor.
+
+   Y no se muestra con pocas: con diez validadas, "33% pasaron" es una frase
+   sobre tres estrategias y se lee como una ley. */
+const RESUMEN_MINIMO = 20;
+
+//: 0 sobreajustada · 1 robustez parcial · 2 robusta. El orden es el del
+//: veredicto, de peor a mejor, y lo comparten el color y la forma del punto.
+const RES_TIPO = { no_paso: 0, aceptable: 1, aprobada: 2 };
+//: El piso que decide el veredicto, en analysis/walkforward.py. Si cambia
+//: allá, la línea de referencia de acá miente.
+const RES_PISO_EF = 0.1;
+
+function resumenDatos(validadas) {
+  const puntos = [];
+  for (const s of validadas) {
+    const v = s.validacion || {}, meta = s.meta || {};
+    if (v.eficiencia == null || meta.score == null) continue;
+    puntos.push({
+      x: +meta.score, y: +v.eficiencia, tipo: RES_TIPO[v.estado] ?? 0,
+      nombre: s.name, mercado: nombreCorto(meta.dataset_name) || "—",
+      estado: v.estado,
+    });
+  }
+  const porMercado = new Map();
+  for (const p of puntos) {
+    const m = porMercado.get(p.mercado) || { total: 0, parte: 0 };
+    m.total += 1;
+    if (p.tipo > 0) m.parte += 1;
+    porMercado.set(p.mercado, m);
+  }
+  const franjas = [[0, 50], [50, 60], [60, 70], [70, 80], [80, 101]].map(([a, b]) => {
+    const dentro = puntos.filter(p => p.x >= a && p.x < b);
+    return { nombre: b > 100 ? `${a}–100` : `${a}–${b - 1}`,
+             total: dentro.length, parte: dentro.filter(p => p.tipo > 0).length };
+  }).filter(f => f.total);
+  const ventanas = new Map();
+  for (const s of validadas) {
+    const v = s.validacion || {};
+    if (!v.tramos) continue;
+    const k = `${v.tramos_ganadores ?? 0}/${v.tramos}`;
+    ventanas.set(k, (ventanas.get(k) || 0) + 1);
+  }
+  return {
+    puntos, franjas,
+    mercados: [...porMercado.entries()].map(([nombre, m]) => ({ nombre, ...m }))
+      .filter(m => m.total >= 5).sort((a, b) => b.total - a.total),
+    escondidos: [...porMercado.values()].filter(m => m.total < 5).length,
+    ventanas: [...ventanas.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([nombre, n]) => ({ nombre, total: n, parte: n })),
+  };
+}
+
+/* La correlación de Pearson entre el score y la eficiencia. Es UN número y
+   dice si el score anticipa algo; se muestra con su cantidad de casos al lado
+   porque sin eso no se puede juzgar. */
+function resumenCorrelacion(puntos) {
+  const n = puntos.length;
+  if (n < 3) return null;
+  const mx = puntos.reduce((a, p) => a + p.x, 0) / n;
+  const my = puntos.reduce((a, p) => a + p.y, 0) / n;
+  let cov = 0, dx = 0, dy = 0;
+  for (const p of puntos) {
+    cov += (p.x - mx) * (p.y - my);
+    dx += (p.x - mx) ** 2;
+    dy += (p.y - my) ** 2;
+  }
+  return (dx && dy) ? cov / Math.sqrt(dx * dy) : null;
+}
+
+function resumenHTML(validadas) {
+  const d = resumenDatos(validadas);
+  if (d.puntos.length < RESUMEN_MINIMO) {
+    return `<div class="card"><div class="empty-state">
+      <div class="big">${icono("info", "ico-xl")}</div>
+      <b>${esc(t("res.pocas", { n: RESUMEN_MINIMO }))}</b>
+      <p class="mt">${esc(t("res.pocas_sub", { n: d.puntos.length }))}</p>
+    </div></div>`;
+  }
+  const pasaron = d.puntos.filter(p => p.tipo > 0).length;
+  const robustas = d.puntos.filter(p => p.tipo === 2).length;
+  const efs = d.puntos.map(p => p.y).sort((a, b) => a - b);
+  const mediana = efs[Math.floor(efs.length / 2)];
+  const cifra = (v, sub, cls = "") =>
+    `<div class="res-cifra"><b class="${cls}">${v}</b><span>${esc(sub)}</span></div>`;
+  return `
+    <div class="res-cifras">
+      ${cifra(fmtInt(d.puntos.length), t("res.k_validadas"))}
+      ${cifra(fmtNum(pasaron / d.puntos.length * 100, 0) + "%",
+              t("res.k_pasaron", { n: fmtInt(pasaron) }), "pos")}
+      ${cifra(fmtNum(mediana, 2), t("res.k_ef"), mediana >= RES_PISO_EF ? "" : "neg")}
+      ${cifra(fmtInt(robustas), t("res.k_robustas", { n: fmtInt(d.puntos.length - pasaron) }))}
+    </div>
+
+    <section class="card res-caja">
+      <h2>${esc(t("res.disp_t"))}</h2>
+      <p class="help-note">${esc(t("res.disp_sub", { piso: fmtNum(RES_PISO_EF, 1) }))}</p>
+      <div class="res-dibujo" id="res-disp"></div>
+      <div class="res-leyenda" id="res-leyenda"></div>
+    </section>
+
+    <div class="res-dice">${t("res.dice", {
+      r: fmtNum(resumenCorrelacion(d.puntos) ?? 0, 2), n: fmtInt(d.puntos.length),
+      baja: `${d.franjas[0].parte}/${d.franjas[0].total}`,
+      alta: `${d.franjas[d.franjas.length - 1].parte}/${d.franjas[d.franjas.length - 1].total}`,
+    })}</div>
+
+    <div class="res-par">
+      <section class="card res-caja">
+        <h2>${esc(t("res.franjas_t"))}</h2>
+        <p class="help-note">${esc(t("res.franjas_sub"))}</p>
+        <div class="res-dibujo" id="res-franjas"></div>
+      </section>
+      <section class="card res-caja">
+        <h2>${esc(t("res.ventanas_t"))}</h2>
+        <p class="help-note">${esc(t("res.ventanas_sub"))}</p>
+        <div class="res-dibujo" id="res-ventanas"></div>
+      </section>
+    </div>
+
+    <section class="card res-caja">
+      <h2>${esc(t("res.mercados_t"))}</h2>
+      <p class="help-note">${esc(t("res.mercados_sub"))}</p>
+      <div class="res-dibujo" id="res-mercados"></div>
+      ${d.escondidos ? `<p class="help-note">${esc(t("res.mercados_fuera", { n: d.escondidos }))}</p>` : ""}
+    </section>`;
+}
+
+function dibujarResumen(main, validadas) {
+  const d = resumenDatos(validadas);
+  const caja = $("#res-disp", main);
+  if (!caja) return;
+  Charts.dispersion(caja, d.puntos.map(p => ({
+    x: p.x, y: p.y, tipo: p.tipo, titulo: p.nombre,
+    sub: `${p.mercado} · ${t("m.score")} ${fmtNum(p.x, 0)} · ${t("wf.ef_corto")} ${fmtNum(p.y, 2)}`,
+  })), {
+    xLo: 0, xHi: 100, refY: RES_PISO_EF, refTexto: t("res.piso", { piso: fmtNum(RES_PISO_EF, 1) }),
+    xTitulo: t("res.eje_x"), yTitulo: t("res.eje_y"),
+  });
+  /* La leyenda repite forma Y color, y lleva la palabra al lado: el veredicto
+     nunca queda contado sólo por el color. */
+  const ley = $("#res-leyenda", main);
+  const COLOR = ["--neg", "--warn", "--pos"];
+  const NOMBRE = ["est.no_paso", "est.aceptable", "est.aprobada"];
+  ley.innerHTML = [2, 1, 0].map(tipo => {
+    const c = `var(${COLOR[tipo]})`;
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    g.setAttribute("viewBox", "0 0 14 14");
+    g.setAttribute("aria-hidden", "true");
+    g.setAttribute("fill", c);
+    g.setAttribute("stroke", c);
+    g.appendChild(Charts.figura(tipo, 7, 7, 4.5));
+    return `<span>${g.outerHTML}${esc(t(NOMBRE[tipo]))}</span>`;
+  }).join("");
+
+  Charts.barrasPct($("#res-franjas", main), d.franjas.map(f => ({
+    nombre: f.nombre, total: f.total, parte: f.parte,
+    nota: t("res.de_n_pasaron", { ok: f.parte, n: f.total }),
+    nota2: fmtInt(f.total),
+  })), { ancho: 460, padL: 58, padR: 60 });
+
+  Charts.barrasPct($("#res-ventanas", main), d.ventanas.map(v => ({
+    nombre: v.nombre, total: Math.max(...d.ventanas.map(x => x.total)), parte: v.total,
+    nota: t("res.n_estrategias", { n: v.total }),
+  })), { ancho: 460, padL: 44, padR: 46, crudo: true, color: "var(--accent)" });
+
+  Charts.barrasPct($("#res-mercados", main), d.mercados.map(m => ({
+    nombre: m.nombre, total: m.total, parte: m.parte,
+    nota: t("res.de_n_pasaron", { ok: m.parte, n: m.total }),
+    nota2: t("res.de_n", { ok: m.parte, n: m.total }),
+  })), {});
+}
+
 function itemRepisa(s, caja) {
   const v = s.validacion || {};
   const medio = estadoDe(s) === "aceptable";
@@ -5206,7 +5385,7 @@ PAGES.saved = async (main) => {
     (x, y) => (estaRetirada(x) ? 1 : 0) - (estaRetirada(y) ? 1 : 0));
   /* LA BANDEJA: cada una contiene sólo lo que necesita una decisión ahora,
      y lo que pasa de etapa se va sola a la siguiente. */
-  const BANDEJA = ["por_probar", "aprobadas", "descartadas"].includes(S.vista) ? S.vista : "por_probar";
+  const BANDEJA = ["por_probar", "aprobadas", "descartadas", "resumen"].includes(S.vista) ? S.vista : "por_probar";
   FILTRO_ETAPA = BANDEJA;
 
   if (!items.length) {
@@ -5220,6 +5399,10 @@ PAGES.saved = async (main) => {
     $("#go-bank", main).onclick = () => navigate("mining", "resultados");
     return;
   }
+
+  /* LAS QUE YA PASARON POR LA VALIDACIÓN, sin importar en qué bandeja
+     quedaron: son las que tienen números para resumir. */
+  const validadas = items.filter(x => (x.validacion || {}).estado);
 
   // las que ya no existen no pueden seguir tildadas. La poda por bandeja va
   // más abajo, apenas se sabe qué filas están a la vista.
@@ -5338,7 +5521,10 @@ PAGES.saved = async (main) => {
     cuentas.o = 0;
   }
 
-  const visibles = BANDEJA === "por_probar" ? enProbar : porEtapa[BANDEJA];
+  /* El Resumen no es una lista de estrategias sino un dibujo sobre todas, así
+     que no tiene bandeja propia en `porEtapa`: sin este caso, `visibles`
+     quedaba en undefined y la pantalla entera moría antes de dibujarse. */
+  const visibles = BANDEJA === "por_probar" ? enProbar : (porEtapa[BANDEJA] || []);
 
   /* LA SELECCIÓN ES DE ESTA BANDEJA. Sobrevivía al cambio de bandeja: se
      tildaban las 25 de Probar, se pasaba a Las que aguantaron —cuatro filas a
@@ -5420,7 +5606,24 @@ PAGES.saved = async (main) => {
       ${enlace("aprobadas", t("nav.aprobadas") + " · " + cuentas.a)}
       ${S.mundo === "metatrader" ? "" : `<button class="linkbtn" data-ir-operar>${esc(t("etapa.operando") + " · " + cuentas.o)}</button>`}
       ${enlace("descartadas", t("saved.descartadas_t") + " · " + cuentas.d)}
+      ${/* EL RESUMEN ES UNA BANDEJA MÁS y no un panel encima de Validación.
+            Habla de TODAS las validadas —las que pasaron y las que no—, así
+            que no es de ninguna de las otras bandejas; y meterlo arriba de
+            Validación empujaba la lista de candidatas fuera de la pantalla
+            (4 de septiembre de 2026). */ ""}
+      ${validadas.length >= RESUMEN_MINIMO ? enlace("resumen", t("res.solapa")) : ""}
     </div>`;
+
+  /* La pantalla del resumen se dibuja y se sale: no comparte nada con la
+     tabla ni con las repisas, y seguir armándolas sería trabajo tirado. */
+  if (BANDEJA === "resumen") {
+    main.innerHTML = pageHead(TITULOS().saved, esc(t("res.sub"))) + camino + resumenHTML(validadas);
+    $$("[data-bandeja]", main).forEach(b => b.onclick = () => navigate("saved", b.dataset.bandeja));
+    const irOpR = $("[data-ir-operar]", main);
+    if (irOpR) irOpR.onclick = () => navigate("operar", "bot");
+    dibujarResumen(main, validadas);
+    return;
+  }
 
   const subtitulo = BANDEJA === "aprobadas" ? t("saved.sub_aprobadas")
     : BANDEJA === "descartadas" ? t("saved.sub_descartadas") : t("saved.sub_probar");

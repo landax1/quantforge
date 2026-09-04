@@ -435,5 +435,158 @@ const Charts = (() => {
     });
   }
 
-  return { line, fan, histogram, bars, monthlyGrid, corrGrid, sparkSvg, ringSvg, ringUpdate, equity };
+  /* ── una raíz que NO estira ───────────────────────────────────────────────
+     `svgRoot` fuerza width y height al 100% con preserveAspectRatio "none",
+     que sirve para una curva pegada a su caja y arruina cualquier dibujo con
+     círculos: se convierten en óvalos. Estos dos gráficos traen su propia
+     raíz, con la proporción respetada y el alto derivado del ancho. */
+  function svgFijo(container, w, h) {
+    container.innerHTML = "";
+    const svg = el("svg", { viewBox: `0 0 ${w} ${h}` });
+    svg.style.width = "100%";
+    svg.style.height = "auto";
+    svg.style.display = "block";
+    container.appendChild(svg);
+    return svg;
+  }
+
+  /* El globo de datos, compartido por los dos. Se posiciona respecto del
+     contenedor, que la hoja de estilos deja en `position: relative`. */
+  function conGlobo(container) {
+    const tip = document.createElement("div");
+    tip.className = "chart-tip";
+    container.appendChild(tip);
+    return {
+      mostrar(ev, html) {
+        tip.innerHTML = html;
+        tip.style.opacity = "1";
+        const r = container.getBoundingClientRect();
+        tip.style.left = `${Math.min(Math.max(ev.clientX - r.left, 70), r.width - 70)}px`;
+        tip.style.top = `${Math.max(ev.clientY - r.top - 62, 4)}px`;
+      },
+      ocultar() { tip.style.opacity = "0"; },
+    };
+  }
+
+  /* TRES FORMAS PARA TRES VEREDICTOS, y no sólo tres colores. El verde y el
+     ámbar del producto quedan a ΔE 7,2 para un ojo protán: por debajo de 8 el
+     color solo no alcanza y hace falta una segunda señal. La forma es esa
+     señal, y de paso sobrevive a una captura en blanco y negro. */
+  function figura(tipo, x, y, r) {
+    if (tipo === 2) return el("circle", { cx: x, cy: y, r });
+    if (tipo === 1) {
+      return el("polygon", { points: `${x},${y - r * 1.15} ${x + r},${y + r * 0.75} ${x - r},${y + r * 0.75}` });
+    }
+    return el("path", {
+      d: `M${x - r * 0.85},${y - r * 0.85} L${x + r * 0.85},${y + r * 0.85}`
+         + ` M${x + r * 0.85},${y - r * 0.85} L${x - r * 0.85},${y + r * 0.85}`,
+      fill: "none", "stroke-width": 1.6 });
+  }
+
+  /* Nube de puntos. `puntos` son {x, y, tipo, titulo, sub}; `tipo` es 0, 1 o 2
+     y elige forma y color. `refY` dibuja una línea horizontal de referencia
+     con su rótulo, que es donde vive la regla del veredicto. */
+  function dispersion(container, puntos, opts = {}) {
+    const W = 940, H = opts.height || 360, padL = 54, padR = 18, padT = 16, padB = 42;
+    const svg = svgFijo(container, W, H);
+    if (!puntos.length) return;
+    const xs = puntos.map(p => p.x), ys = puntos.map(p => p.y);
+    const xLo = opts.xLo != null ? opts.xLo : Math.min(...xs);
+    const xHi = opts.xHi != null ? opts.xHi : Math.max(...xs);
+    const yLo = Math.min(...ys, opts.yLo != null ? opts.yLo : Infinity);
+    const yHi = Math.max(...ys, opts.yHi != null ? opts.yHi : -Infinity);
+    const X = v => padL + ((v - xLo) / (xHi - xLo || 1)) * (W - padL - padR);
+    const Y = v => padT + (1 - (v - yLo) / (yHi - yLo || 1)) * (H - padT - padB);
+    const gris = css("--text-dim", "#8b93a8"), rejilla = css("--grid", "#232a3b");
+    const COLOR = [css("--neg", "#f87171"), css("--warn", "#f0c877"), css("--pos", "#4ade80")];
+
+    for (const t2 of niceTicks(xLo, xHi, 5)) {
+      svg.appendChild(el("line", { x1: X(t2), x2: X(t2), y1: padT, y2: H - padB, stroke: rejilla }));
+      const lb = el("text", { x: X(t2), y: H - padB + 16, "text-anchor": "middle",
+        fill: gris, "font-size": 10 });
+      lb.textContent = fmtNum(t2); svg.appendChild(lb);
+    }
+    for (const t2 of niceTicks(yLo, yHi, 5)) {
+      svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: Y(t2), y2: Y(t2), stroke: rejilla }));
+      const lb = el("text", { x: padL - 8, y: Y(t2) + 4, "text-anchor": "end",
+        fill: gris, "font-size": 10 });
+      lb.textContent = fmtNum(t2); svg.appendChild(lb);
+    }
+    if (opts.refY != null) {
+      svg.appendChild(el("line", { x1: padL, x2: W - padR, y1: Y(opts.refY), y2: Y(opts.refY),
+        stroke: css("--accent", "#35a9ae"), "stroke-dasharray": "4 4" }));
+      if (opts.refTexto) {
+        const lb = el("text", { x: padL + 6, y: Y(opts.refY) - 7,
+          fill: css("--accent", "#35a9ae"), "font-size": 10 });
+        lb.textContent = opts.refTexto; svg.appendChild(lb);
+      }
+    }
+    if (opts.xTitulo) {
+      const lb = el("text", { x: (padL + W - padR) / 2, y: H - 6, "text-anchor": "middle",
+        fill: gris, "font-size": 11 });
+      lb.textContent = opts.xTitulo; svg.appendChild(lb);
+    }
+    if (opts.yTitulo) {
+      const cy = (padT + H - padB) / 2;
+      const lb = el("text", { x: 14, y: cy, "text-anchor": "middle", fill: gris,
+        "font-size": 11, transform: `rotate(-90 14 ${cy})` });
+      lb.textContent = opts.yTitulo; svg.appendChild(lb);
+    }
+
+    const globo = conGlobo(container);
+    puntos.forEach(p => {
+      const g = el("g", { fill: COLOR[p.tipo], stroke: COLOR[p.tipo], opacity: 0.85 });
+      g.style.cursor = "pointer";
+      g.appendChild(figura(p.tipo, X(p.x), Y(p.y), 4.5));
+      g.addEventListener("mousemove", ev => globo.mostrar(ev,
+        `<b>${p.titulo}</b><span>${p.sub || ""}</span>`));
+      g.addEventListener("mouseleave", globo.ocultar);
+      svg.appendChild(g);
+    });
+  }
+
+  /* Barras horizontales de proporción: cuánto de cada total cumple algo.
+     `filas` son {nombre, total, parte, nota}. El fondo es el total y el
+     relleno la parte, así que la comparación no depende del alto de la barra. */
+  /* El ancho del dibujo tiene que parecerse al ancho de su caja. Con un
+     viewBox de 940 metido en una columna de 437, todo se encoge al 46 % y los
+     rótulos de 12 px se leen a 5,5: ilegibles (4 de septiembre de 2026). */
+  function barrasPct(container, filas, opts = {}) {
+    const W = opts.ancho || 940, fila = opts.fila || 30, padT = 8;
+    const padL = opts.padL || 108, padR = opts.padR || 96;
+    const H = padT + filas.length * fila + 8;
+    const svg = svgFijo(container, W, H);
+    if (!filas.length) return;
+    const gris = css("--text-dim", "#8b93a8");
+    const globo = conGlobo(container);
+    const ancho = W - padL - padR;
+    filas.forEach((f, i) => {
+      const y = padT + i * fila;
+      const pct = f.total ? f.parte / f.total : 0;
+      const nom = el("text", { x: padL - 10, y: y + 15, "text-anchor": "end",
+        fill: css("--text-2", "#c6cfd8"), "font-size": 12 });
+      nom.textContent = f.nombre; svg.appendChild(nom);
+      svg.appendChild(el("rect", { x: padL, y: y + 4, width: ancho, height: 14, rx: 4,
+        fill: css("--border-soft", "#232a30") }));
+      const barra = el("rect", { x: padL, y: y + 4, width: Math.max(4, ancho * pct),
+        height: 14, rx: 4, fill: opts.color || css("--pos", "#4ade80") });
+      barra.style.cursor = "pointer";
+      barra.addEventListener("mousemove", ev => globo.mostrar(ev,
+        `<b>${f.nombre}</b><span>${f.nota || ""}</span>`));
+      barra.addEventListener("mouseleave", globo.ocultar);
+      svg.appendChild(barra);
+      const lb = el("text", { x: W - padR + 10, y: y + 15, fill: css("--text-2", "#c6cfd8"),
+        "font-size": 11 });
+      lb.textContent = opts.crudo ? String(f.parte) : `${Math.round(pct * 100)}%`;
+      svg.appendChild(lb);
+      if (f.nota2) {
+        const n2 = el("text", { x: W - 6, y: y + 15, "text-anchor": "end", fill: gris,
+          "font-size": 10 });
+        n2.textContent = f.nota2; svg.appendChild(n2);
+      }
+    });
+  }
+
+  return { line, fan, histogram, bars, monthlyGrid, corrGrid, sparkSvg, ringSvg, ringUpdate,
+           equity, dispersion, barrasPct, figura };
 })();
