@@ -1584,6 +1584,9 @@ th.orden.activa { color: var(--accent-2); }
 }
 .strat-blocks { font-size: 12px; color: var(--text); margin-top: 1px; }
 .strat-genes { font-size: 10px; color: var(--text-dim); font-family: var(--mono); margin-top: 4px; }
+/* "en Probar": la fila que ya se mandó se distingue sin leer nada más */
+.tag-ya { font-size: 10px; margin-left: 6px; padding: 1px 6px; border-radius: 999px;
+          background: var(--accent-soft); color: var(--accent-2); vertical-align: 1px; }
 .spark-cell { width: 124px; padding: 6px 12px !important; }
 svg.spark { display: block; border-radius: 4px; }
 
@@ -3906,10 +3909,59 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 .fp-item > div > b { font-weight: 600; font-size: 14px; display: block; line-height: 1.2; }
 .fp-item > div > span { color: var(--text-dim); font-size: 13px; display: block; margin-top: 2px; }
 .fp-v { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--text-2); white-space: nowrap; }
+/* el porqué y el borrar comparten la última columna de la repisa */
+.fp-no-acc { display: inline-flex; align-items: center; gap: 8px; }
 .fp-v b { font-weight: 600; }
 .fp-pie { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; gap: 12px; }
 .fp-item.viajando, .fp-fila.viajando { z-index: 5; }
 @media (max-width: 1180px) { .fp-fila { grid-template-columns: 22px 40px minmax(0, 1fr) auto; } .fp-fila .fp-num { display: none; } .fp-fila.probando .fp-accion { grid-column: 4; } }
+
+/* ================================================ encender en Operar =====
+   Elegir qué robot prender era un desplegable con nombre y símbolo. Ahora es
+   una lista con los mismos números de "Las que aguantaron", y arriba el par
+   una / un conjunto, que son las dos formas de encender que el servidor ya
+   sabía hacer. */
+.op-modos { display: inline-flex; background: var(--bg-soft); border: 1px solid var(--border-soft);
+            border-radius: 999px; padding: 2px; gap: 2px; }
+.op-modos button { background: none; border: 0; color: var(--text-dim); font: inherit; font-size: 12px;
+                   padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.op-modos button:hover { color: var(--text-2); }
+.op-modos button.on { background: var(--card-2); color: var(--text); font-weight: 600; }
+/* Con veintiséis aprobadas la lista empujaba a los robots fuera de la
+   pantalla: se desliza dentro de su caja y el pie con el botón queda fijo. */
+.op-lista { margin-top: 12px; border: 1px solid var(--border-soft); border-radius: 12px;
+            overflow: hidden auto; max-height: 340px; }
+/* las candidatas llegan en cascada, como las filas del banco y los robots */
+.op-lista .op-cand { animation: entra-fila .2s var(--ease) both; }
+.op-lista .op-cand:nth-child(2) { animation-delay: .03s; }
+.op-lista .op-cand:nth-child(3) { animation-delay: .06s; }
+.op-lista .op-cand:nth-child(4) { animation-delay: .09s; }
+.op-lista .op-cand:nth-child(5) { animation-delay: .12s; }
+.op-cand, .op-modos button { transition: background .15s var(--ease), color .15s var(--ease); }
+.op-cand { display: grid; align-items: center; gap: 12px; padding: 12px 16px; cursor: pointer;
+           grid-template-columns: 16px minmax(0, 1.3fr) 108px auto 76px 76px minmax(0, 1fr);
+           border-bottom: 1px solid var(--border-soft); }
+.op-cand:last-child { border-bottom: 0; }
+.op-cand:hover { background: var(--card-2); }
+.op-cand.elegida { background: var(--accent-soft); }
+.op-cand input { accent-color: var(--accent); margin: 0; }
+.op-cand-id b { display: block; font-size: 13px; font-weight: 600; }
+.op-cand-id > span { display: block; font-size: 11px; color: var(--text-dim); margin-top: 2px;
+                     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-cand-mkt { font-size: 12px; color: var(--text-2); }
+.op-cand-mkt > span { display: block; font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.op-cand-num { text-align: right; font-variant-numeric: tabular-nums; }
+.op-cand-num b { display: block; font-size: 13px; }
+.op-cand-num > span { display: block; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .06em; }
+.op-cand-pru { font-size: 11px; color: var(--text-dim); }
+.op-pie { display: flex; align-items: center; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
+.op-pie .help-note.aviso { color: var(--warn); }
+.op-pie .btn { margin-left: auto; }
+@media (max-width: 1180px) {
+  .op-cand { grid-template-columns: 16px minmax(0, 1fr) auto 76px; }
+  .op-cand-mkt, .op-cand-pru { grid-column: 2 / -1; }
+  .op-cand-pru { white-space: normal; }
+}
 
 /* ================================================= color en las tarjetas =====
    Lo que gustó de Mercados no son los logos: es que cada tarjeta tiene un tono

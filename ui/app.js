@@ -2355,40 +2355,8 @@ async function abrirPortafolio(elegidas) {
     if (compPf) compPf.onclick = () => abrirCompartirPortafolio(elegidas, r);
 
     const encConj = $("#pf-encender", body);
-    if (encConj) encConj.onclick = async () => {
-      encConj.disabled = true;
-      let prendidos = 0;
-      try {
-        const ex = await api.get("/api/exchanges");
-        if (!ex.some(x => x.exchange === "binance" && x.entorno === "practica" && x.configurada)) {
-          toast(t("op.conectar_primero"), "err"); close(); navigate("operar", "claves"); return;
-        }
-        const plan = await api.post("/api/bot/plan-conjunto", { ids: elegidas.map(x => x.id), usar_pct: 90 });
-        /* UNA QUE NO PUEDE NO FRENA A LAS DEMÁS: cortaba en la primera y
-           dejaba el conjunto a medias sin intentar el resto. */
-        const fallos = [];
-        for (const d of plan.detalle) {
-          const fila = elegidas.find(x => x.id === d.id);
-          try {
-            const archivo = await api.post("/api/export/bingx/objeto", {
-              spec: fila.spec, name: fila.name, dataset_id: (fila.meta || {}).dataset_id,
-              timeframe: (fila.meta || {}).timeframe, settings: { commission_pct: (fila.meta || {}).commission },
-              metrics: (fila.meta || {}).metrics, oos: (fila.meta || {}).oos,
-            });
-            await api.post("/api/bot/encender", { bot: archivo, modo: "practica", exchange: "binance",
-                                                  estrategia_id: d.id, porcion: (plan.porciones[d.id] || 0) / 100 });
-            prendidos += 1;
-          } catch (err) { fallos.push(`${fila.name}: ${err.message}`); }
-        }
-        toast(fallos.length
-          ? t("conj.parcial", { n: prendidos, f: fallos.length, motivo: fallos[0] })
-          : t("conj.encendido", { n: prendidos }), fallos.length ? "err" : "ok");
-        close(); SEL_PF.clear(); navigate("operar", "bot");
-      } catch (e) {
-        toast(t("conj.fallo", { n: prendidos, err: e.message }), "err");
-        encConj.disabled = false;
-      }
-    };
+    if (encConj) encConj.onclick = () => encenderConjunto(elegidas, encConj,
+      () => { close(); SEL_PF.clear(); });
     const caja = $("#pf-eq", body);
     if (caja) Charts.equity(caja, {
       values: r.combined_equity, labels: r.timestamps,
@@ -3689,16 +3657,17 @@ const vistaBot = async (main, hayClave) => {
 
     <div class="card mt" id="op-encender">
       <div class="ex-head"><div><b>${esc(t("op.encender_t"))}</b>
-        <p class="help-note">${esc(t("op.encender_sub"))}</p></div></div>
-      ${aprobadas.length ? `<div class="fld-pair mt">
-        <label class="fld"><span>${esc(t("bot.estrategia"))}</span>
-          <select id="bot-cual">
-            <option value="">${esc(t("op.elegir_aprobada"))}</option>
-            ${aprobadas.map(x => `<option value="${esc(x.id)}" ${PREELEGIDA === x.id ? "selected" : ""}>${
-              esc(x.name)} · ${esc(String((x.meta || {}).dataset_name || "").split(" ")[0])}</option>`).join("")}
-          </select></label>
-        <div class="fld"><span>&nbsp;</span><button class="btn" id="bot-encender">${icono("seguir")} ${esc(t("op.encender_btn"))}</button></div>
-      </div>` : `<p class="help-note mt">${esc(t("op.sin_aprobadas"))} <button class="linkbtn" id="op-ir-probar">${esc(t("nav.saved"))}</button></p>`}
+        <p class="help-note">${esc(t("op.encender_sub"))}</p></div>
+        ${/* UNA O UN CONJUNTO, dicho antes de elegir. Encender de a una y
+              encender varias repartiendo la cuenta son dos decisiones
+              distintas, y la segunda vivía escondida adentro de la hoja del
+              portafolio (el usuario, 3 de septiembre de 2026). */
+          aprobadas.length ? `<div class="op-modos" role="tablist">
+          <button role="tab" data-modo="una">${esc(t("op.modo_una"))}</button>
+          <button role="tab" data-modo="conjunto">${esc(t("op.modo_conjunto"))}</button>
+        </div>` : ""}</div>
+      ${aprobadas.length ? `<div id="op-cuerpo"></div>`
+        : `<p class="help-note mt">${esc(t("op.sin_aprobadas"))} <button class="linkbtn" id="op-ir-probar">${esc(t("nav.saved"))}</button></p>`}
     </div>
 
     <div class="card mt">
@@ -3710,13 +3679,66 @@ const vistaBot = async (main, hayClave) => {
 
   $("#op-detalle", main).onclick = () => navigate("operar", "tablero");
   const irP = $("#op-ir-probar", main); if (irP) irP.onclick = () => navigate("saved", "aprobadas");
-  const btnEnc = $("#bot-encender", main);
-  if (btnEnc) btnEnc.onclick = () => {
-    const id = ($("#bot-cual", main) || {}).value;
-    if (!id) return toast(t("bot.falta_elegir"), "err");
-    PREELEGIDA = null;
-    encenderDirecto(aprobadas.find(x => x.id === id), btnEnc);
-  };
+
+  /* La lista se repinta sola al cambiar de modo: cambiar de "una" a "un
+     conjunto" no vuelve a pedirle nada al exchange, que tarda segundos. */
+  const cuerpo = $("#op-cuerpo", main);
+  if (cuerpo) {
+    let modo = "una";
+    /* La preelegida viene de "Encender" apretado en otra pantalla. Si esa
+       estrategia ya no está entre las aprobadas de acá, no se siembra: el pie
+       diría "1 elegida" sin ninguna fila marcada. */
+    const elegidas = new Set(aprobadas.some(x => x.id === PREELEGIDA) ? [PREELEGIDA] : []);
+    const pintar = () => {
+      const una = modo === "una";
+      const n = elegidas.size;
+      /* DOS DEL MISMO SÍMBOLO NO SON DOS APUESTAS. Es la misma regla con la
+         que el Piloto arma su tanda —un robot por símbolo, "Por símbolo" en
+         Automático— y a mano no se veía: quedaba avisar recién cuando el
+         exchange rechazaba el segundo (3 de septiembre de 2026). */
+      const simbolos = aprobadas.filter(x => elegidas.has(x.id))
+        .map(x => String((x.meta || {}).dataset_name || "").split(" ")[0]);
+      const repetido = simbolos.filter((s, i) => simbolos.indexOf(s) !== i)[0];
+      cuerpo.innerHTML = `
+        <p class="help-note">${esc(t(una ? "op.modo_una_sub" : "op.modo_conjunto_sub"))}</p>
+        <div class="op-lista">${aprobadas.map(
+          x => candidataOperar(x, una ? "radio" : "checkbox", elegidas.has(x.id))).join("")}</div>
+        <div class="op-pie">
+          <span class="help-note${!una && repetido ? " aviso" : ""}">${esc(
+            !una && repetido ? t("op.repetido", { sim: repetido })
+            : !n || (!una && n < 2)
+              ? t(una ? "op.elegi_una" : "op.elegi_varias") : t("op.elegidas_n", { n }))}</span>
+          <button class="btn primary" id="bot-encender" ${
+            (una ? n >= 1 : n >= 2) ? "" : "disabled"}>${icono("seguir")} ${
+            esc(una ? t("op.encender_btn") : t("op.encender_conjunto_n", { n: n || 0 }))}</button>
+        </div>`;
+      $$(".op-cand input", cuerpo).forEach(inp => inp.onchange = () => {
+        if (modo === "una") elegidas.clear();
+        if (inp.checked) elegidas.add(inp.value); else elegidas.delete(inp.value);
+        pintar();
+      });
+      const btn = $("#bot-encender", cuerpo);
+      btn.onclick = () => {
+        const lista = aprobadas.filter(x => elegidas.has(x.id));
+        if (!lista.length) return toast(t("bot.falta_elegir"), "err");
+        PREELEGIDA = null;
+        if (modo === "una") encenderDirecto(lista[0], btn);
+        else encenderConjunto(lista, btn);
+      };
+    };
+    $$(".op-modos button", main).forEach(b => {
+      b.classList.toggle("on", b.dataset.modo === modo);
+      b.onclick = () => {
+        modo = b.dataset.modo;
+        // de conjunto a una queda la primera: pasar de cinco tildadas a una
+        // sola elegida sin decir cuál sería elegir por el otro
+        if (modo === "una" && elegidas.size > 1) elegidas.clear();
+        $$(".op-modos button", main).forEach(o => o.classList.toggle("on", o.dataset.modo === modo));
+        pintar();
+      };
+    });
+    pintar();
+  }
   atarVuelos(main);
   atarReencender(main);
 
@@ -4792,6 +4814,72 @@ function pruebaResumen(s) {
 }
 let REINTENTO_OCUPADO = null;
 
+/* ENCENDER VARIAS COMO UN CONJUNTO. El servidor reparte la cuenta entre las
+   elegidas —/api/bot/plan-conjunto— y cada una pasa por las mismas puertas que
+   una sola. Vive suelta porque se usa desde dos lados: la hoja del portafolio
+   y la pantalla de Operar, donde "un conjunto" es una de las dos formas de
+   encender (3 de septiembre de 2026). */
+async function encenderConjunto(elegidas, boton, antesDeIr) {
+  boton.disabled = true;
+  let prendidos = 0;
+  try {
+    const ex = await api.get("/api/exchanges");
+    if (!ex.some(x => x.exchange === "binance" && x.entorno === "practica" && x.configurada)) {
+      toast(t("op.conectar_primero"), "err");
+      if (antesDeIr) antesDeIr();
+      navigate("operar", "claves");
+      return;
+    }
+    const plan = await api.post("/api/bot/plan-conjunto",
+                                { ids: elegidas.map(x => x.id), usar_pct: 90 });
+    /* UNA QUE NO PUEDE NO FRENA A LAS DEMÁS: cortaba en la primera y dejaba
+       el conjunto a medias sin intentar el resto. */
+    const fallos = [];
+    for (const d of plan.detalle) {
+      const fila = elegidas.find(x => x.id === d.id);
+      try {
+        const archivo = await api.post("/api/export/bingx/objeto", {
+          spec: fila.spec, name: fila.name, dataset_id: (fila.meta || {}).dataset_id,
+          timeframe: (fila.meta || {}).timeframe,
+          settings: { commission_pct: (fila.meta || {}).commission },
+          metrics: (fila.meta || {}).metrics, oos: (fila.meta || {}).oos,
+        });
+        await api.post("/api/bot/encender", { bot: archivo, modo: "practica", exchange: "binance",
+                                              estrategia_id: d.id, porcion: (plan.porciones[d.id] || 0) / 100 });
+        prendidos += 1;
+      } catch (err) { fallos.push(`${fila.name}: ${err.message}`); }
+    }
+    if (fallos.length) toast(t("conj.parcial", { n: prendidos, f: fallos.length, motivo: fallos[0] }), "err");
+    else toast(t("conj.encendido", { n: prendidos }), "ok");
+    if (antesDeIr) antesDeIr();
+    navigate("operar", "bot");
+  } catch (e) {
+    toast(t("conj.fallo", { n: prendidos, err: e.message }), "err");
+    boton.disabled = false;
+  }
+}
+
+/* CADA CANDIDATA, CON SUS NÚMEROS. El desplegable decía sólo el nombre y el
+   símbolo: "S-004-BTC · BTCUSDT" no alcanza para elegir entre catorce, y había
+   que ir a otra pantalla, anotar, y volver (el usuario, 3 de septiembre de
+   2026). Son los mismos números de la lista de las que aguantaron; acá no se
+   recalcula nada. */
+function candidataOperar(s, tipo, elegida) {
+  const ctx = s.meta || {}, m = ctx.metrics || {};
+  return `<label class="op-cand${elegida ? " elegida" : ""}">
+    <input type="${tipo}" name="op-cand" value="${esc(s.id)}" ${elegida ? "checked" : ""}>
+    <span class="op-cand-id"><b>${esc(s.name)}</b><span>${esc(ctx.blocks || "")}</span></span>
+    <span class="op-cand-mkt">${esc((ctx.dataset_name || "—").replace(/ M1.*/, ""))}
+      <span>${esc(ctx.timeframe || "")} · ${esc(t("dir." + (ctx.direction || "long")).toLowerCase())}</span></span>
+    ${estadoChip(s)}
+    <span class="op-cand-num"><b class="${(m.cagr_pct ?? 0) >= 0 ? "pos" : "neg"}">${
+      m.cagr_pct != null ? fmtPct(m.cagr_pct) : "—"}</b><span>${esc(t("col.annual"))}</span></span>
+    <span class="op-cand-num"><b>${m.max_drawdown_pct != null ? fmtNum(m.max_drawdown_pct, 1) + "%" : "—"}</b>
+      <span>${esc(t("col.maxdd"))}</span></span>
+    <span class="op-cand-pru">${pruebaResumen(s)}</span>
+  </label>`;
+}
+
 /* ENCENDER ES UN CLIC. La porción sale de la misma regla del Piloto —la
    cuenta repartida entre los robots que puede haber— y el modo es demo,
    siempre. Sin cuenta conectada, manda a conectarla y guarda la elegida. */
@@ -4915,9 +5003,14 @@ function itemRepisa(s, caja) {
     ? `<b class="${v.retorno_fuera_pct >= 0 ? "pos" : "neg"}">${fmtPct(v.retorno_fuera_pct)}</b> ${esc(t("fp.afuera"))}` : "";
   // a la derecha, el dato que importa de esa repisa: cuánto rindió afuera,
   // o el atajo a su porqué. Encender vive una sola vez, al pie de la repisa.
+  /* La repisa de las que no pasaron sólo ofrecía "ver por qué" y, al pie,
+     "Limpiar", que las esconde de esta pantalla sin borrarlas. Borrar de
+     verdad estaba a dos pantallas de distancia. */
   const accion = caja === "ok"
     ? `<span class="fp-v">${afuera}</span>`
-    : `<span class="fp-v muted">${esc(t("fp.por_que"))}</span>`;
+    : `<span class="fp-v muted fp-no-acc">${esc(t("fp.por_que"))}
+        <button class="btn ghost small" data-del-strat="${esc(s.id)}"
+          title="${esc(t("ui.delete"))}">${icono("cerrar")}</button></span>`;
   return `<div class="fp-item ${medio ? "medio" : ""}" data-sid="${esc(s.id)}" data-caja="${caja}">
     <i></i><div><b>${esc(nombreConMercado(s))}</b><span>${esc(sub)}</span></div>${accion}</div>`;
 }
@@ -5181,8 +5274,15 @@ PAGES.saved = async (main) => {
               cripto el camino es encender un robot, y el botón confundía. */
           S.mundo === "metatrader"
             ? `<button class="btn ghost small" data-export="${esc(s.id)}">${icono("bajar")} ${esc(t("saved.acc_exportar"))}</button>` : ""}
-        <button class="btn ghost small" data-del-strat="${esc(s.id)}"
-          title="${esc(t("ui.delete"))}">${icono("cerrar")}</button>
+        ${/* EN DESCARTADAS EL BORRAR LLEVA SU PALABRA. En las demás bandejas
+              borrar es raro y alcanza con la cruz; en Descartadas es LO que se
+              va a hacer con casi todas, y una cruz gris al final de la fila no
+              se veía (el usuario, 3 de septiembre de 2026). */
+          BANDEJA === "descartadas"
+            ? `<button class="btn ghost small" data-del-strat="${esc(s.id)}">${
+                icono("cerrar")} ${esc(t("ui.delete"))}</button>`
+            : `<button class="btn ghost small" data-del-strat="${esc(s.id)}"
+                title="${esc(t("ui.delete"))}">${icono("cerrar")}</button>`}
       </td>
     </tr>`;
   };
@@ -6335,6 +6435,12 @@ function pintarBanco() {
 
   const riesgos = new Set(filas.map(f => riesgoDe(porId[f.corrida_id] || {})));
   const mezcla = todas && riesgos.size > 1;
+  /* CUÁLES DE LAS TILDADAS FALTAN MANDAR. El servidor ya dice cuál está en
+     Probar; la pantalla lo ignoraba, así que "Mandar a Probar" se ofrecía
+     igual sobre diez que ya estaban y el aviso llegaba después del clic,
+     como "las 10 ya estaban" (el usuario, 3 de septiembre de 2026). */
+  const porMandar = [...b.sel].filter(
+    id => !(b.filas.find(f => f.banco_id === id) || {}).guardada);
   // cuantas hay de verdad, contra cuantas llegaron en las paginas pedidas
   const hay = poblacionBanco();
 
@@ -6384,9 +6490,13 @@ function pintarBanco() {
          una fila entera para no hacer nada. -->
     <div class="seleccion ${b.sel.size ? "activa" : ""}">
       <span class="sel-n">${esc(b.sel.size
-        ? t("ui.selected", { n: b.sel.size }) : t("bank.sel_hint"))}</span>
+        ? t("ui.selected", { n: b.sel.size })
+          + (b.sel.size > porMandar.length
+             ? " · " + t("bank.ya_de_esas", { m: b.sel.size - porMandar.length }) : "")
+        : t("bank.sel_hint"))}</span>
       ${b.sel.size ? `
-        <button class="btn small" id="sel-guardar">${icono("marcador","ico-sm")} ${esc(t("insp.save"))}</button>
+        ${porMandar.length ? `<button class="btn small" id="sel-guardar">${icono("marcador","ico-sm")} ${
+          esc(t("bank.mandar_n", { n: porMandar.length }))}</button>` : ""}
         ${S.mundo === "exchange" ? "" : `<button class="btn small" id="sel-exportar">${icono("bajar","ico-sm")} ${esc(t("bank.export_all"))}</button>`}
         <button class="btn ghost small" id="sel-borrar">${icono("basura","ico-sm")} ${esc(t("bank.remove"))}</button>
         <button class="linkbtn" id="sel-limpiar">${esc(t("ui.clear"))}</button>` : ""}
@@ -6407,7 +6517,8 @@ function pintarBanco() {
         return `<tr class="clickable ${b.sel.has(f.banco_id) ? "tildada" : ""}" data-fila="${esc(f.banco_id)}">
           <td class="tick"><input type="checkbox" data-tick="${esc(f.banco_id)}"
             ${b.sel.has(f.banco_id) ? "checked" : ""} aria-label="${esc(t("ui.select_one", { n: f.name }))}"></td>
-          <td><span class="strat-name">${esc(f.name)}</span>${sesionTag(f)}
+          <td><span class="strat-name">${esc(f.name)}</span>${sesionTag(f)}${
+                f.guardada ? `<span class="tag-ya">${esc(t("bank.ya_en_probar"))}</span>` : ""}
               <div class="strat-genes">${esc(etiquetaGenes(f))}</div></td>
           ${todas
             ? `<td class="origen"><b>${esc(nombreCorto(c.dataset_name))}</b>
@@ -6590,7 +6701,8 @@ function cablearBanco(host) {
   conBoton("#sel-limpiar", el => el.onclick = () => { b.sel.clear(); refrescar(); });
 
   conBoton("#sel-guardar", el => el.onclick = async () => {
-    const ids = [...b.sel];
+    const ids = [...b.sel].filter(
+      id => !(b.filas.find(f => f.banco_id === id) || {}).guardada);
     if (!ids.length) return;
     const btn = $("#sel-guardar", host);
     btn.disabled = true;
