@@ -2515,10 +2515,6 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
 #nav button.nav-ajuste { font-size: 13px; color: var(--text-2); }
 #nav button.nav-ajuste.conectada .punto { background: var(--pos); }
 /* la búsqueda en modo simple: los ajustes, plegados y con su propio signo */
-.sect.avanzado > summary .sect-num { color: var(--accent); }
-.sect.avanzado > .sect { border-top: 1px solid var(--border-soft); }
-.sect.avanzado > .sect:first-of-type { border-top: 1px solid var(--border-soft); }
-.sect.avanzado[open] > summary { border-bottom: 1px dashed var(--border-strong); }
 .conectar { margin-top: 16px; }
 
 /* el veredicto del portafolio: la cuenta hecha, no la regla */

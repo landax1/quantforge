@@ -7363,15 +7363,16 @@ const vistaBuscar = async (main) => {
           </div>
         </details>
 
-        ${/* MODO SIMPLE POR DEFECTO: mercado, receta y buscar. Los otros
-              cinco pasos —bloques, riesgo, costos, filtros, avanzado— quedan
-              plegados bajo "Ajustar la búsqueda": la receta ya los dejó
-              puestos, y quien quiera tocarlos los abre. Se recuerda si se
-              abrió, para no volver a plegárselo a quien ya los usa. */ ""}
-        <details class="sect avanzado" id="m-avanzado" ${localStorage.getItem("qf.avanzado") === "1" ? "open" : ""}>
-          <summary><span class="sect-num">+</span>
-            <span class="sect-t"><b>${esc(t("mine.avanzado"))}</b><em>${esc(t("mine.avanzado_sub"))}</em></span>
-            <span class="chev">›</span></summary>
+        ${/* LOS CINCO PASOS SE VEN, PLEGADOS. Vivían abajo de un envoltorio
+              —"Ajustar la generación: la receta ya los dejó puestos"— que
+              tapaba las cinco líneas de resumen que la pantalla ya calcula, y
+              que arrancaba cerrado: quien elegía un objetivo por primera vez
+              no veía QUÉ le había dejado puesto, ni aprendía de qué está hecho
+              un preset (4 de septiembre de 2026).
+
+              Que estén sueltos no rompe el modo simple: cada uno sigue plegado
+              y muestra una línea, así que se leen cinco renglones de texto y
+              ningún control. */ ""}
         <details class="sect">
           <summary><span class="sect-num">2</span>
             <span class="sect-t"><b>${esc(t("mine.blocks"))}</b><em id="sum-blocks">—</em></span>
@@ -7561,7 +7562,6 @@ const vistaBuscar = async (main) => {
                 <input type="number" data-cfg="maxCandidates" value="${c.maxCandidates}" min="100" step="1000"></label>
             </div>
           </div>
-        </details>
         </details>
       </div>
 
@@ -7814,8 +7814,6 @@ const vistaBuscar = async (main) => {
   });
 
   tfSel.onchange = () => { S.sel.timeframe = tfSel.value; saveCfg(); updateNotes(); };
-  const avz = $("#m-avanzado", main);
-  if (avz) avz.ontoggle = () => { try { localStorage.setItem("qf.avanzado", avz.open ? "1" : "0"); } catch (e) { /* nada */ } };
 
   /* dirección: tres opciones excluyentes se eligen mejor viéndolas todas que
      abriendo un desplegable para descubrir cuáles hay */

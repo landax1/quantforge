@@ -153,8 +153,6 @@ const STR = {
   "nav.mercados": ["Instruments", "Instrumentos"],
   "nav.cuenta_ok": ["Binance account · demo connected", "Cuenta Binance · demo conectada"],
   "nav.cuenta_no": ["Connect Binance account", "Conectar cuenta Binance"],
-  "mine.avanzado": ["Fine-tune the generation", "Ajustar la generación"],
-  "mine.avanzado_sub": ["blocks, risk, costs, filters — the recipe already set them", "bloques, riesgo, costos, filtros — la receta ya los dejó puestos"],
   "etapa.vigentes": ["Hide discarded", "Ocultar descartadas"],
   "op.tab_piloto": ["Autopilot", "Piloto automático"],
   "op.conectar_t": ["Connect the Binance demo account", "Conectar la cuenta demo de Binance"],
