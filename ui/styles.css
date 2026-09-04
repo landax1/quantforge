@@ -599,7 +599,9 @@ body {
 .status-dot.off { background: var(--neg); box-shadow: 0 0 0 3px var(--neg-soft); }
 
 /* ============================================================= main ===== */
-main { flex: 1; overflow-y: auto; padding: 32px 34px 90px; scroll-behavior: smooth; }
+main { flex: 1; overflow-y: auto; padding: 32px 34px 90px; scroll-behavior: smooth;
+       /* cuánto relleno hay abajo: lo necesita la barra de selección, ver .barra-sel */
+       --main-abajo: 90px; }
 
 .page-head {
   display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap;
@@ -2354,7 +2356,12 @@ table.guardadas tr.elegida td:first-child { box-shadow: inset 2px 0 0 var(--acce
    Pegada abajo y no un botón perdido en la página: la acción aparece donde
    está la mano, en el momento en que la selección la habilita. */
 .barra-sel {
-  position: sticky; bottom: 0; z-index: 5;
+  /* Pegada al pie de la pantalla mientras hay filas debajo. El navegador ancla
+     lo pegajoso al borde INTERIOR del relleno de main, no al borde visible:
+     con `bottom: 0` la barra flotaba 90 px arriba del pie, con filas asomando
+     por debajo (visto en "Las que aguantaron", 3 de septiembre de 2026). El
+     valor negativo la baja hasta el borde real, y le deja 16 px de aire. */
+  position: sticky; bottom: calc(16px - var(--main-abajo, 90px)); z-index: 5;
   display: flex; align-items: center; gap: 16px;
   margin-top: 16px; padding: 12px 16px;
   border: 1px solid var(--border-soft); border-radius: 12px;
@@ -3372,7 +3379,7 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
   .acct { order: 2; margin: 0; padding: 0; max-width: 180px; }
   .corrida { order: 4; flex: 1 1 100%; margin: 0; }
 
-  main { padding: 20px 16px 64px; }
+  main { padding: 20px 16px 64px; --main-abajo: 64px; }
   .page-head { flex-direction: column; align-items: flex-start; gap: 12px; }
 }
 
@@ -3381,7 +3388,7 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 @media (max-width: 620px) {
   .sidebar { gap: 8px 12px; }
   .lang-box, .acct { order: 4; flex: 1 1 100%; margin: 0; max-width: none; }
-  main { padding: 16px 12px 56px; }
+  main { padding: 16px 12px 56px; --main-abajo: 56px; }
   .card { padding: 16px; }
 
   /* Las cuatro secciones tienen que entrar sin deslizar. Con el punto y su
