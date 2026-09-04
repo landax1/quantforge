@@ -2038,6 +2038,11 @@ table.banco td { vertical-align: middle; }
 table.banco .tick { width: 34px; padding-left: 16px; padding-right: 0; }
 table.banco .tick input { cursor: pointer; accent-color: var(--accent); }
 table.banco tr.tildada td { background: var(--accent-soft); }
+/* La tabla del panel de la corrida no lleva la clase `banco` y desde el 4 de
+   septiembre de 2026 también se tilda, así que hereda las mismas tres reglas. */
+.databank-wrap .tick { width: 34px; padding-left: 16px; padding-right: 0; }
+.databank-wrap .tick input { cursor: pointer; accent-color: var(--accent); }
+.databank-wrap tr.tildada td { background: var(--accent-soft); }
 table.banco .origen b { font-size: 12px; font-weight: 620; }
 table.banco .run-sub { font-size: 10px; color: var(--text-dim); margin-top: 2px;
                        font-variant-numeric: tabular-nums; }

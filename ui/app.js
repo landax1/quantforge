@@ -8198,6 +8198,18 @@ const vistaBuscar = async (main) => {
         // sólo cuando se viene del botón de arreglo: repetir las mismas
         // candidatas es justo lo que hace que el arreglo funcione
         ...(SEMILLA_REINTENTO ? { seed: +SEMILLA_REINTENTO } : {}),
+        /* EN CRIPTO, SIN TRAILING. El generador sortea el stop dinámico entre
+           ocho opciones y sólo tres son "sin trailing": cinco de cada ocho
+           candidatas nacían con él. En cripto eso las deja muertas al nacer
+           —el robot deja UNA orden puesta en el exchange y no la mueve, así
+           que operaría con un stop fijo que no es lo que se midió, y el
+           servidor las rechaza al activarlas—, y encima no se pueden exportar
+           a MetaTrader. El piloto ya minaba así; la generación a mano no, y
+           uno se enteraba dos pantallas después (el usuario, 4 de septiembre
+           de 2026).
+
+           En MetaTrader se quedan: el robot exportado sí mueve el stop. */
+        ...(S.mundo === "exchange" ? { sin_trailing: true } : {}),
         max_candidates: cfg.maxCandidates, max_filters: cfg.maxFilters,
         sessions: sesionesElegidas(),
         method: cfg.method, population: 40,
@@ -8775,10 +8787,37 @@ function pintarCorrida(snap, finished) {
 }
 
 /* ------------------------------------------------------- render resultados */
+/* CÓMO SE LLAMA UNA CANDIDATA UNA VEZ GUARDADA. El servidor le agrega el
+   mercado al nombre —S-001 pasa a S-001-BTC— para que tres corridas distintas
+   no dejen tres "S-001" en validación. La misma regla, acá, para poder
+   reconocer una fila del panel entre las guardadas sin preguntarle al
+   servidor. Si allá cambia, hay una prueba que lo avisa. */
+function nombreAlGuardar(nombre, datasetName) {
+  const base = String(datasetName || "").split(" ")[0].toUpperCase();
+  const token = base ? base.replace(/(USDT|USD|BUSD|USDC)$/, "").slice(0, 5) : "";
+  const n = String(nombre || "S");
+  if (!token || n.toUpperCase().endsWith("-" + token)) return n;
+  return `${n}-${token}`;
+}
+
+//: Lo tildado en el panel de la corrida, por nombre de fila. Se limpia solo
+//: cuando se manda, y no sobrevive a cambiar de pantalla.
+let SEL_VIVO = new Set();
+
 function renderMining(snap, finished) {
   const live = $("#m-live"), bankBox = $("#m-bank");
   if (!live || !snap) return;
   const bank = ordenarBank(snap.databank || []);
+  /* CUÁLES DE ESTAS YA ESTÁN EN VALIDACIÓN. `S.saved` está en memoria y trae
+     de qué corrida salió cada una, así que alcanza con mirarlo: sin esto el
+     botón ofrecía mandar diez que ya se habían mandado. */
+  const guardadasDeLaCorrida = new Set((S.saved || [])
+    .filter(x => (x.meta || {}).corrida_id && (x.meta || {}).corrida_id === snap.corrida_id)
+    .map(x => x.name));
+  const nombreDs = (S.datasets.find(d => d.id === S.sel.dataset_id) || {}).name || "";
+  const yaEsta = (f) => guardadasDeLaCorrida.has(nombreAlGuardar(f.name, nombreDs));
+  const porMandar = bank.filter(f => !yaEsta(f));
+  const elegidas = porMandar.filter(f => SEL_VIVO.has(f.name));
   pintarCorrida(snap, finished);
   /* EL CAMPEÓN ES EL DE MEJOR SCORE, y se elige mirando: la lista viene
      ordenada por el fitness de la búsqueda, así que "Mejor hasta ahora"
@@ -8984,9 +9023,11 @@ function renderMining(snap, finished) {
       ${/* TODAS A MIS ESTRATEGIAS EN UN CLIC, cuando la búsqueda terminó y ya
             está archivada: es lo que uno quiere hacer con lo recién encontrado
             antes de probarlas juntas. */
-        finished && snap.corrida_id && bank.length
+        finished && snap.corrida_id && porMandar.length
           ? `<button class="btn small" id="guardar-todas" style="margin-left:auto">${
-              icono("marcador", "ico-sm")} ${esc(t("bank.guardar_todas", { n: bank.filter(f => !f.guardada).length }))}</button>` : ""}</h2>
+              icono("marcador", "ico-sm")} ${esc(elegidas.length
+                ? t("bank.mandar_n", { n: elegidas.length })
+                : t("bank.guardar_todas", { n: porMandar.length }))}</button>` : ""}</h2>
     ${bank.length ? `<div class="databank-wrap"><table>
       <!-- OCHO COLUMNAS, NO DIECISEIS.
            La tabla tenia dieciseis y por eso necesitaba scroll horizontal: para
@@ -8996,6 +9037,9 @@ function renderMining(snap, finished) {
            inspector, a un clic de distancia. Una tabla que entra en pantalla se
            compara de un vistazo; una que no, se lee de a pedazos. -->
       <thead><tr>
+        ${finished && snap.corrida_id ? `<th class="tick"><input type="checkbox" id="vivo-todas"
+          ${porMandar.length && elegidas.length === porMandar.length ? "checked" : ""}
+          aria-label="${esc(t("ui.select_all"))}"></th>` : ""}
         <th>#</th>
         <th>${esc(t("col.strategy"))}</th>
         <th>${esc(t("col.equity"))}</th>
@@ -9011,9 +9055,14 @@ function renderMining(snap, finished) {
         const m = r.metrics;
         // la clave del genoma, para poder distinguir una fila nueva de una
         // que ya estaba: el indice no sirve, cambia al reordenarse el banco
-        return `<tr class="clickable" data-row="${i}" data-key="${esc(r.id || "")}">
+        const puesta = yaEsta(r);
+        return `<tr class="clickable ${SEL_VIVO.has(r.name) ? "tildada" : ""}" data-row="${i}" data-key="${esc(r.id || "")}">
+          ${finished && snap.corrida_id ? `<td class="tick">${puesta ? ""
+            : `<input type="checkbox" data-vivo="${esc(r.name)}" ${SEL_VIVO.has(r.name) ? "checked" : ""}
+                 aria-label="${esc(t("ui.select_one", { n: r.name }))}">`}</td>` : ""}
           <td class="rank-cell"><span class="rank">${String(i + 1).padStart(2, "0")}</span></td>
-          <td><span class="strat-name">${esc(r.name)}</span>${sesionTag(r)}</td>
+          <td><span class="strat-name">${esc(r.name)}</span>${sesionTag(r)}${
+            puesta ? `<span class="tag-ya">${esc(t("bank.ya_en_probar"))}</span>` : ""}</td>
           <td class="spark-cell">${Charts.sparkSvg(r.spark)}</td>
           <td class="num">${scoreCell(r.score)}</td>
           <td class="num ${m.cagr_pct >= 0 ? "pos" : "neg"}"><b>${fmtPct(m.cagr_pct)}</b></td>
@@ -9059,15 +9108,18 @@ function renderMining(snap, finished) {
      algo, la acción también vive en una barra fija abajo. */
   const barraFin = $("#barra-fin");
   if (barraFin) {
-    /* cuenta SÓLO las que faltan mandar, y se redibuja cuando cambia: decía
-       "Mandar las 10" con siete ya mandadas (3 de septiembre de 2026) */
-    const sinMandar = bank.filter(f => !f.guardada).length;
+    /* CUENTA SÓLO LAS QUE FALTAN MANDAR, y se redibuja cuando cambia. Miraba
+       `f.guardada`, que en estas filas NO viene: salen del minero y él no sabe
+       nada de lo que se guardó después, así que "las que faltan" eran siempre
+       todas y la barra seguía diciendo "Enviar las 10" con las diez ya
+       mandadas (el usuario, 4 de septiembre de 2026). */
+    const sinMandar = porMandar.length;
     const hay = finished && snap.corrida_id && sinMandar;
     barraFin.hidden = !hay;
     if (hay && barraFin.dataset.n !== String(sinMandar)) {
       barraFin.dataset.n = String(sinMandar);
       barraFin.innerHTML = `<span>${esc(t("run.listo", { n: bank.length }))}</span>
-        <button class="btn" id="fin-a-probar">${icono("marcador")} ${esc(t("bank.guardar_todas", { n: bank.filter(f => !f.guardada).length }))}</button>`;
+        <button class="btn" id="fin-a-probar">${icono("marcador")} ${esc(t("bank.guardar_todas", { n: sinMandar }))}</button>`;
       $("#fin-a-probar", barraFin).onclick = () => { const b = $("#guardar-todas", bankBox); if (b) b.click(); };
     }
   }
@@ -9079,9 +9131,14 @@ function renderMining(snap, finished) {
         /* SÓLO LAS QUE NO ESTÁN. Volver a Buscar decía "Mandar las 10" y las
            mandaba todas otra vez, duplicadas (el usuario, 3 de septiembre de
            2026). El servidor además las rechaza; esto evita pedirlas. */
-        const r = await api.post("/api/banco/guardar", { ids: filas.filter(f => !f.guardada).map(f => f.banco_id) });
+        /* Y SÓLO LAS TILDADAS, si hay alguna. Sin selección el botón sigue
+           mandando todo lo que falte, que es el caso de siempre. */
+        const nombres = new Set(porMandar.filter(f => SEL_VIVO.has(f.name)).map(f => f.name));
+        const candidatas = filas.filter(f => !f.guardada && (!nombres.size || nombres.has(f.name)));
+        const r = await api.post("/api/banco/guardar", { ids: candidatas.map(f => f.banco_id) });
         (r.guardadas || []).forEach(g => RECIEN_GUARDADAS.add(g.id));
         toast(t("bank.guardadas_n", { n: (r.guardadas || []).length }), "ok");
+        SEL_VIVO = new Set();
         await refreshSavedCount();
         encolarPruebas((r.guardadas || []).map(g => g.id));
         const bf = $("#barra-fin"); if (bf) { bf.hidden = true; delete bf.dataset.n; }
@@ -9097,7 +9154,38 @@ function renderMining(snap, finished) {
     // con el contexto de ESTA corrida: sin el no salian las tres vistas de la
     // curva, que es lo que se acaba de pedir al reservar un tramo de validacion
     $$("[data-row]", bankBox).forEach(tr =>
-      tr.onclick = () => openInspector(bank[+tr.dataset.row], ctxDeLaCorrida(snap)));
+      tr.onclick = (ev) => {
+        if (ev.target.closest(".tick")) return;   // tildar no abre la ficha
+        openInspector(bank[+tr.dataset.row], ctxDeLaCorrida(snap));
+      });
+
+    /* Tildar sólo repinta el encabezado y la fila: rehacer la tabla entera
+       —cien filas con su curva— por una casilla perdía el scroll y parpadeaba. */
+    const refrescarBoton = () => {
+      const b = $("#guardar-todas", bankBox);
+      if (!b) return;
+      const n = porMandar.filter(f => SEL_VIVO.has(f.name)).length;
+      b.innerHTML = `${icono("marcador", "ico-sm")} ${esc(n
+        ? t("bank.mandar_n", { n }) : t("bank.guardar_todas", { n: porMandar.length }))}`;
+      const todas = $("#vivo-todas", bankBox);
+      if (todas) todas.checked = porMandar.length > 0 && n === porMandar.length;
+    };
+    $$("[data-vivo]", bankBox).forEach(cb => cb.onclick = (ev) => {
+      ev.stopPropagation();
+      if (cb.checked) SEL_VIVO.add(cb.dataset.vivo); else SEL_VIVO.delete(cb.dataset.vivo);
+      cb.closest("tr").classList.toggle("tildada", cb.checked);
+      refrescarBoton();
+    });
+    const vivoTodas = $("#vivo-todas", bankBox);
+    if (vivoTodas) vivoTodas.onclick = (ev) => {
+      ev.stopPropagation();
+      SEL_VIVO = new Set(vivoTodas.checked ? porMandar.map(f => f.name) : []);
+      $$("[data-vivo]", bankBox).forEach(cb => {
+        cb.checked = SEL_VIVO.has(cb.dataset.vivo);
+        cb.closest("tr").classList.toggle("tildada", cb.checked);
+      });
+      refrescarBoton();
+    };
 
     cablearOrden(bankBox);
 
