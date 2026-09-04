@@ -3675,6 +3675,18 @@ const vistaBot = async (main, hayClave) => {
         <p class="help-note">${esc(t("bot.sub"))}</p></div>
         <span class="ex-estado ${operando ? "on" : ""}">${esc(operando ? t("bot.n_operando", { n: bot.cuantos }) : t("bot.off"))}</span></div>
       <div id="bot-zona-vuelos">${operando ? zonaVuelos(bot) : `<p class="help-note">${esc(t("op.nada_corriendo"))}</p>`}</div>
+    </div>
+
+    ${/* LO QUE HAY ABIERTO DEL OTRO LADO, con o sin robot detrás. Los robots
+          no sobreviven a cerrar la aplicación —es deliberado— pero sus
+          posiciones sí quedan abiertas en el exchange. La pantalla las contaba
+          y no dejaba hacer nada con ellas: el pánico recorre robots vivos, así
+          que sin ninguno había que ir a la web de Binance (4 de septiembre de
+          2026). */ ""}
+    <div class="card mt" id="op-posiciones">
+      <div class="ex-head"><div><b>${esc(t("op.abiertas"))}</b>
+        <p class="help-note">${esc(t("pos.sub"))}</p></div></div>
+      <p class="help-note"><i class="esq esq-linea" aria-label="${esc(t("tab.cargando"))}"></i></p>
     </div>`;
 
   $("#op-detalle", main).onclick = () => navigate("operar", "tablero");
@@ -3741,6 +3753,7 @@ const vistaBot = async (main, hayClave) => {
   }
   atarVuelos(main);
   atarReencender(main);
+  pintarPosiciones(main);
 
   // la cuenta, en una línea: saldo, resultado neto y posiciones abiertas
   (async () => {
@@ -5206,7 +5219,11 @@ function escenaProbar(esperan, porEtapa, recienProbadas) {
   return `<div class="fp-escena">
     <section class="fp-lista">
       <div class="fp-cab">
-        <h2>${esc(t("fp.encontradas"))} <em>${esperan.length}</em></h2>
+        <h2>${PORTAFOLIO && esperan.length ? `<label class="fp-todas" title="${esc(t("ui.select_all"))}">
+            <input type="checkbox" id="fp-todas"
+              ${esperan.every(x => SEL_PF.has(x.id)) ? "checked" : ""}
+              aria-label="${esc(t("ui.select_all"))}"></label>` : ""}${
+          esc(t("fp.encontradas"))} <em>${esperan.length}</em></h2>
         <div class="fp-acc">
           ${elegidas && !corriendo ? `<button class="btn ghost" id="fp-probar-elegidas">${esc(t("fp.probar_elegidas", { n: elegidas }))}</button>` : ""}
           ${seguir.length ? `<button class="btn primary" id="fp-seguir" data-ids="${esc(seguir.join(","))}">${esc(t("fp.seguir", { n: seguir.length }))}</button>` : ""}
@@ -5698,6 +5715,19 @@ PAGES.saved = async (main) => {
   });
   $$("[data-bandeja]", main).forEach(b => b.onclick = () => navigate("saved", b.dataset.bandeja));
   // el escenario de Probar
+  /* Tildar todas las que esperan: con eso, "Borrar N" y "Validar N" de la
+     barra de abajo quedan a un clic, que es lo que faltaba para poder limpiar
+     o mandar la tanda entera sin ir casilla por casilla. */
+  const fpTodas = $("#fp-todas", main);
+  if (fpTodas) fpTodas.onchange = () => {
+    /* Las candidatas de esta columna salen del DOM y no de una lista: la que
+       las tiene —`esperan`— es un parámetro de quien dibuja la escena y no
+       llega hasta acá. */
+    $$(".fp-lista [data-pf]", main).forEach(cb => {
+      if (fpTodas.checked) SEL_PF.add(cb.dataset.pf); else SEL_PF.delete(cb.dataset.pf);
+    });
+    aplicarSel();
+  };
   const pe = $("#fp-probar-elegidas", main);
   if (pe) pe.onclick = () => probarVarias(visibles.filter(x => SEL_PF.has(x.id) && !enCola(x.id)), main);
   const sg = $("#fp-seguir", main);
@@ -5805,10 +5835,19 @@ PAGES.saved = async (main) => {
   const aplicarSel = () => {
     $$("[data-pf]", main).forEach(cb => {
       cb.checked = SEL_PF.has(cb.dataset.pf);
-      cb.closest("tr").classList.toggle("elegida", cb.checked);
+      /* `closest("tr")` alcanzaba cuando esto era sólo para las tablas. En la
+         pantalla de Validación las filas son divs y devolvía null, así que
+         tildar todas reventaba en la primera (4 de septiembre de 2026). */
+      const fila = cb.closest("[data-sid]");
+      if (fila) fila.classList.toggle("elegida", cb.checked);
     });
     const th = $("#sel-todas-guardadas", main);
     if (th) th.checked = visibles.length > 0 && visibles.every(x => SEL_PF.has(x.id));
+    const ft = $("#fp-todas", main);
+    if (ft) {
+      const enEspera = $$(".fp-lista [data-pf]", main);
+      ft.checked = enEspera.length > 0 && enEspera.every(cb => cb.checked);
+    }
     pintarBarra();
   };
   $$("[data-sel-est]", main).forEach(bt => bt.onclick = () => {
@@ -8792,6 +8831,69 @@ function pintarCorrida(snap, finished) {
    no dejen tres "S-001" en validación. La misma regla, acá, para poder
    reconocer una fila del panel entre las guardadas sin preguntarle al
    servidor. Si allá cambia, hay una prueba que lo avisa. */
+/* LAS POSICIONES ABIERTAS EN EL EXCHANGE, y el botón para cerrarlas.
+
+   De cada una importan dos cosas que la pantalla no puede deducir sola y que
+   el servidor contesta: si hay un robot mirándola, y si le quedó el stop
+   puesto del otro lado. Una sin robot pero con stop se va a cerrar sola; una
+   sin robot y sin stop no la mira nadie, y ésa es la que hay que ver primero.
+
+   Las que tienen robot no se cierran desde acá: se cierran desde su tarjeta,
+   que primero lo frena. Cerrarle la posición por atrás le deja el mundo
+   cambiado bajo los pies y en la vuelta siguiente puede abrir otra. */
+async function pintarPosiciones(main) {
+  const caja = $("#op-posiciones", main);
+  if (!caja) return;
+  const nota = $(".help-note:last-of-type", caja);
+  let d;
+  try {
+    d = await api.get("/api/cuenta/posiciones");
+  } catch (e) {
+    if (nota) nota.textContent = e.message;
+    return;
+  }
+  const ps = d.posiciones || [];
+  if (!ps.length) {
+    if (nota) nota.textContent = t("pos.ninguna");
+    return;
+  }
+  const fila = (p) => {
+    const largo = p.lado > 0;
+    const pnl = +p.pnl_abierto || 0;
+    return `<div class="pos-fila">
+      <div class="pos-sim"><b>${esc(p.simbolo)}</b>
+        <span class="${largo ? "pos" : "neg"}">${esc(t(largo ? "dir.long" : "dir.short"))}</span></div>
+      <div class="pos-num"><b>${fmtNum(p.cantidad, 4)}</b><span>${esc(t("pos.cantidad"))}</span></div>
+      <div class="pos-num"><b>${fmtNum(p.precio_entrada, 4)}</b><span>${esc(t("pos.entrada"))}</span></div>
+      <div class="pos-num"><b class="${pnl >= 0 ? "pos" : "neg"}">${
+        (pnl > 0 ? "+" : "") + fmtNum(pnl, 2)}</b><span>${esc(t("pos.abierto"))}</span></div>
+      <div class="pos-est">${p.con_stop
+        ? `<span class="est est-ok">${icono("tilde", "ico-sm")}${esc(t("pos.con_stop"))}</span>`
+        : `<span class="est est-mal">${icono("alerta", "ico-sm")}${esc(t("pos.sin_stop"))}</span>`}</div>
+      <div class="pos-acc">${p.robot
+        ? `<span class="muted" title="${esc(t("pos.del_robot_ayuda"))}">${esc(t("pos.del_robot"))}</span>`
+        : `<button class="btn ghost small" data-cerrar-pos="${esc(p.simbolo)}">${esc(t("pos.cerrar"))}</button>`}</div>
+    </div>`;
+  };
+  caja.innerHTML = `<div class="ex-head"><div><b>${esc(t("op.abiertas"))} <em class="num">${ps.length}</em></b>
+      <p class="help-note">${esc(t("pos.sub"))}</p></div></div>
+    <div class="pos-lista">${ps.map(fila).join("")}</div>`;
+  $$("[data-cerrar-pos]", caja).forEach(b => b.onclick = async () => {
+    const sim = b.dataset.cerrarPos;
+    /* SE PREGUNTA ANTES. Cerrar manda una orden a mercado y no se deshace. */
+    if (!confirm(t("pos.confirmar", { sim }))) return;
+    b.disabled = true;
+    try {
+      await api.post("/api/cuenta/posiciones/cerrar", { simbolo: sim });
+      toast(t("pos.cerrada", { sim }), "ok");
+      pintarPosiciones(main);
+    } catch (e) {
+      toast(e.message, "err");
+      b.disabled = false;
+    }
+  });
+}
+
 function nombreAlGuardar(nombre, datasetName) {
   const base = String(datasetName || "").split(" ")[0].toUpperCase();
   const token = base ? base.replace(/(USDT|USD|BUSD|USDC)$/, "").slice(0, 5) : "";

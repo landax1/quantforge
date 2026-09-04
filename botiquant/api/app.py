@@ -145,6 +145,13 @@ ERRORES_EN: dict[str, str] = {
     "Sección desconocida.": "Unknown section.",
     "Falta la estrategia.": "The strategy is missing.",
     "Un conjunto son al menos dos estrategias.": "A set is at least two strategies.",
+    # --- posiciones abiertas en el exchange
+    "Falta el símbolo.": "The symbol is missing.",
+    "Esa posición ya no está abierta.": "That position is no longer open.",
+    "Esa posición la está mirando un robot. Se cierra desde su tarjeta, "
+    "con \"Detener y cerrar posición\".":
+        "A robot is watching that position. It closes from the robot's own "
+        "card, with \"Stop and close position\".",
     # --- rango de fechas y datos
     "La fecha 'desde' tiene que ser anterior a la de 'hasta'":
         "The 'from' date has to come before the 'to' date",
@@ -3755,6 +3762,107 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         from botiquant.vivo.piloto import PILOTO
         simbolo = str((payload or {}).get("simbolo") or "").strip() or None
         return PILOTO.apagar(simbolo)
+
+    @app.get("/api/cuenta/posiciones")
+    def cuenta_posiciones() -> dict[str, Any]:
+        """Lo que hay abierto en el exchange, con o sin robot detrás.
+
+        MÁS LIVIANO QUE `/api/cuenta/rendimiento`: aquél pide además los
+        movimientos y las operaciones cerradas de hasta seis símbolos, que son
+        siete llamadas más. Esto es la foto de lo abierto y nada más.
+
+        DE CADA UNA SE DICE DOS COSAS que la pantalla no puede deducir sola:
+        si hay un robot que la está mirando, y si le quedó el stop puesto del
+        otro lado. Una posición sin robot pero con stop se va a cerrar sola;
+        una sin robot y sin stop no la mira nadie, y ésa es la que hay que ver
+        primero.
+
+        Sólo demo, como todo lo de Binance en esta versión.
+        """
+        _solo_escritorio()
+        from concurrent.futures import ThreadPoolExecutor
+        from botiquant.data import binance_trade as bt
+        from botiquant.vivo import claves
+        from botiquant.vivo.piloto import PILOTO
+
+        try:
+            api_key, secret = claves.leer(workdir / "claves", "binance", "practica")
+        except claves.ClaveError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        base = bt.BASE_PRUEBA
+        try:
+            abiertas = bt.posiciones(api_key, secret, base=base)
+        except bt.BinanceError as exc:
+            raise HTTPException(502, exc.del_exchange) from exc
+
+        #: Qué símbolos tienen un robot vivo. Cerrar por atrás uno de ésos es
+        #: pedirle al robot que abra otra en la vuelta siguiente, así que la
+        #: pantalla los marca y el cierre los rechaza.
+        con_robot = {str(v.bot.simbolo) for v in PILOTO.vuelos.values()}
+
+        def _protegida(sim: str) -> bool:
+            try:
+                puestas = bt.condicionales_abiertas(sim, api_key, secret, base=base)
+                return any(str(o.get("tipo") or "") == "STOP_MARKET" for o in puestas)
+            except bt.BinanceError:
+                return False
+
+        sims = [str(p.get("simbolo") or "") for p in abiertas]
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            protegidas = dict(zip(sims, pool.map(_protegida, sims)))
+        for p in abiertas:
+            sim = str(p.get("simbolo") or "")
+            p["con_stop"] = bool(protegidas.get(sim))
+            p["robot"] = sim in con_robot
+        return {"posiciones": abiertas, "modo": "practica", "exchange": "binance"}
+
+    @app.post("/api/cuenta/posiciones/cerrar")
+    def cuenta_cerrar_posicion(payload: dict[str, Any]) -> dict[str, Any]:
+        """Cierra a mercado una posición que no tiene robot, y limpia su stop.
+
+        SE NIEGA SI HAY UN ROBOT MIRÁNDOLA. El robot decide sobre una realidad
+        que cree conocer; cerrarle la posición por atrás le deja el mundo
+        cambiado bajo los pies y en la vuelta siguiente puede abrir otra.
+        Para ésas está "Apagar y cerrar posición" en la tarjeta del robot, que
+        primero lo frena y después cierra.
+
+        Y DESPUÉS DE CERRAR SE CANCELA LO QUE QUEDÓ PUESTO. El stop y el
+        objetivo pueden sobrevivir a la posición que protegían, y un stop
+        suelto es una orden de abrir el lado contrario esperando a que el
+        precio la toque.
+        """
+        _solo_escritorio()
+        from botiquant.data import binance_trade as bt
+        from botiquant.vivo import claves
+        from botiquant.vivo.piloto import PILOTO
+
+        simbolo = str((payload or {}).get("simbolo") or "").strip().upper()
+        if not simbolo:
+            raise HTTPException(400, "Falta el símbolo.")
+        if any(str(v.bot.simbolo) == simbolo for v in PILOTO.vuelos.values()):
+            raise HTTPException(
+                409, "Esa posición la está mirando un robot. Se cierra desde "
+                     "su tarjeta, con \"Detener y cerrar posición\".")
+        try:
+            api_key, secret = claves.leer(workdir / "claves", "binance", "practica")
+        except claves.ClaveError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        base = bt.BASE_PRUEBA
+        try:
+            abierta = next((p for p in bt.posiciones(api_key, secret, base=base)
+                            if str(p.get("simbolo") or "") == simbolo), None)
+            if not abierta:
+                raise HTTPException(404, "Esa posición ya no está abierta.")
+            modo = bt.modo_posicion(api_key, secret, base=base)
+            orden = bt.cerrar(simbolo, int(abierta["lado"]), float(abierta["cantidad"]),
+                              api_key=api_key, secret=secret, modo=modo, base=base)
+            try:
+                bt.cancelar_todo(simbolo, api_key, secret, base=base)
+            except bt.BinanceError:
+                pass          # la posición ya está cerrada; el stop suelto se ve arriba
+        except bt.BinanceError as exc:
+            raise HTTPException(502, exc.del_exchange) from exc
+        return {"status": "cerrada", "simbolo": simbolo, "orden": orden}
 
     @app.post("/api/bot/panico")
     def bot_panico(payload: dict[str, Any] | None = None) -> dict[str, Any]:

@@ -2111,6 +2111,26 @@ th.orden.mixta::after {
 .res-dice b { color: var(--text); }
 .res-par { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
 
+/* ============================================== posiciones abiertas =====
+   Una fila por posición: símbolo y lado, los tres números, si tiene stop del
+   otro lado, y qué se puede hacer con ella. */
+.pos-lista { display: grid; gap: 8px; margin-top: 12px; }
+.pos-fila { display: grid; gap: 16px; align-items: center; padding: 12px 16px;
+            grid-template-columns: minmax(0, 1.1fr) repeat(3, auto) auto auto;
+            background: var(--card-2); border: 1px solid var(--border-soft);
+            border-radius: var(--r-sm); }
+.pos-sim b { display: block; font-size: 14px; }
+.pos-sim span { display: block; font-size: 11px; margin-top: 2px; }
+.pos-num { text-align: right; font-variant-numeric: tabular-nums; }
+.pos-num b { display: block; font-family: var(--mono); font-size: 13px; }
+.pos-num span { display: block; font-size: 10px; color: var(--text-dim);
+                text-transform: uppercase; letter-spacing: .06em; }
+.pos-acc { text-align: right; }
+@media (max-width: 900px) {
+  .pos-fila { grid-template-columns: minmax(0, 1fr) auto; }
+  .pos-num, .pos-est { grid-column: 1 / -1; text-align: left; }
+}
+
 .chart-tip {
   position: absolute; top: 6px; transform: translateX(-50%);
   background: var(--tooltip-bg); border: 1px solid var(--border-strong);
@@ -3935,6 +3955,9 @@ tr.llegando > td { animation: llega .55s var(--ease) both; }
 .fp-repisa.no .fp-item i { background: var(--neg); }
 .fp-item > div > b { font-weight: 600; font-size: 14px; display: block; line-height: 1.2; }
 .fp-item > div > span { color: var(--text-dim); font-size: 13px; display: block; margin-top: 2px; }
+/* la casilla de "todas", pegada al título de la columna de candidatas */
+.fp-todas { display: inline-flex; align-items: center; margin-right: 8px; vertical-align: 1px; }
+.fp-todas input { cursor: pointer; accent-color: var(--accent); }
 .fp-v { font-variant-numeric: tabular-nums; font-size: 13px; color: var(--text-2); white-space: nowrap; }
 /* el porqué y el borrar comparten la última columna de la repisa */
 .fp-no-acc { display: inline-flex; align-items: center; gap: 8px; }
