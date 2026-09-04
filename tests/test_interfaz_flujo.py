@@ -612,11 +612,19 @@ def test_la_bienvenida_describe_la_aplicacion_que_existe():
     El tercer paso real es exportar a MetaTrader, que además es el único que
     termina en algo que opera con plata.
     """
-    # LOS TRES PASOS SE LLAMAN COMO EL MENÚ (2 de septiembre de 2026):
-    # Buscar · Probar · Operarla. Un usuario de prueba leyó "Keep / Take it
-    # away" en la entrada y "Test / Trade" en la barra, y no ató una cosa con
-    # la otra. El paso 3 sigue nombrando MetaTrader para quien viene por CFD.
-    assert '"wel.s3": ["Trade it"' in DICC, "el paso 3 dejó de llamarse como el menú"
+    # LOS TRES PASOS SE LLAMAN COMO EL MENÚ (2 de septiembre de 2026, con el
+    # vocabulario del 3): Generación · Validación · Operación. Un usuario de
+    # prueba leyó "Keep / Take it away" en la entrada y "Test / Trade" en la
+    # barra, y no ató una cosa con la otra. El paso 3 sigue nombrando
+    # MetaTrader para quien viene por CFD.
+    import re as _re
+    for paso, clave_nav in (("wel.s1", "nav.mining"), ("wel.s2", "nav.saved"),
+                            ("wel.s3", "nav.operar")):
+        m_paso = _re.search(r'"' + paso + r'":\s*\["([^"]+)"', DICC)
+        m_nav = _re.search(r'"' + clave_nav + r'":\s*\["([^"]+)"', DICC)
+        assert m_paso and m_nav, f"falta {paso} o {clave_nav}"
+        assert m_paso.group(1) == m_nav.group(1), (
+            f"{paso} dice {m_paso.group(1)!r} y el menú {m_nav.group(1)!r}")
     assert "MetaTrader" in DICC.split('"wel.s3_sub"')[1][:400]
     assert "numbered steps" not in DICC, "el pie vuelve a hablar de pasos numerados"
     assert "pasos numerados" not in DICC

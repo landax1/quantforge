@@ -152,28 +152,28 @@ ERRORES_EN: dict[str, str] = {
     # --- estrategias y validacion
     "No sabemos con qu\u00e9 instrumento se encontr\u00f3.":
         "We do not know which instrument this was found on.",
-    "Esa estrategia ya no est\u00e1 en el banco.":
-        "That strategy is no longer in the databank.",
-    "Esas estrategias ya no est\u00e1n en el banco.":
-        "Those strategies are no longer in the databank.",
+    "Esa estrategia ya no est\u00e1 en el repositorio.":
+        "That strategy is no longer in the repository.",
+    "Esas estrategias ya no est\u00e1n en el repositorio.":
+        "Those strategies are no longer in the repository.",
     "Esa estrategia no existe.": "That strategy does not exist.",
     "El histórico con el que se encontró esta estrategia ya no está: se "
-    "borró desde Datos. La estrategia sigue guardada; volvé a bajar ese "
-    "instrumento y se puede probar y exportar de nuevo.":
+    "borró desde Instrumentos. La estrategia sigue guardada; al descargar ese "
+    "instrumento de nuevo se puede validar y exportar.":
         "The history this strategy was found on is gone: it was deleted from "
-        "Data. The strategy is still saved; download that instrument again and "
-        "it can be tested and exported.",
+        "Instruments. The strategy is still saved; downloading that instrument "
+        "again makes it possible to validate and export it.",
     "Hace falta el per\u00edodo sobre el que validar.":
         "A period to validate over is required.",
-    "Eleg\u00ed al menos una estrategia.": "Pick at least one strategy.",
+    "Seleccionar al menos una estrategia.": "Select at least one strategy.",
     "Falta la estrategia.": "The strategy is missing.",
     # --- trabajos
     "Ese trabajo ya no est\u00e1 corriendo.": "That job is no longer running.",
     "No est\u00e1.": "Not found.",
     # --- cuentas y licencias
-    "Entr\u00e1 con tu cuenta para descargar la estrategia.":
+    "Se requiere iniciar sesi\u00f3n para descargar la estrategia.":
         "Sign in to download the strategy.",
-    "Entr\u00e1 con tu cuenta para obtener tu licencia.":
+    "Se requiere iniciar sesi\u00f3n para obtener la licencia.":
         "Sign in to get your licence.",
     "El inicio de sesi\u00f3n no est\u00e1 configurado en este servidor.":
         "Sign-in is not configured on this server.",
@@ -197,7 +197,7 @@ ERRORES_EN: dict[str, str] = {
     "Este instrumento es compartido y no se puede borrar. ":
         "This instrument is shared and cannot be deleted. ",
     "Los instrumentos del cat\u00e1logo ya vienen cargados y son "
-    "compartidos. Para usar tus propios datos, sub\u00ed un CSV.":
+    "compartidos. Para usar datos propios, importar un CSV.":
         "Catalogue instruments come preloaded and are shared. To use your own "
         "data, upload a CSV.",
     "La importaci\u00f3n por ruta est\u00e1 deshabilitada en modo multiusuario. "
@@ -210,7 +210,7 @@ ERRORES_EN: dict[str, str] = {
     "se le puede volver a correr el backtest.":
         "We do not know which instrument this was found on, so the backtest "
         "cannot be run again.",
-    "Eleg\u00ed el instrumento antes de exportar el bot: el "
+    "Seleccionar el instrumento antes de exportar el robot: el "
     "archivo tiene que decir en qu\u00e9 s\u00edmbolo operar.":
         "Pick the instrument before exporting the robot: the file has to say "
         "which symbol to trade.",
@@ -241,8 +241,8 @@ ERRORES_EN: dict[str, str] = {
         "This strategy was shared to look at only.",
     "Quien comparti\u00f3 esta estrategia apag\u00f3 el enlace.":
         "Whoever shared this strategy turned the link off.",
-    "Ya compartiste muchas hoy. Ma\u00f1ana pod\u00e9s seguir.":
-        "You have shared a lot today. You can carry on tomorrow.",
+    "Se alcanz\u00f3 el l\u00edmite diario para compartir. Ma\u00f1ana se puede continuar.":
+        "The daily sharing limit has been reached. It resets tomorrow.",
     "No se pudo llegar a botiquant.com.": "Could not reach botiquant.com.",
     "No se pudo llegar a botiquant.com para publicar el enlace.":
         "Could not reach botiquant.com to publish the link.",
@@ -252,10 +252,10 @@ ERRORES_EN: dict[str, str] = {
     # La entrada de arriba es el prefijo, y el `raise` lleva la frase entera:
     # sin esta clave la mitad que explica QUÉ se puede borrar salía en
     # castellano (encontrado por el analizador sintáctico, no por la lectura).
-    "Este instrumento es compartido y no se puede borrar. S\u00f3lo pod\u00e9s "
-    "borrar los CSV que subiste vos.":
-        "This instrument is shared and cannot be deleted. You can only delete "
-        "the CSVs you uploaded yourself.",
+    "Este instrumento es compartido y no se puede borrar. S\u00f3lo se pueden "
+    "borrar los CSV importados por el propio usuario.":
+        "This instrument is shared and cannot be deleted. Only the CSVs imported by the user can be "
+        "deleted.",
 }
 
 #: Los que llevan datos adentro: se compara el comienzo y se cambia solo eso.
@@ -435,9 +435,9 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             raise HTTPException(
                 404,
                 "El histórico con el que se encontró esta estrategia ya no "
-                "está: se borró desde Datos. La estrategia sigue guardada; "
-                "volvé a bajar ese instrumento y se puede probar y exportar "
-                "de nuevo.") from exc
+                "está: se borró desde Instrumentos. La estrategia sigue "
+                "guardada; al descargar ese instrumento de nuevo se puede "
+                "validar y exportar.") from exc
         except ValueError as exc:
             # pedir un timeframe más fino que el del dataset: 400 y no 500,
             # porque es una elección corregible y el texto explica cómo
@@ -724,7 +724,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         if MULTIUSER:
             raise HTTPException(
                 403, "Los instrumentos del catálogo ya vienen cargados y son "
-                     "compartidos. Para usar tus propios datos, subí un CSV.")
+                     "compartidos. Para usar datos propios, importar un CSV.")
         key = str(payload.get("key", ""))
         if key not in BY_KEY:
             raise HTTPException(400, f"Instrumento desconocido: {key}")
@@ -850,11 +850,11 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         if yo is not None and str(fila.get("user_id") or "") != yo:
             raise HTTPException(
                 403, "Este instrumento es compartido y no se puede borrar. "
-                     "Sólo podés borrar los CSV que subiste vos.")
+                     "Sólo se pueden borrar los CSV importados por el propio usuario.")
         if MULTIUSER and str(fila.get("source", "")).partition("@")[0] not in BORRABLE:
             raise HTTPException(
                 403, "Este instrumento es compartido y no se puede borrar. "
-                     "Sólo podés borrar los CSV que subiste vos.")
+                     "Sólo se pueden borrar los CSV importados por el propio usuario.")
         store.delete(ds_id, yo)
         return {"status": "deleted"}
 
@@ -908,7 +908,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             return None
         u = usuario_actual(request)
         if u is None:
-            raise HTTPException(401, "Entrá con tu cuenta para descargar la estrategia.")
+            raise HTTPException(401, "Se requiere iniciar sesión para descargar la estrategia.")
         return u
 
     #: Lo único que se puede tocar sin cuenta. Es una lista de lo PERMITIDO y no
@@ -1450,7 +1450,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         if origen == "banco":
             filas = db.get_banco([ident], dueno)
             if not filas:
-                raise HTTPException(404, "Esa estrategia ya no está en el banco.")
+                raise HTTPException(404, "Esa estrategia ya no está en el repositorio.")
             f = filas[0]
             ctx = f["contexto"]
             return {
@@ -1516,7 +1516,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
             raise HTTPException(400, "Hace falta el período sobre el que validar.")
         pedidas = payload.get("estrategias") or []
         if not pedidas:
-            raise HTTPException(400, "Elegí al menos una estrategia.")
+            raise HTTPException(400, "Seleccionar al menos una estrategia.")
         dueno = duenio(request)
 
         salida = []
@@ -1568,7 +1568,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         """
         pedidas = payload.get("estrategias") or []
         if not pedidas:
-            raise HTTPException(400, "Elegí al menos una estrategia.")
+            raise HTTPException(400, "Seleccionar al menos una estrategia.")
         dueno = duenio(request)
         sims = int(min(max(int(payload.get("simulations", 1000)), 100), 5000))
         umbral = float(payload.get("ruin_threshold_pct", 30.0))
@@ -2382,7 +2382,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
         dueno = duenio(request)
         filas = db.get_banco(ids, dueno)
         if not filas:
-            raise HTTPException(404, "Esas estrategias ya no están en el banco.")
+            raise HTTPException(404, "Esas estrategias ya no están en el repositorio.")
         guardadas = _guardar_filas_del_banco(filas, dueno)
         return {"guardadas": guardadas, "ya_estaban": len(filas) - len(guardadas)}
 
@@ -2531,7 +2531,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
                 # rechazar. Mejor negarse aca, donde el usuario esta mirando,
                 # que entregarle algo que falla recien al querer operarlo.
                 raise HTTPException(
-                    400, "Elegí el instrumento antes de exportar el bot: el "
+                    400, "Seleccionar el instrumento antes de exportar el robot: el "
                          "archivo tiene que decir en qué símbolo operar.")
             # Los costos se COPIAN CAMPO POR CAMPO y no en bloque. `settings`
             # llega del cliente, y volcarlo entero mete en el archivo cualquier
@@ -2657,7 +2657,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
 
         ids = [str(x) for x in (payload.get("ids") or [])]
         if not ids:
-            raise HTTPException(400, "Elegí al menos una estrategia.")
+            raise HTTPException(400, "Seleccionar al menos una estrategia.")
         if len(ids) > 20:
             raise HTTPException(
                 400, "Veinte es el máximo por conjunto. Con más, las porciones "
@@ -3908,7 +3908,7 @@ def create_app(workdir: Path | None = None) -> FastAPI:
     def compartir(payload: dict[str, Any], request: Request) -> dict[str, Any]:
         ip = _ip_de(request)
         if db.compartidas_hoy(ip) >= _TOPE_COMPARTIR_DIA:
-            raise HTTPException(429, "Ya compartiste muchas hoy. Mañana podés seguir.")
+            raise HTTPException(429, "Se alcanzó el límite diario para compartir. Mañana se puede continuar.")
         doc = _doc_compartible(payload)
         codigo, secreto = db.crear_compartida(doc, ip)
         return {"codigo": codigo, "secreto": secreto, "url": f"{SITIO}/s/{codigo}"}
@@ -4225,7 +4225,7 @@ h1{{font-size:28px;margin:0 0 4px;letter-spacing:-.02em}}.sub{{color:var(--dim);
         """
         u = usuario_actual(request)
         if u is None:
-            raise HTTPException(401, "Entrá con tu cuenta para obtener tu licencia.")
+            raise HTTPException(401, "Se requiere iniciar sesión para obtener la licencia.")
         privada = os.environ.get("BQ_LICENCIA_PRIVADA", "").strip()
         if not privada:
             raise HTTPException(

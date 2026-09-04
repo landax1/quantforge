@@ -122,7 +122,7 @@ def test_y_lo_dice_en_vez_de_callarse():
                  estrategias=[_e("cruda", estados.NUEVA)],
                  horas_desde_el_ultimo_minado=1, en_practica=99)
     assert t.accion == NADA
-    assert "mandes a probar" in t.motivo, t.motivo
+    assert "enviadas a validación" in t.motivo, t.motivo
 
 
 def test_y_recien_al_final_busca_mas():
@@ -135,7 +135,7 @@ def test_si_no_paso_el_tiempo_no_mina():
     t = que_toca(_p(minar_cada_horas=12), estrategias=[],
                  horas_desde_el_ultimo_minado=3)
     assert t.accion == NADA
-    assert "próximo minado" in t.motivo
+    assert "próxima generación" in t.motivo
 
 
 # --------------------------------------------------------------- los topes
@@ -347,4 +347,4 @@ def test_el_motivo_cuenta_las_que_el_bot_no_puede_encender():
     t = que_toca(_p(), estrategias=[mala, _e("buena", estados.VALIDADA)],
                  horas_desde_el_ultimo_minado=1, en_practica=0)
     assert t.ids == ["buena"]
-    assert "no puede encender" in t.motivo
+    assert "no puede activar" in t.motivo

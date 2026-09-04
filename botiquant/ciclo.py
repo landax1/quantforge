@@ -186,7 +186,7 @@ def que_toca(p: Parametros, *, estrategias: list[dict[str, Any]],
     if retirables and p.retirar_solo:
         return Tarea(RETIRAR,
                      f"{len(retirables)} llevan {p.vueltas_en_naranja} vueltas "
-                     f"en naranja", retirables, **marca)
+                     f"en amarillo", retirables, **marca)
 
     # 2) promover lo que ya está probado, si queda lugar
     if en_practica < p.max_en_practica:
@@ -229,11 +229,11 @@ def que_toca(p: Parametros, *, estrategias: list[dict[str, Any]],
         if listas:
             hueco = p.max_en_practica - en_practica
             motivo = (f"hay {hueco} lugar(es) libre(s) y {len(listas)} "
-                      f"validada(s) esperando")
+                      f"validada(s) en espera")
             if llenos:
                 motivo += f"; {len(llenos)} instrumento(s) ya al tope"
             if inoperables:
-                motivo += f"; {inoperables} que el bot no puede encender"
+                motivo += f"; {inoperables} que el robot no puede activar"
             return Tarea(PROMOVER, motivo, listas[:hueco], **marca)
 
     # 3) PROBAR ES DEL USUARIO, NO DEL CICLO.
@@ -256,12 +256,12 @@ def que_toca(p: Parametros, *, estrategias: list[dict[str, Any]],
     # 4) y recién ahí, buscar más
     if horas_desde_el_ultimo_minado >= p.minar_cada_horas:
         return Tarea(MINAR,
-                     f"pasaron {horas_desde_el_ultimo_minado:.0f} horas del "
-                     f"último minado", **marca)
+                     f"pasaron {horas_desde_el_ultimo_minado:.0f} horas de la "
+                     f"última generación", **marca)
 
     faltan = p.minar_cada_horas - horas_desde_el_ultimo_minado
-    motivo = f"nada que hacer; el próximo minado en {faltan:.0f} horas"
+    motivo = f"nada que hacer; la próxima generación en {faltan:.0f} horas"
     # Y si hay cosas esperando, se dice de quién es el próximo paso.
     if sin_probar:
-        motivo += f"; {len(sin_probar)} esperan a que las mandes a probar"
+        motivo += f"; {len(sin_probar)} esperan a ser enviadas a validación"
     return Tarea(NADA, motivo, **marca)

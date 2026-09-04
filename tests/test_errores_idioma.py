@@ -26,7 +26,7 @@ def cliente(tmp_path):
 
 
 def test_traduce_lo_que_esta_en_la_tabla():
-    assert traducir_error("Elegí al menos una estrategia.", "en") == "Pick at least one strategy."
+    assert traducir_error("Seleccionar al menos una estrategia.", "en") == "Select at least one strategy."
 
 
 def test_los_mensajes_con_datos_conservan_los_datos():
@@ -52,13 +52,13 @@ def test_el_endpoint_responde_en_el_idioma_pedido(cliente):
     r = cliente.post("/api/robustez", json={"estrategias": []},
                      headers={"X-Idioma": "en"})
     assert r.status_code == 400
-    assert r.json()["detail"] == "Pick at least one strategy."
+    assert r.json()["detail"] == "Select at least one strategy."
 
 
 def test_sin_cabecera_sigue_en_espanol(cliente):
     r = cliente.post("/api/robustez", json={"estrategias": []})
     assert r.status_code == 400
-    assert "Elegí" in r.json()["detail"]
+    assert "Seleccionar" in r.json()["detail"]
 
 
 def test_el_codigo_de_estado_no_se_pierde(cliente):

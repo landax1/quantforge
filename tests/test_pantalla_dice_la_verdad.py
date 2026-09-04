@@ -50,10 +50,18 @@ def test_la_receta_puesta_vuelve_tras_recargar():
         "al dibujar Buscar hay que recuperar qué receta estaba puesta en este mercado")
 
 
-def test_databank_se_llama_encontradas_en_castellano():
+def test_la_solapa_del_repositorio_tiene_nombre_en_castellano():
+    """El rótulo en castellano no puede ser la palabra inglesa.
+
+    Decía "Databank", después "Encontradas", y desde el 3 de septiembre de 2026
+    "Candidatas": son las que pasaron los filtros de la generación y todavía no
+    se validaron. Lo que la prueba cuida es que no vuelva a quedar en inglés.
+    """
     m = re.search(r'"nav\.bank":\s*\["([^"]+)",\s*"([^"]+)"\]', I18N)
-    assert m and m.group(2) == "Encontradas", (
-        "la solapa se llama Encontradas y el rótulo decía Databank en castellano")
+    assert m, "falta la clave nav.bank"
+    assert m.group(2) == "Candidatas", (
+        f"la solapa se llama Candidatas y decía {m.group(2)!r}")
+    assert "atabank" not in m.group(2), "el rótulo en castellano quedó en inglés"
 
 
 def test_la_relacion_riesgo_beneficio_cabe_en_su_frase():
